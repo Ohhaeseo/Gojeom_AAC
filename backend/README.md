@@ -131,6 +131,7 @@ CI/테스트와 버전을 맞추려면 로컬도 16으로 낮추거나, `docker-
 
 ## 관련 문서
 
+- [PLAN.md](PLAN.md) — **개발 계획 (8/14~16 스프린트) · 범위 · 우선순위**
 - [ARCHITECTURE.md](ARCHITECTURE.md) — **백엔드 기술 아키텍처 · 패키지 구조**
 - [PRD.md](../PRD.md) — 제품 요구사항
 - [design.md](../design.md) — 디자인 토큰 · 컴포넌트
