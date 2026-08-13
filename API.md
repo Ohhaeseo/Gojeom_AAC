@@ -188,6 +188,27 @@
 
 가입 시 `TRIAL` 구독과 **분석권 1회**가 자동 생성된다.
 
+#### `POST /auth/oauth/google`
+
+프론트가 Google에서 받은 **ID 토큰**을 그대로 보낸다. 서버가 서명·발급자·audience·만료를 검증한다.
+
+```json
+// Request
+{ "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6..." }
+```
+
+응답은 `POST /auth/login`과 **동일한 형식**이다. 프론트는 로그인 방식에 따라 분기하지 않는다.
+
+**계정 식별 규칙** — 아래 순서로 조회하고, 없으면 새로 만든다.
+
+| 순서 | 기준 | 결과 |
+| --- | --- | --- |
+| 1 | `(provider=GOOGLE, providerUserId=sub)` | 기존 Google 계정으로 로그인 |
+| 2 | `email` | **같은 이메일의 기존 계정으로 로그인** |
+| 3 | 없음 | 신규 생성 (`provider=GOOGLE`, `passwordHash=null`) |
+
+> **이메일 기준 1계정이다.** 이메일로 가입한 뒤 같은 이메일로 Google 로그인하면 새 계정이 생기지 않고 기존 계정에 로그인된다. 반대로 Google로 먼저 가입하면 `passwordHash`가 `null`이라 이메일 로그인은 불가하다. 비밀번호 설정 기능은 현재 범위 밖이다.
+
 #### `GET /users/me` — 라우팅 분기 기준
 
 ```json

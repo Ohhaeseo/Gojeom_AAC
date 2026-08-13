@@ -249,22 +249,6 @@
 
 목표: **데모 경로 E2E 통과.**
 
-### D3-0. Google 소셜 로그인 (2.5h)
-
-전제: **0-6 콘솔 설정 완료.** 금요일에 만든 이메일 로그인 코드를 재사용한다.
-
-- [ ] `build.gradle`에 `com.google.api-client:google-api-client` 추가
-- [ ] `auth/oauth/GoogleTokenVerifier` — `GoogleIdTokenVerifier`로 서명·issuer·audience·만료 검증
-- [ ] `POST /auth/oauth/google` — body `{ "idToken": "..." }`
-- [ ] `sub` → `provider_user_id`, `email`·`name` 추출
-- [ ] 사용자 조회 순서: `(provider, providerUserId)` → 없으면 `email` → 없으면 신규 생성
-- [ ] 신규 생성 시 `provider=GOOGLE`, `passwordHash=null`, `Subscription(TRIAL)` 발급
-- [ ] 응답은 이메일 로그인과 **동일한 `TokenResponse`** (프론트가 분기하지 않도록)
-
-**완료 판정** — Google 계정으로 로그인해 받은 토큰으로 `GET /users/me` 200, `provider`가 `GOOGLE`
-
-> ID 토큰 검증을 직접 구현하지 않는다. JWKS 캐싱·키 롤오버까지 라이브러리가 처리한다.
-
 ### D3-1. 서랍 (1.5h)
 
 - [ ] `POST /analyses/{id}/result/save` — `SavedResult` 생성
@@ -304,7 +288,28 @@
 - [ ] **코드에 고정 응답·더미 데이터가 없는지 확인**
 - [ ] 남는 시간 → `PATCH /profiles/me/priorities` · `DELETE /routines/{id}` · 알림 설정
 
-**일요일 총 11.5h** (Google 로그인 2.5h 포함).
+### D3-6. Google 소셜 로그인 (2.5h) — **맨 마지막**
+
+**위 작업이 전부 끝난 뒤에 한다.** 데모 경로는 이메일 로그인만으로 완성되므로, 이걸 먼저 하면 핵심 기능이 밀린다. 시간이 없으면 스프린트 이후로 넘긴다.
+
+**미뤄도 재작업이 없다.** 스키마(`provider` · `provider_user_id` · nullable `password_hash`)와 API 계약이 이미 소셜 로그인을 수용하도록 설계되어 있다. 붙일 때 기존 코드를 고칠 필요가 없고, 새로 짜는 것은 검증기와 엔드포인트 하나뿐이다.
+
+전제: **0-6 콘솔 설정 완료.** 이메일 로그인 코드를 재사용한다.
+
+- [ ] `build.gradle`에 `com.google.api-client:google-api-client` 추가
+- [ ] `auth/oauth/GoogleTokenVerifier` — `GoogleIdTokenVerifier`로 서명·issuer·audience·만료 검증
+- [ ] `POST /auth/oauth/google` — body `{ "idToken": "..." }`
+- [ ] `sub` → `provider_user_id`, `email`·`name` 추출
+- [ ] **사용자 조회 순서: `(provider, providerUserId)` → 없으면 `email` → 없으면 신규 생성**
+      두 번째 단계가 "같은 이메일이면 같은 계정" 방침을 구현한다
+- [ ] 신규 생성 시 `provider=GOOGLE`, `passwordHash=null`, `Subscription(TRIAL)` 발급
+- [ ] 응답은 이메일 로그인과 **동일한 `TokenResponse`** (프론트가 분기하지 않도록)
+
+**완료 판정** — Google 계정으로 로그인해 받은 토큰으로 `GET /users/me` 200. 같은 이메일의 기존 계정이 있으면 새 계정이 생기지 않고 그 계정으로 로그인된다.
+
+> ID 토큰 검증을 직접 구현하지 않는다. JWKS 캐싱·키 롤오버까지 라이브러리가 처리한다.
+
+**일요일 총 11.5h** (Google 로그인 2.5h 포함. 빼면 9h).
 
 ---
 
