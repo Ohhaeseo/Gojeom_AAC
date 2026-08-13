@@ -81,22 +81,29 @@ Testcontainers가 PostgreSQL을 띄우므로 **Docker가 실행 중이어야 한
 cd backend && ./gradlew test
 ```
 
-### ⚠️ 현재 검증 상태
+### 검증 상태
 
-| 항목 | 상태 |
+로컬 PostgreSQL 18.4로 검증 완료 (2026-08-13).
+
+| 항목 | 결과 |
 | --- | --- |
-| `compileJava` · `compileTestJava` | ✅ 통과 |
-| `build` (bootJar) | ✅ 통과 |
-| `test` (컨텍스트 로딩) | ⚠️ **미실행** |
-| `V1__init.sql` 실제 적용 | ⚠️ **미확인** |
+| `compileJava` · `compileTestJava` | ✅ |
+| `build` (bootJar) | ✅ |
+| 앱 기동 | ✅ 5.0초 |
+| Flyway `V1__init.sql` 적용 | ✅ 테이블 15개 · 인덱스 35개 |
+| `ck_priorities_len` 제약 동작 | ✅ 3개 아닌 배열 거부 확인 |
+| `/actuator/health` | ✅ `{"status":"UP"}` |
+| 보호된 경로 인증 | ✅ `401` (JWT 필터 미구현 상태의 의도된 동작) |
+| `./gradlew test` (Testcontainers) | ⚠️ **미실행** — Docker 없음 |
 
-개발 환경에 Docker가 없어 Testcontainers를 띄우지 못했다. 즉 **컴파일은 되지만 앱이 실제로 기동하는지, Flyway 마이그레이션이 PostgreSQL에서 정상 적용되는지는 아직 확인되지 않았다.**
+**로컬은 PostgreSQL 18, `docker-compose.yml`과 테스트는 16을 쓴다.** Flyway가 아래 경고를 남기지만 마이그레이션은 정상 적용된다.
 
-Docker Desktop 설치 후(관리자 권한 + WSL2 필요) 아래를 실행해 검증해야 한다.
-
-```bash
-cd backend && ./gradlew test
+```text
+Flyway upgrade recommended: PostgreSQL 18.4 is newer than this version of Flyway
+and support has not been tested. The latest supported version of PostgreSQL is 16.
 ```
+
+CI/테스트와 버전을 맞추려면 로컬도 16으로 낮추거나, `docker-compose.yml`과 Testcontainers 이미지를 18로 올린다.
 
 ## 환경 변수
 
