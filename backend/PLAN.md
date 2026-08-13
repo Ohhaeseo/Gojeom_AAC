@@ -30,7 +30,7 @@ PRD의 데모 경로 — `로그인 → 프로필 등록 → 고점 입력 → �
 
 | # | 엔드포인트 |
 | --- | --- |
-| 1 | `POST /auth/signup` · `POST /auth/login` · `POST /auth/refresh` |
+| 1 | `POST /auth/signup` · `POST /auth/login` · `POST /auth/refresh` · **`POST /auth/oauth/google`** |
 | 2 | `GET /users/me` |
 | 3 | `POST /uploads/presigned` |
 | 4 | `POST /profiles` · `GET /profiles/me` |
@@ -52,7 +52,6 @@ PRD의 데모 경로 — `로그인 → 프로필 등록 → 고점 입력 → �
 | 인바디 OCR (F-03) | 선택 기능. 직접 입력으로 대체 가능 |
 | **비교 이미지 생성** | 제공자 정책 거부 가능성 + 시간. `image_status = SKIPPED`로 시작. §6 참조 |
 | 알림 발송 스케줄러 | 설정 저장까지만. 실제 푸시는 제외 |
-| 소셜 로그인 | 이메일 로그인만 |
 | 미수행 재배치 | PRD O-9로 이미 보류 |
 
 ---
