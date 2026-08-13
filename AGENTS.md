@@ -144,4 +144,4 @@ cd backend && ./gradlew test
 
 `.env`는 `backend/.env.example`을 복사해 만든다. 커밋하지 않는다.
 
-> 현재 `gradle-wrapper.jar`가 없어 `./gradlew`가 동작하지 않는다. Gradle 설치 후 `gradle wrapper`로 생성해야 한다.
+Gradle은 따로 설치할 필요가 없다. Wrapper(8.10.2)가 저장소에 포함되어 있다.
