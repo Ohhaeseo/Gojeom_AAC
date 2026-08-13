@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -33,6 +34,19 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(ErrorCode.VALIDATION_ERROR.status())
                 .body(ApiResponse.fail(ErrorCode.VALIDATION_ERROR, fields));
+    }
+
+    /**
+     * 본문 파싱 실패 — 깨진 JSON, 타입 불일치, 빈 본문.
+     *
+     * <p>클라이언트 잘못이므로 400으로 내린다. 이 핸들러가 없으면 500이 나가서
+     * 프론트가 서버 장애로 오인한다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadable(HttpMessageNotReadableException e) {
+        log.info("malformed request body: {}", e.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(ErrorCode.VALIDATION_ERROR.status())
+                .body(ApiResponse.fail(ErrorCode.VALIDATION_ERROR));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

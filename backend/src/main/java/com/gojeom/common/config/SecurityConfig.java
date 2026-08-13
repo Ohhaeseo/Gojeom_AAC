@@ -1,5 +1,6 @@
 package com.gojeom.common.config;
 
+import com.gojeom.auth.jwt.JwtAuthenticationFilter;
 import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.common.response.ApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +15,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -21,10 +23,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * JWT 무상태 인증. (ARCHITECTURE.md §9)
  *
- * <p><b>TODO(step 2)</b> — JwtAuthenticationFilter를 만들어
- * {@code addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)}로 끼운다.
- * 지금은 필터가 없어 보호된 경로가 전부 401을 반환한다. 의도된 상태다.
- * (permitAll로 열어두면 필터 추가를 잊었을 때 그대로 배포된다)
+ * <p>인증 실패와 인가 실패 모두 컨트롤러와 동일한 응답 봉투로 내려준다.
+ * 시큐리티 단계에서 나가는 응답만 형식이 다르면 프론트가 두 벌로 처리해야 한다.
  */
 @Configuration
 @EnableWebSecurity
@@ -33,6 +33,7 @@ public class SecurityConfig {
 
     private final CorsProperties corsProperties;
     private final ObjectMapper objectMapper;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     /** 인증 없이 접근 가능한 경로. */
     private static final String[] PUBLIC_PATHS = {
@@ -57,6 +58,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .anyRequest().authenticated())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) ->
                                 write(res, ErrorCode.AUTH_TOKEN_EXPIRED))

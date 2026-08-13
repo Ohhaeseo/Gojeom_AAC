@@ -109,47 +109,52 @@
 
 목표: **프론트가 회원가입 → 로그인 → 프로필 등록까지 실제 API로 수행할 수 있다.**
 
-### D1-1. 공통 엔티티 기반 (0.5h)
+> **D1-1 ~ D1-5 완료 (8/14).** 회원가입·로그인·토큰갱신·`/users/me` 전 흐름을 실제 DB로 검증했다. 검증 결과는 이 절 끝의 «D1 검증» 참조.
 
-- [ ] `common/entity/BaseTimeEntity` — `@MappedSuperclass`, `createdAt`/`updatedAt`, `@EntityListeners(AuditingEntityListener.class)`
+### D1-1. ✅ 공통 엔티티 기반 — 완료
+
+- [x] `common/entity/BaseCreatedEntity` — `created_at`만 있는 테이블용
+- [x] `common/entity/BaseTimeEntity` — `created_at` + `updated_at`
+
+**겪은 문제** — Spring Data Auditing의 기본 `DateTimeProvider`는 `LocalDateTime`을 공급해 `OffsetDateTime` 필드에 넣지 못한다. `JpaConfig`에 UTC `OffsetDateTime`을 공급하는 provider를 등록해 해결했다. 이걸로 "UTC 저장 / KST 표시" 규칙이 코드에 못박혔다.
 
 > ⚠️ **`ddl-auto: validate`이므로 엔티티가 스키마와 정확히 일치해야 앱이 뜬다.** 컬럼명·타입이 하나라도 어긋나면 기동 실패한다. JSONB 컬럼은 반드시 `@JdbcTypeCode(SqlTypes.JSON)`을 붙인다.
 
-### D1-2. JWT 인증 (2.5h)
+### D1-2. ✅ JWT 인증 — 완료
 
-- [ ] `common/security/UserPrincipal` — `record(UUID userId, String email)`
-- [ ] `auth/jwt/JwtProvider` — access 발급 / refresh 발급 / 파싱 / 검증
-- [ ] `auth/jwt/JwtAuthenticationFilter` — `OncePerRequestFilter`, `SecurityContext`에 주입
-- [ ] `SecurityConfig`에 필터 결선 — **현재 TODO 주석 제거**
-- [ ] `common/security/CurrentUser` — `@AuthenticationPrincipal` 래핑 애노테이션
+- [x] `common/security/UserPrincipal`
+- [x] `auth/jwt/JwtProvider` — access 30분 / refresh 14일, `typ` 클레임으로 종류 구분
+- [x] `auth/jwt/JwtAuthenticationFilter`
+- [x] `SecurityConfig`에 필터 결선 (TODO 제거)
 
-**완료 판정**
-- 유효 토큰 → 보호된 경로 200
-- 만료 토큰 → `401 AUTH_TOKEN_EXPIRED`, 응답이 `{success:false, error:{...}}` 봉투
-- 토큰 없음 → 401
+`@AuthenticationPrincipal UserPrincipal`을 그대로 쓰면 되어 별도 애노테이션은 만들지 않았다.
 
-### D1-3. user 도메인 (1h)
+**`typ` 클레임을 둔 이유** — refresh 토큰으로 API를 호출하거나 access 토큰으로 갱신을 시도하는 것을 막는다. 실제로 검증에서 access 토큰으로 refresh를 시도하면 401이 나오는 것을 확인했다.
 
-- [ ] `user/entity/User` — email unique, passwordHash, provider, nickname, deletedAt
-- [ ] `user/repository/UserRepository` — `findByEmailAndDeletedAtIsNull`
-- [ ] `subscription/entity/Subscription` + repository (가입 시 필요)
+### D1-3. ✅ user 도메인 — 완료
 
-### D1-4. auth 엔드포인트 (2h)
+- [x] `user/entity/User` — 정적 팩터리 `ofLocal` / `ofGoogle`
+- [x] `user/repository/UserRepository` — soft delete 제외 조회 4종
+- [x] `subscription/entity/Subscription` + repository
+- [x] `SubscriptionRepository.consumeCredit` — **단일 UPDATE 차감** (D2-6에서 사용)
 
-- [ ] `auth/dto/` — `SignupRequest`(email·password·nickname, `@Valid`), `LoginRequest`, `TokenResponse`
-- [ ] `auth/AuthController` — `POST /auth/signup` · `/login` · `/refresh` · `/logout`
-- [ ] `auth/AuthService` — BCrypt 해싱, 중복 이메일 → `AUTH_EMAIL_DUPLICATED`
-- [ ] **가입 시 `Subscription(TRIAL, analysisCredits=1, expiresAt=+1개월)` 생성** — 같은 트랜잭션
+### D1-4. ✅ auth 엔드포인트 — 완료
 
-**완료 판정** — 가입 → 로그인 → 받은 토큰으로 `GET /users/me` 200
+- [x] `AuthDtos` — Signup / Login / Refresh / TokenResponse / UserSummary
+- [x] `AuthController` — signup · login · refresh · logout
+- [x] `AuthService` — BCrypt, 중복 시 `AUTH_EMAIL_DUPLICATED`
+- [x] 가입 시 `Subscription(TRIAL, 1회, +1개월)` 생성 — 같은 트랜잭션
+- [x] **이메일 소문자 정규화** — 대소문자만 다른 중복 가입 차단
 
-### D1-5. GET /users/me (0.5h)
+로그아웃은 무상태라 서버가 폐기할 토큰이 없다. 토큰 블랙리스트는 범위 밖이며 엔드포인트만 열어뒀다.
 
-- [ ] `user/UserController` + `UserService`
-- [ ] `hasProfile` — `profiles`에 `is_active=true` 행 존재 여부
-- [ ] `analysisCredits` · `subscription` 포함
+### D1-5. ✅ GET /users/me — 완료
 
-> 프론트의 라우팅 분기 기준이라 정확해야 한다. ([API.md](../API.md) C-1)
+- [x] `UserController` + `UserService` + `MeResponse`
+- [x] `analysisCredits` · `subscription`(canAnalyze / canCreateRoutine) 포함
+- [ ] `hasProfile` — **현재 항상 `false`.** 프로필 도메인(D1-7)이 붙으면 실제 조회로 교체한다
+
+> `hasProfile`은 프론트의 최초 진입 라우팅 기준이다. D1-7 완료 시 반드시 실제 값으로 바꿔야 한다. ([API.md](../API.md) C-1)
 
 ### D1-6. storage presigned (2h)
 
@@ -179,6 +184,29 @@
 - [ ] 키워드 추출 스키마로 **실제 호출 1회 성공**
 - [ ] 확인: `json_schema` strict가 지켜지는가 / 한국어 출력 품질 / **응답 지연 몇 초인가**
 - [ ] 실패 시 → 스키마 단순화 → 모델 변경 순으로 대응. 대안은 [PLAN.md](PLAN.md) §6
+
+### D1 검증 (8/14)
+
+로컬 PostgreSQL 18.4 · 실제 HTTP 요청으로 12개 시나리오 확인.
+
+| # | 시나리오 | 결과 |
+| --- | --- | --- |
+| 1 | 회원가입 | 201, TRIAL 구독 동시 생성 |
+| 2 | 이메일 중복 | 409 `AUTH_EMAIL_DUPLICATED` |
+| 3 | 대소문자만 다른 이메일 | 409 (정규화 동작) |
+| 4 | 로그인 | 200 |
+| 5 | 비밀번호 오류 | 401 `AUTH_INVALID_CREDENTIALS` |
+| 6 | `GET /users/me` | 200, credits=1 · TRIAL/ACTIVE · canAnalyze=true |
+| 7 | 토큰 없음 | 401 |
+| 8 | 위조 토큰 | 401 |
+| 9 | 토큰 갱신 | 200, 새 토큰 발급 |
+| 10 | access 토큰으로 refresh | 401 `AUTH_TOKEN_EXPIRED` |
+| 11 | 입력 검증 실패 | 400 `VALIDATION_ERROR` + 필드별 사유 |
+| 12 | 깨진 JSON 본문 | 400 `VALIDATION_ERROR` |
+
+**DB 확인** — 한글 닉네임 정상 저장, BCrypt 해시 60자, `users=1 subscriptions=1`(트랜잭션 정합성).
+
+**추가로 고친 것** — 12번 시나리오에서 깨진 JSON이 **500으로 나가는 결함**을 발견해 `HttpMessageNotReadableException` 핸들러를 추가했다. 클라이언트 잘못을 서버 장애로 보이게 하는 문제였다.
 
 **금요일 총 13h.** 많다. D1-8을 지키기 위해 D1-6·D1-7이 밀리면 토요일 오전으로 넘긴다.
 
