@@ -2,55 +2,47 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v2.0 |
 | 최종 수정일 | 2026-08-13 |
-| 상위 문서 | [PRD.md](PRD.md) |
-| 짝 문서 | [ERD.md](ERD.md) — 응답 필드와 DB 컬럼은 1:1 대응한다 |
+| 상위 문서 | [PRD.md](PRD.md) · [design.md](design.md) |
+| 짝 문서 | [ERD.md](ERD.md) — 응답 필드와 DB 컬럼은 1:1 대응 |
 | Base URL | `https://{host}/api/v1` |
 | 인증 | JWT Bearer (Access 30분 / Refresh 14일) |
-| Content-Type | `application/json; charset=utf-8` (파일 업로드는 스토리지 직접 PUT) |
-| 시간 형식 | ISO-8601 UTC (`2026-08-10T04:12:00Z`) — **표시 시 KST 변환은 프론트 책임** |
+| 시간 형식 | ISO-8601 UTC — **KST 변환은 프론트 책임** |
 | 네이밍 | 요청/응답 JSON은 `camelCase` |
 
-> **이 문서가 프론트와 백엔드의 계약이다.** 한쪽이 임의로 필드를 추가·삭제하지 않는다. 변경이 필요하면 이 문서를 먼저 수정하고 양쪽에 공유한다.
+> **이 문서가 프론트와 백엔드의 계약이다.** 한쪽이 임의로 필드를 추가·삭제하지 않는다.
+>
+> **v2 변경 요약** — Figma 시안 대조 반영. ① `priorityCategory` → `profiles.priorities` **3개 순위 배열**로 이동 ② 카테고리 Enum 3종 ③ `inputMode` 삭제, 텍스트 500자, 참고 사진 **다중** ④ `topChanges` → `categoryChanges` ⑤ `changeIntensity` 숫자 → 텍스트 ⑥ 결과 화면 **상태 2종**(FRESH/SAVED) ⑦ 서랍 **3섹션** ⑧ 인바디 6종 ⑨ **인바디 OCR 엔드포인트 신설**
+>
+> **v2.1** — `POST /routines`가 **경로 2종**(`FROM_ANALYSIS` / `STANDALONE`)을 받도록 확장됐다. `RoutineSourceType` Enum 신설.
 
 ---
 
 ## 1. 공통 응답 형식
 
-### 성공
-
 ```json
-{
-  "success": true,
-  "data": { }
-}
+// 성공
+{ "success": true, "data": { } }
 ```
 
-### 실패
-
 ```json
+// 실패
 {
   "success": false,
   "error": {
     "code": "ANALYSIS_NO_KEYWORD",
     "message": "조금 더 구체적으로 적어주세요.",
-    "details": { "examples": ["차분하고 또렷한 인상이 되고 싶어요"] }
+    "details": { "examples": ["자연스럽고 건강해 보이는 분위기"] }
   }
 }
 ```
 
-- `error.message`는 **그대로 사용자에게 보여줄 수 있는 한국어 문구**로 내려온다. 프론트가 코드별 문구를 따로 관리하지 않아도 되게 한다. 단, 코드별 커스텀 UI(모달/토스트/인라인)는 프론트가 결정한다.
-- 페이지네이션이 필요한 목록은 `data`에 `items` + `page` 객체를 담는다.
+- `error.message`는 **그대로 사용자에게 보여줄 한국어 문구**다. 프론트가 코드별 문구를 따로 관리하지 않는다.
+- 목록은 `items` + `page`로 감싼다.
 
 ```json
-{
-  "success": true,
-  "data": {
-    "items": [],
-    "page": { "number": 0, "size": 20, "totalElements": 37, "totalPages": 2 }
-  }
-}
+{ "success": true, "data": { "items": [], "page": { "number": 0, "size": 20, "totalElements": 37, "totalPages": 2 } } }
 ```
 
 ---
@@ -60,61 +52,68 @@
 | 구분 | 헤더 |
 | --- | --- |
 | 인증 필요 | `Authorization: Bearer {accessToken}` |
-| 갱신 | `POST /auth/refresh` (body에 refreshToken) |
 
-- **PRD O-3에 따라 랜딩/약관 조회를 제외한 모든 엔드포인트는 인증이 필요하다.**
-- Access Token 만료 시 `401 AUTH_TOKEN_EXPIRED` → 프론트는 refresh 후 원 요청을 1회 재시도한다. refresh도 실패하면 로그인 화면으로 보내되 **직전 경로를 저장**해 복귀시킨다. (PRD F-01)
-- 타인의 리소스 접근은 `404`가 아닌 `403 FORBIDDEN_RESOURCE`로 응답한다.
+- 랜딩·약관 조회를 제외한 모든 엔드포인트는 인증이 필요하다.
+- Access Token 만료 시 `401 AUTH_TOKEN_EXPIRED` → 프론트는 refresh 후 원 요청을 1회 재시도한다. refresh도 실패하면 로그인 화면으로 보내되 **직전 경로를 저장**해 복귀시킨다.
+- 타인의 리소스 접근은 `403 FORBIDDEN_RESOURCE`.
 
 ---
 
-## 3. Enum 정의 (프론트·백엔드 공유)
+## 3. Enum 정의
 
 | Enum | 값 | 표시 문구 |
 | --- | --- | --- |
-| `Provider` | `LOCAL` `KAKAO` `GOOGLE` | — |
+| `Provider` | `LOCAL` `GOOGLE` | — |
+| **`Category`** | `SKIN` `BODY` `HEALTH` | 피부 / 체형 / 건강 |
 | `Gender` | `MALE` `FEMALE` `UNSPECIFIED` | 남성 / 여성 / 선택 안 함 |
-| `PriorityCategory` | `SKIN` `FACE` `BODY` `HEALTH` | 피부 / 얼굴형 / 체형 / 건강 |
-| `RoutineCategory` | `SKIN` `HEALTH` `BODY` | 피부 / 건강 / 체형 |
-| `InputMode` | `TEXT` `TEXT_IMAGE` | 자연어 / 자연어 + 사진 |
-| `KeywordOrigin` | `TEXT` `IMAGE` `COMMON` `CONFLICT` | 텍스트 / 사진 / 공통 / 충돌 |
 | `AnalysisStatus` | `CREATED` `EXTRACTING` `KEYWORDS_READY` `GENERATING` `DONE` `FAILED` | — |
 | `ImageStatus` | `SKIPPED` `PENDING` `DONE` `FAILED` | — |
-| `ChangeTag` | `STYLING` `SELF_CARE` `CARE` | 스타일링 / 셀프 관리 / 케어 |
-| `TaskStatus` | `PENDING` `DONE` `MISSED` `RESCHEDULED` | — |
+| `ResultViewState` | `FRESH` `SAVED` | 분석 직후 / 서랍 열람 |
+| `TaskStatus` | `PENDING` `DONE` `MISSED` | — |
 | `RoutineStatus` | `ACTIVE` `COMPLETED` `CANCELED` | — |
+| `RoutineSourceType` | `FROM_ANALYSIS` `STANDALONE` | 저장된 분석 결과 가져오기 / 새 루틴 만들기 |
 | `Plan` | `TRIAL` `MONTHLY` `YEARLY` | 무료 체험 / 월 구독 / 연 구독 |
 | `ConsentCode` | `TERMS` `PRIVACY` `BIOMETRIC` `MARKETING` | — |
 
-> `PriorityCategory`는 4종, `RoutineCategory`는 3종이다. 두 Enum을 하나로 합치지 않는다. (PRD O-1 / O-4)
+**v2에서 삭제된 Enum**
+
+| 삭제 | 사유 |
+| --- | --- |
+| `PriorityCategory` (4종) | `Category`(3종)로 통합. `FACE`는 카테고리가 아니라 키워드 라벨이다 |
+| `RoutineCategory` | `Category`와 동일해져 통합 |
+| `InputMode` | 입력 방식 선택 화면이 없다 |
+| `KeywordOrigin` | 시안의 키워드 목록에 공통/충돌 구분이 없다 |
+| `ChangeTag` | `categoryChanges`가 카테고리 기반으로 바뀌었다 |
 
 ---
 
 ## 4. 에러 코드
 
-| HTTP | code | 사용자 노출 문구 | 발생 지점 |
-| --- | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | 입력값을 다시 확인해주세요. | 공통 |
-| 401 | `AUTH_TOKEN_EXPIRED` | 로그인이 만료되었어요. | 공통 |
-| 401 | `AUTH_INVALID_CREDENTIALS` | 이메일 또는 비밀번호를 확인해주세요. | 로그인 |
-| 403 | `FORBIDDEN_RESOURCE` | 접근할 수 없는 항목이에요. | 공통 |
-| 403 | `CONSENT_REQUIRED` | 필수 항목에 동의해주세요. | 프로필 생성 |
-| 403 | `PROFILE_UNDERAGE` | 만 14세 이상만 이용할 수 있어요. | 프로필 생성 |
-| 402 | `NO_ANALYSIS_CREDIT` | 분석권을 모두 사용했어요. | 분석 생성 |
-| 404 | `NOT_FOUND` | 요청한 정보를 찾을 수 없어요. | 공통 |
-| 409 | `PROFILE_REQUIRED` | 프로필을 먼저 등록해주세요. | 분석 생성 |
-| 409 | `ANALYSIS_INVALID_STATE` | 지금은 진행할 수 없는 단계예요. | 키워드 확정 |
-| 413 | `FILE_TOO_LARGE` | 10MB 이하 사진을 올려주세요. | 업로드 |
-| 422 | `IMAGE_NO_FACE` | 얼굴이 인식되지 않았어요. 정면을 향한 밝은 사진을 올려주세요. | 프로필 사진 |
-| 422 | `IMAGE_MULTIPLE_FACES` | 한 사람만 나온 사진을 올려주세요. | 프로필 사진 |
-| 422 | `IMAGE_LOW_QUALITY` | 사진이 흐리거나 어두워요. 다시 촬영해주세요. | 프로필 사진 |
-| 422 | `ANALYSIS_NO_KEYWORD` | 조금 더 구체적으로 적어주세요. | 키워드 추출 |
-| 422 | `CONTENT_POLICY_BLOCKED` | 분석할 수 없는 내용이 포함되어 있어요. | AI 단계 |
-| 500 | `AI_PROVIDER_ERROR` | 분석 중 문제가 생겼어요. 다시 시도해주세요. | AI 단계 |
-| 504 | `ANALYSIS_TIMEOUT` | 분석이 지연되고 있어요. 다시 시도해주세요. | AI 단계 |
+| HTTP | code | 사용자 노출 문구 |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | 입력값을 다시 확인해주세요. |
+| 401 | `AUTH_TOKEN_EXPIRED` | 로그인이 만료되었어요. |
+| 401 | `AUTH_INVALID_CREDENTIALS` | 이메일 또는 비밀번호를 확인해주세요. |
+| 403 | `FORBIDDEN_RESOURCE` | 접근할 수 없는 항목이에요. |
+| 403 | `CONSENT_REQUIRED` | 필수 항목에 동의해주세요. |
+| 403 | `PROFILE_UNDERAGE` | 만 14세 이상만 이용할 수 있어요. |
+| 402 | `NO_ANALYSIS_CREDIT` | 분석권을 모두 사용했어요. |
+| 404 | `NOT_FOUND` | 요청한 정보를 찾을 수 없어요. |
+| 409 | `PROFILE_REQUIRED` | 프로필을 먼저 등록해주세요. |
+| 409 | `ANALYSIS_INVALID_STATE` | 지금은 진행할 수 없는 단계예요. |
+| 413 | `FILE_TOO_LARGE` | 10MB 이하 사진을 올려주세요. |
+| 422 | `IMAGE_NO_FACE` | 얼굴이 인식되지 않았어요. 정면을 향한 밝은 사진을 올려주세요. |
+| 422 | `IMAGE_MULTIPLE_FACES` | 한 사람만 나온 사진을 올려주세요. |
+| 422 | `IMAGE_LOW_QUALITY` | 사진이 흐리거나 어두워요. 다시 촬영해주세요. |
+| 422 | `INBODY_SCAN_FAILED` | 서류를 읽지 못했어요. 직접 입력해주세요. |
+| 422 | `ANALYSIS_NO_KEYWORD` | 조금 더 구체적으로 적어주세요. |
+| 422 | `CONTENT_POLICY_BLOCKED` | 분석할 수 없는 내용이 포함되어 있어요. |
+| 500 | `AI_PROVIDER_ERROR` | 분석 중 문제가 생겼어요. 다시 시도해주세요. |
+| 500 | `INTERNAL_ERROR` | 잠시 후 다시 시도해주세요. |
+| 504 | `ANALYSIS_TIMEOUT` | 분석이 지연되고 있어요. 다시 시도해주세요. |
 
-- `NO_ANALYSIS_CREDIT` `CONTENT_POLICY_BLOCKED` `ANALYSIS_TIMEOUT` **3건은 분석권을 차감하지 않는다.** (PRD O-6)
-- `IMAGE_*` 계열은 프론트에서 MediaPipe로 1차 차단하지만, 서버도 동일 코드로 2차 검증한다.
+- `NO_ANALYSIS_CREDIT` · `CONTENT_POLICY_BLOCKED` · `ANALYSIS_TIMEOUT` · `INBODY_SCAN_FAILED` 는 **분석권을 차감하지 않는다.**
+- `IMAGE_*` 는 프론트 MediaPipe 1차 차단 + 서버 2차 검증에서 동일 코드를 쓴다.
 
 ---
 
@@ -124,37 +123,40 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | POST | `/auth/signup` | — | 회원가입 | F-01 |
 | 2 | POST | `/auth/login` | — | 로그인 | F-01 |
-| 3 | POST | `/auth/refresh` | — | 토큰 갱신 | F-01 |
-| 4 | POST | `/auth/logout` | ✔ | 로그아웃 | F-01 |
-| 5 | GET | `/users/me` | ✔ | 내 정보 + 온보딩 상태 | F-01 |
-| 6 | DELETE | `/users/me` | ✔ | 계정 삭제 | §10 |
-| 7 | GET | `/consents/terms` | — | 약관 목록·버전 | §10 |
-| 8 | POST | `/uploads/presigned` | ✔ | 업로드용 presigned URL 발급 | F-02 |
-| 9 | POST | `/profiles` | ✔ | 프로필 등록 → 현재 프로필 생성 | F-02·F-03 |
-| 10 | GET | `/profiles/me` | ✔ | 현재 프로필 조회 | F-03 |
-| 11 | PATCH | `/profiles/me` | ✔ | 프로필 수정 | F-02 |
-| 12 | DELETE | `/profiles/me/photo` | ✔ | 사진 삭제 | §10 |
-| 13 | POST | `/analyses` | ✔ | 추구미 입력 → 키워드 추출 시작 | F-04·F-05 |
-| 14 | GET | `/analyses/{id}` | ✔ | 진행 상태 폴링 | F-05 |
-| 15 | GET | `/analyses/{id}/keywords` | ✔ | 키워드 후보 조회 | F-06 |
-| 16 | POST | `/analyses/{id}/keywords/selection` | ✔ | 키워드 확정 → 결과 생성 시작 | F-06 |
-| 17 | GET | `/analyses/{id}/result` | ✔ | 결과 조회 | F-07 |
-| 18 | POST | `/analyses/{id}/result/feedback` | ✔ | 마음에 들어요 / 다시 분석하기 | F-07·F-08 |
-| 19 | GET | `/saved-results` | ✔ | 서랍 목록 | F-08 |
-| 20 | GET | `/saved-results/{id}` | ✔ | 서랍 상세 | F-08 |
-| 21 | DELETE | `/saved-results/{id}` | ✔ | 서랍 삭제 | F-08 |
-| 22 | POST | `/routines` | ✔ | 루틴 생성 | F-09 |
-| 23 | GET | `/routines` | ✔ | 루틴 목록 | F-09 |
-| 24 | GET | `/routines/{id}` | ✔ | 루틴 상세 | F-10 |
-| 25 | PATCH | `/routines/{id}` | ✔ | 강도 조절 / 중단 | F-10 |
-| 26 | GET | `/routine-tasks` | ✔ | 기간별 태스크 조회 | F-10 |
-| 27 | PATCH | `/routine-tasks/{id}` | ✔ | 완료 체크 / 미수행 | F-10 |
-| 28 | GET | `/notifications/settings` | ✔ | 알림 설정 조회 | F-11 |
-| 29 | PATCH | `/notifications/settings` | ✔ | 알림 설정 변경 | F-11 |
-| 30 | POST | `/notifications/device-tokens` | ✔ | 푸시 토큰 등록 | F-11 |
-| 31 | GET | `/subscriptions/me` | ✔ | 구독·분석권 상태 | F-12 |
-| 32 | POST | `/subscriptions/checkout` | ✔ | 결제 시작 | F-12 |
-| 33 | POST | `/subscriptions/webhook` | — | PG 웹훅 (서버 전용) | F-12 |
+| 3 | POST | `/auth/oauth/google` | — | Google 로그인 | F-01 |
+| 4 | POST | `/auth/refresh` | — | 토큰 갱신 | F-01 |
+| 5 | POST | `/auth/logout` | ✔ | 로그아웃 | F-01 |
+| 6 | GET | `/users/me` | ✔ | 내 정보 + 온보딩 상태 | F-01 |
+| 7 | DELETE | `/users/me` | ✔ | 계정 삭제 | §10 |
+| 8 | POST | `/uploads/presigned` | ✔ | 업로드용 presigned URL | F-02 |
+| 9 | POST | `/profiles` | ✔ | 프로필 등록 | F-02·F-04 |
+| 10 | GET | `/profiles/me` | ✔ | 프로필 조회 | F-13 |
+| 11 | PATCH | `/profiles/me` | ✔ | 신체 정보 수정 | F-13 |
+| 12 | PATCH | `/profiles/me/priorities` | ✔ | **우선순위 변경** | F-02·F-13 |
+| 13 | DELETE | `/profiles/me/photo` | ✔ | 사진 삭제 | §10 |
+| 14 | POST | `/profiles/inbody/scan` | ✔ | **인바디 서류 스캔(OCR)** | F-03 |
+| 15 | POST | `/analyses` | ✔ | 고점 입력 → 키워드 추출 시작 | F-05 |
+| 16 | GET | `/analyses/{id}` | ✔ | 진행 상태 폴링 | F-06 |
+| 17 | GET | `/analyses/{id}/keywords` | ✔ | 키워드 후보 조회 | F-06 |
+| 18 | POST | `/analyses/{id}/keywords/selection` | ✔ | 키워드 확정 → 결과 생성 | F-06 |
+| 19 | GET | `/analyses/{id}/result` | ✔ | 결과 조회 (`FRESH`) | F-07 |
+| 20 | POST | `/analyses/{id}/result/save` | ✔ | 서랍에 저장 | F-08 |
+| 21 | GET | `/saved-results` | ✔ | 서랍 (3섹션) | F-08 |
+| 22 | GET | `/saved-results/{id}` | ✔ | 서랍 상세 (`SAVED`) | F-08 |
+| 23 | DELETE | `/saved-results/{id}` | ✔ | 서랍 항목 삭제 | F-08 |
+| 24 | POST | `/routines` | ✔ | 목표 생성 (**경로 2종**) | F-09 |
+| 25 | GET | `/routines` | ✔ | 목표 목록 | F-09 |
+| 26 | GET | `/routines/{id}` | ✔ | 목표 상세 | F-10 |
+| 27 | DELETE | `/routines/{id}` | ✔ | 내 목표 삭제 | F-10 |
+| 28 | PATCH | `/routine-tasks/{id}` | ✔ | 완료 체크 | F-10 |
+| 29 | GET | `/notifications/settings` | ✔ | 알림 설정 조회 | F-11 |
+| 30 | PATCH | `/notifications/settings` | ✔ | 알림 설정 변경 | F-11 |
+| 31 | POST | `/notifications/device-tokens` | ✔ | 푸시 토큰 등록 | F-11 |
+| 32 | DELETE | `/analyses` | ✔ | **내 분석 전체 삭제** | F-13 |
+| 33 | GET | `/subscriptions/me` | ✔ | 구독·분석권 상태 | F-12 |
+| 34 | POST | `/subscriptions/checkout` | ✔ | 결제 시작 | F-12 |
+| 35 | POST | `/subscriptions/webhook` | — | PG 웹훅 (서버 전용) | F-12 |
+| 36 | GET | `/consents/terms` | — | 약관 목록 | §10 |
 
 ---
 
@@ -166,52 +168,32 @@
 
 ```json
 // Request
-{ "email": "user@example.com", "password": "Passw0rd!", "nickname": "해서" }
+{ "email": "user@example.com", "password": "Passw0rd!", "nickname": "멋쟁이 사자" }
 ```
 
 ```json
-// 201 Response
+// 201
 {
   "success": true,
   "data": {
-    "accessToken": "eyJ...",
-    "refreshToken": "eyJ...",
-    "user": { "id": "0f8c...", "email": "user@example.com", "nickname": "해서" }
+    "accessToken": "eyJ...", "refreshToken": "eyJ...",
+    "user": { "id": "0f8c...", "email": "user@example.com", "nickname": "멋쟁이 사자" }
   }
 }
 ```
 
-- 가입 시 `TRIAL` 구독과 **분석권 1회**가 자동 생성된다. (PRD F-12)
+가입 시 `TRIAL` 구독과 **분석권 1회**가 자동 생성된다.
 
-#### `POST /auth/login`
-
-```json
-// Request
-{ "email": "user@example.com", "password": "Passw0rd!" }
-```
-
-응답 형식은 signup과 동일하다.
-
-#### `POST /auth/refresh`
-
-```json
-// Request
-{ "refreshToken": "eyJ..." }
-// 200 Response
-{ "success": true, "data": { "accessToken": "eyJ...", "refreshToken": "eyJ..." } }
-```
-
-#### `GET /users/me`
-
-프론트의 **라우팅 분기 기준**이다. 로그인 직후 이 API로 어느 화면에 보낼지 결정한다.
+#### `GET /users/me` — 라우팅 분기 기준
 
 ```json
 {
   "success": true,
   "data": {
     "id": "0f8c...",
-    "email": "user@example.com",
-    "nickname": "해서",
+    "nickname": "멋쟁이 사자",
+    "provider": "GOOGLE",
+    "joinedAt": "2024-03-01T00:00:00Z",
     "hasProfile": true,
     "analysisCredits": 1,
     "subscription": { "plan": "TRIAL", "status": "ACTIVE", "expiresAt": "2026-09-10T00:00:00Z" }
@@ -221,12 +203,8 @@
 
 | `hasProfile` | 이동 화면 |
 | --- | --- |
-| `false` | 내 사진·기본 정보 등록 |
-| `true` | 메인 화면 |
-
-#### `DELETE /users/me`
-
-`204`. 계정을 soft delete하고 **모든 이미지 객체를 즉시 삭제**한다. (ERD §7)
+| `false` | 04 홈(프로필 무) → 사진 등록 유도 |
+| `true` | 04 홈(프로필 유) |
 
 ---
 
@@ -234,36 +212,30 @@
 
 #### `POST /uploads/presigned`
 
-이미지는 서버를 거치지 않고 **스토리지에 직접 PUT**한다. 서버 메모리·트래픽을 아끼고 업로드 진행률을 프론트가 직접 다룰 수 있다.
+이미지는 서버를 거치지 않고 **스토리지에 직접 PUT**한다.
 
 ```json
 // Request
 { "purpose": "PROFILE_PHOTO", "contentType": "image/jpeg", "contentLength": 2481920 }
 ```
 
-`purpose`: `PROFILE_PHOTO` | `REFERENCE_IMAGE`
+`purpose`: `PROFILE_PHOTO` | `REFERENCE_IMAGE` | `INBODY_DOCUMENT`
 
 ```json
-// 200 Response
+// 200
 {
   "success": true,
   "data": {
-    "uploadUrl": "https://storage.../profiles/0f8c.../a1b2.jpg?X-Amz-Signature=...",
+    "uploadUrl": "https://storage.../a1b2.jpg?X-Amz-Signature=...",
     "objectKey": "profiles/0f8c.../a1b2.jpg",
     "expiresIn": 300
   }
 }
 ```
 
-**프론트 업로드 절차**
+**프론트 절차** — ① MediaPipe 1차 검증 → ② presigned 발급 → ③ `uploadUrl`에 PUT → ④ `objectKey`를 이후 API에 전달
 
-1. MediaPipe Face Detector로 **1차 검증** (얼굴 1인 검출)
-2. `POST /uploads/presigned` 호출
-3. `uploadUrl`에 `PUT` (헤더 `Content-Type`을 요청 시 보낸 값과 동일하게)
-4. 반환받은 `objectKey`를 이후 API 바디에 담아 전송
-
-- `contentLength > 10MB` → `413 FILE_TOO_LARGE`
-- 조회 시 내려오는 이미지 URL은 **10분 만료 presigned URL**이다. 프론트는 URL을 캐시하거나 DB/localStorage에 저장하지 않는다.
+- 조회용 이미지 URL은 **10분 만료**다. 캐시하거나 저장하지 않는다.
 
 ---
 
@@ -271,43 +243,42 @@
 
 #### `POST /profiles`
 
+시안 05~08의 단일 폼이 한 번에 제출된다.
+
 ```json
 // Request
 {
   "photoKey": "profiles/0f8c.../a1b2.jpg",
-  "birthDate": "1999-04-21",
-  "gender": "FEMALE",
-  "heightCm": 164,
-  "weightKg": 52.4,
+  "priorities": ["SKIN", "HEALTH", "BODY"],
+  "heightCm": 150,
+  "weightKg": 47.0,
   "sleepHours": 6.5,
-  "inbody": { "skeletalMuscleKg": 24.1, "bodyFatRate": 25.3, "bmi": 19.5 },
-  "consents": [
-    { "code": "TERMS", "agreed": true },
-    { "code": "PRIVACY", "agreed": true },
-    { "code": "BIOMETRIC", "agreed": true },
-    { "code": "MARKETING", "agreed": false }
-  ]
+  "inbody": {
+    "bodyWaterL": 32.5, "proteinKg": 8.7, "mineralKg": 3.1,
+    "bodyFatKg": 14.2, "skeletalMuscleKg": 24.1, "bmi": 19.5
+  }
 }
 ```
 
 | 필드 | 필수 | 검증 |
 | --- | --- | --- |
 | photoKey | ✔ | presigned로 발급된 key만 허용 |
-| birthDate | ✔ | 만 14세 이상 |
-| gender | ✔ | Enum |
+| **priorities** | ✔ | **길이 3, `SKIN`·`BODY`·`HEALTH` 각 1회, 중복 불가.** 배열 순서 = 1·2·3순위 |
 | heightCm | ✔ | 100~250 |
 | weightKg | ✔ | 30~200 |
 | sleepHours | — | 0~14, 0.5 단위 |
-| inbody | — | 각 항목 개별 선택 가능 |
-| consents | ✔ | `TERMS` `PRIVACY` `BIOMETRIC` 모두 `true` 아니면 `403 CONSENT_REQUIRED` |
+| inbody | — | 6개 항목 각각 선택. 일부만 채워도 됨 |
+
+> **`birthDate` / `gender`는 현재 요청에 없다.** 입력 화면이 미설계이기 때문이다(PRD O-2). 화면 확정 후 필수 필드로 추가하고 `PROFILE_UNDERAGE` 검증을 활성화한다.
 
 ```json
-// 201 Response
+// 201
 {
   "success": true,
   "data": {
     "profileId": "7a2e...",
     "photoUrl": "https://storage.../a1b2.jpg?X-Amz-Signature=...",
+    "priorities": ["SKIN", "HEALTH", "BODY"],
     "analysisSummary": {
       "faceImpression": ["부드러운 얼굴선", "자연스러운 표정"],
       "bodyRange": "표준 범위",
@@ -318,54 +289,99 @@
 }
 ```
 
-- `analysisSummary` 생성은 3~8초가 걸린다. 프론트는 이 요청에 **로딩 화면**을 붙인다.
-- 응답에 **점수·등급 필드는 존재하지 않는다.** (PRD G-1) 프론트도 임의 환산 표시를 만들지 않는다.
+- 생성에 3~8초가 걸린다. 프론트는 로딩 화면(시안 10)을 붙인다.
+- **응답에 점수·등급 필드는 없다.** 프론트도 임의 환산 UI를 만들지 않는다.
 
-#### `PATCH /profiles/me`
+#### `GET /profiles/me`
 
-신체 정보만 부분 수정한다. `photoKey`를 포함하면 **새 프로필 행이 생성**되고 기존 행은 비활성화된다. (ERD §3.3)
+시안 11 프로필 화면 데이터.
 
-#### `DELETE /profiles/me/photo`
+```json
+{
+  "success": true,
+  "data": {
+    "profileId": "7a2e...",
+    "photoUrl": "https://storage.../...",
+    "heightCm": 150, "weightKg": 47.0, "sleepHours": 6.5,
+    "inbody": { "bodyWaterL": 32.5, "proteinKg": 8.7, "mineralKg": 3.1,
+                "bodyFatKg": 14.2, "skeletalMuscleKg": 24.1, "bmi": 19.5 },
+    "priorities": ["SKIN", "HEALTH", "BODY"]
+  }
+}
+```
 
-`204`. 스토리지 객체를 즉시 삭제한다. 사진 없는 프로필로는 신규 분석을 시작할 수 없다.
+**표시 규칙** — `bmi`는 **무단위**다. 다른 항목과 달리 단위 접미를 붙이지 않는다.
+
+#### `PATCH /profiles/me/priorities`
+
+시안 11의 "우선 순위 변경".
+
+```json
+// Request
+{ "priorities": ["HEALTH", "SKIN", "BODY"] }
+```
+
+- 변경해도 **기존 분석 결과는 재생성되지 않는다.** 이후 새 분석부터 적용된다.
+
+#### `POST /profiles/inbody/scan` 〔v2 신규〕
+
+시안 08의 "카메라로 서류 스켄하기".
+
+```json
+// Request
+{ "documentKey": "inbody/0f8c.../doc1.jpg" }
+```
+
+```json
+// 200
+{
+  "success": true,
+  "data": {
+    "extracted": {
+      "bodyWaterL": 32.5, "proteinKg": 8.7, "mineralKg": 3.1,
+      "bodyFatKg": 14.2, "skeletalMuscleKg": 24.1, "bmi": 19.5
+    },
+    "confidence": "HIGH",
+    "unrecognized": ["mineralKg"]
+  }
+}
+```
+
+**중요** — 이 응답은 **입력 폼을 채우는 용도일 뿐 저장되지 않는다.** 사용자가 값을 확인·수정한 뒤 `POST /profiles` 또는 `PATCH /profiles/me`로 저장해야 반영된다. (PRD G-8)
+
+- `unrecognized`에 포함된 항목은 프론트가 빈 칸으로 두고 직접 입력을 유도한다.
+- 인식 실패 시 `422 INBODY_SCAN_FAILED`. 분석권은 차감하지 않는다.
 
 ---
 
-### 6.4 분석 (핵심 플로우)
+### 6.4 고점 분석
 
 #### `POST /analyses`
 
 ```json
 // Request
 {
-  "priorityCategory": "SKIN",
-  "inputMode": "TEXT_IMAGE",
-  "inputText": "차분하면서 또렷한 인상이 되고 싶어요. 피부는 맑게 보이면 좋겠어요.",
-  "referenceImageKey": "references/0f8c.../c3d4.jpg"
+  "inputText": "자연스럽고 건강해 보이는 분위기, 깔끔하고 단정한 인상",
+  "referenceImageKeys": ["references/0f8c.../c3d4.jpg", "references/0f8c.../c3d5.jpg"]
 }
 ```
 
 | 필드 | 필수 | 비고 |
 | --- | --- | --- |
-| priorityCategory | — | **`null` = 건너뛰기 → 4개 카테고리 동일 가중치** (PRD R-2) |
-| inputMode | ✔ | |
-| inputText | ✔ | **두 모드 모두 필수**, 10~300자 (PRD F-05) |
-| referenceImageKey | 조건부 | `inputMode = TEXT_IMAGE`일 때만 필수 |
+| inputText | ✔ | **10~500자** |
+| referenceImageKeys | — | **배열.** 빈 배열/생략 가능. 첨부 시 비교 이미지가 생성된다 |
+
+> `priorityCategory`와 `inputMode`는 **삭제됐다.** 우선순위는 프로필에서 자동으로 가져오고, 입력 방식은 `referenceImageKeys` 유무로 판단한다.
 
 ```json
-// 202 Response
-{
-  "success": true,
-  "data": { "analysisId": "b91d...", "status": "EXTRACTING", "pollAfterMs": 2000 }
-}
+// 202
+{ "success": true, "data": { "analysisId": "b91d...", "status": "EXTRACTING", "pollAfterMs": 2000 } }
 ```
 
 - 사전 조건: 활성 프로필 없으면 `409 PROFILE_REQUIRED`, 분석권 0이면 `402 NO_ANALYSIS_CREDIT`.
-- **분석권은 이 시점에 차감하지 않는다.** 결과 생성 성공 시 차감한다. (PRD O-6)
+- **분석권은 이 시점에 차감하지 않는다.** 결과 생성 성공 시 차감한다.
 
 #### `GET /analyses/{id}` — 상태 폴링
-
-프론트는 `pollAfterMs` 간격으로 이 API만 호출하면 된다.
 
 ```json
 {
@@ -375,23 +391,25 @@
     "status": "KEYWORDS_READY",
     "imageStatus": "PENDING",
     "progress": 45,
-    "message": "추구미 키워드를 찾고 있어요",
+    "message": "고점 키워드를 찾고 있어요",
     "failureCode": null,
     "pollAfterMs": 2000
   }
 }
 ```
 
-| status | progress | 프론트 동작 |
-| --- | --- | --- |
-| `CREATED` `EXTRACTING` | 0~50 | 로딩 유지 |
-| `KEYWORDS_READY` | 50 | **폴링 중단** → 키워드 선택 화면 |
-| `GENERATING` | 50~99 | 로딩 유지 |
-| `DONE` | 100 | **폴링 중단** → 결과 화면 |
-| `FAILED` | — | 폴링 중단 → `failureCode`로 에러 UI |
+| status | 프론트 동작 |
+| --- | --- |
+| `CREATED` `EXTRACTING` | 13 분석 중 화면 유지 |
+| `KEYWORDS_READY` | **폴링 유지** + 14 키워드 오버레이 카드 노출 |
+| `GENERATING` | 15 분석 중 화면 유지 |
+| `DONE` | 폴링 중단 → 16 완료 화면 → 5초 후 17 결과지 |
+| `FAILED` | 폴링 중단 → `failureCode` 기반 에러 UI |
 
-- 폴링 상한 **60초**. 초과 시 프론트가 중단하고 `ANALYSIS_TIMEOUT` UI를 띄운다. (PRD §8.3)
-- `imageStatus`는 `status = DONE` 이후에도 `PENDING`일 수 있다. 이 경우 결과 화면을 먼저 그리고 이미지 자리에는 스켈레톤을 유지한 뒤, 이 API를 계속 폴링해 `DONE`이 되면 교체한다.
+> **v1과 달라진 점** — `KEYWORDS_READY`에서 폴링을 멈추지 않는다. 시안 14는 **분석이 계속 진행되는 동안** 키워드를 선택하는 구조이므로, 프론트는 오버레이 카드를 띄운 채 폴링을 유지한다.
+
+- 폴링 상한 **60초**. 초과 시 중단하고 `ANALYSIS_TIMEOUT` UI.
+- `status = DONE` 이후에도 `imageStatus`가 `PENDING`일 수 있다. 결과 화면을 먼저 그리고 이미지 자리에 스켈레톤을 유지한 뒤 폴링해 교체한다.
 
 #### `GET /analyses/{id}/keywords`
 
@@ -403,36 +421,34 @@
     "minSelect": 1,
     "maxSelect": 4,
     "keywords": [
-      { "id": "k1", "label": "맑은 피부 표현", "reason": "입력하신 '맑게'에서 도출했어요.", "category": "SKIN",  "origin": "COMMON",   "displayOrder": 1 },
-      { "id": "k2", "label": "또렷한 눈매",     "reason": "'또렷한 인상'과 사진의 눈썹선이 같은 방향이에요.", "category": "FACE", "origin": "COMMON", "displayOrder": 2 },
-      { "id": "k3", "label": "차분한 무드",     "reason": "입력 문장의 분위기예요.", "category": "FACE", "origin": "TEXT", "displayOrder": 3 },
-      { "id": "k7", "label": "화려한 컬러 포인트", "reason": "사진은 화려한 톤이지만 문장은 차분한 무드예요. 어느 쪽을 원하는지 선택해주세요.", "category": "SKIN", "origin": "CONFLICT", "displayOrder": 7 }
+      { "id": "k1", "label": "다이아몬드형", "reason": "얼굴선 비율에서 도출했어요.", "category": "SKIN",   "displayOrder": 1 },
+      { "id": "k2", "label": "귀족턱",       "reason": "입력하신 '단정한 인상'과 연결돼요.", "category": "SKIN", "displayOrder": 2 },
+      { "id": "k3", "label": "17호 피부",     "reason": "사진의 피부 톤 범위예요.", "category": "SKIN", "displayOrder": 3 },
+      { "id": "k4", "label": "큰 눈",         "reason": "'또렷한 인상'에서 도출했어요.", "category": "SKIN", "displayOrder": 4 }
     ]
   }
 }
 ```
 
-**프론트 렌더링 규칙**
+**프론트 규칙**
 
-- `origin = CONFLICT`는 **별도 섹션**으로 분리하고 "사진과 문장의 방향이 달라요" 안내를 붙인다. (PRD F-05)
-- 모든 키워드는 **미선택 상태로 시작**한다. AI 추천을 기본 체크하지 않는다. (PRD F-06 / G-5)
-- `minSelect` 미만이면 다음 버튼 비활성. (PRD R-3)
+- 모든 키워드는 **미선택 상태로 시작**한다. AI 추천을 기본 체크하지 않는다.
+- `minSelect` 미만이면 "키워드 선택 저장하기" 버튼을 `disabled` 처리한다. (PRD R-3 — 현재 시안에 미반영이므로 구현 시 추가)
 
 #### `POST /analyses/{id}/keywords/selection`
 
 ```json
 // Request
-{ "keywordIds": ["k1", "k2", "k3"] }
-// 202 Response
+{ "keywordIds": ["k1", "k3", "k4"] }
+// 202
 { "success": true, "data": { "analysisId": "b91d...", "status": "GENERATING", "pollAfterMs": 3000 } }
 ```
 
-- `status != KEYWORDS_READY`면 `409 ANALYSIS_INVALID_STATE`.
-- 개수가 1~4 범위를 벗어나면 `400 VALIDATION_ERROR`.
+`status != KEYWORDS_READY`면 `409 ANALYSIS_INVALID_STATE`. 개수가 1~4를 벗어나면 `400 VALIDATION_ERROR`.
 
-#### `GET /analyses/{id}/result` — 결과 화면 (PRD F-07)
+#### `GET /analyses/{id}/result` — 결과 화면
 
-**응답의 키 순서가 결과 화면 9개 블록 순서와 같다.** 프론트는 이 순서대로 렌더링한다.
+**응답의 키 순서가 결과 화면 블록 순서와 같다.**
 
 ```json
 {
@@ -440,145 +456,157 @@
   "data": {
     "resultId": "r55a...",
     "analysisId": "b91d...",
-    "analyzedAt": "2026-08-10T04:12:00Z",
-    "nickname": "해서",
-
-    "summary": "현재의 자연스러운 인상은 유지하면서 차분하고 또렷한 분위기를 반영했어요.",
+    "viewState": "FRESH",
+    "title": "17호, 큰 눈, 귀족턱, 다...",
+    "analyzedAt": "2026-08-12T04:12:00Z",
 
     "comparisonImage": {
       "status": "DONE",
-      "url": "https://storage.../r55a.png?X-Amz-Signature=...",
-      "caption": "좌우 비교해 본 모습을 기준으로 한 임시 이미지예요."
+      "currentUrl": "https://storage.../current.png?X-Amz-Signature=...",
+      "peakUrl":    "https://storage.../peak.png?X-Amz-Signature=..."
     },
 
     "overview": {
-      "keywords": ["맑은 피부 표현", "또렷한 눈매", "차분한 무드"],
-      "keepPoints": ["부드러운 얼굴선과 자연스러운 표정"],
-      "emphasizePoints": ["눈썹선, 피부 톤의 균형, 옆선 볼륨"],
-      "changeIntensity": 35,
-      "intensityLabel": "자연스럽게"
+      "summary": "사용자가 구성한 정보 중심으로 된 요약이에요.",
+      "keywords": [
+        { "id": "k1", "label": "다이아몬드형", "selected": true },
+        { "id": "k3", "label": "17호 피부",   "selected": true },
+        { "id": "k4", "label": "큰 눈",       "selected": true }
+      ],
+      "keepPoints":      ["부드러운 얼굴선", "입매"],
+      "emphasizePoints": ["부드러운 얼굴선", "입매"],
+      "changeIntensity": ["부드러운 얼굴선", "입매"]
     },
 
-    "topChanges": [
-      { "rank": 1, "title": "눈썹선을 조금 더 선명하게", "description": "완만한 일자형으로 정돈하면 차분하면서 또렷한 인상이 살아나요. 진한 색보다 현재 모발과 비슷한 색을 추천해요.", "tag": "STYLING" },
-      { "rank": 2, "title": "피부 표현은 얇고 균일하게", "description": "광택을 과하게 더하기보다 수분감과 피부 톤의 균형을 먼저 맞춰보세요. 가벼운 베이스 표현이 목표 분위기와 잘 맞아요.", "tag": "SELF_CARE" },
-      { "rank": 3, "title": "얼굴 옆선에 자연스러운 볼륨", "description": "윗머리는 높이지 않고 옆선이 부드럽게 연결되도록 정리하면 얼굴형의 균형을 유지하면서 차분한 인상을 만들 수 있어요.", "tag": "CARE" }
+    "categoryChanges": [
+      { "category": "SKIN",   "description": "체수분 수치가 낮고 사진상 모공이 도드라져 수분 섭취가 필요해 보여요. 광택을 과하게 더하기 보단 피부톤을 균일하게 유지해보세요" },
+      { "category": "BODY",   "description": "..." },
+      { "category": "HEALTH", "description": "..." }
     ],
 
     "dailyCares": [
       { "title": "수분 진정 루틴", "description": "아침에는 자외선 관리, 저녁에는 보습 단계를 단순하게 유지해 보세요." },
-      { "title": "눈썹과 헤어 라인 정돈", "description": "변화폭을 크게 주기 전, 눈썹 꼬리와 옆머리 연결만 먼저 다듬어 보세요." },
-      { "title": "수면 시간 안정화", "description": "건강 정보는 사진이 아닌 사용자가 입력한 평균 수면시간을 기준으로 제안했어요." }
+      { "title": "눈썹과 헤어 라인 정돈", "description": "..." },
+      { "title": "수면 시간 안정화", "description": "..." }
     ],
 
-    "recommendedRoutines": [
-      { "category": "SKIN",   "title": "피부·수분 균형 루틴", "recommendedWeeks": 4, "minutesPerDay": 8, "perWeek": 6, "priorityRank": 1 },
-      { "category": "HEALTH", "title": "건강·수면 안정 루틴", "recommendedWeeks": 3, "minutesPerDay": 5, "perWeek": 7, "priorityRank": 2 },
-      { "category": "BODY",   "title": "체형·가벼운 자세 루틴", "recommendedWeeks": 2, "minutesPerDay": 7, "perWeek": 5, "priorityRank": 3 }
-    ],
-
-    "liked": null,
     "saved": false,
     "disclaimer": "AI가 생성한 참고용 이미지와 관리 방향입니다. 피부·건강 상태에 대한 의료적 진단이나 시술 결과를 의미하지 않습니다."
   }
 }
 ```
 
-**프론트 렌더링 규칙**
+**`viewState`에 따른 프론트 분기**
 
-| 조건 | 처리 |
+| | `FRESH` | `SAVED` |
+| --- | --- | --- |
+| 키워드 칩 | **체크박스형** (조정 가능) | **pill형** (확정) |
+| CTA | `서랍에 결과 저장하기` primary<br>`새로 분석하기` outline | `맞춤형 목표로 설정하기` primary |
+| 활성 탭 | 홈 | 서랍 |
+
+**이미지 상태별 처리**
+
+| `comparisonImage.status` | 처리 |
 | --- | --- |
-| `comparisonImage.status = SKIPPED` | ③ 블록 **미렌더링** (텍스트만 입력한 분석) |
-| `comparisonImage.status = PENDING` | ③ 블록에 스켈레톤 + `GET /analyses/{id}` 폴링 계속 |
-| `comparisonImage.status = FAILED` | ③ 블록 자리에 "예상 이미지는 생성하지 못했어요" 안내, 나머지 결과는 정상 노출 |
-| `priorityRank` 1·2 | `우선 1` `우선 2` 뱃지, 3 이상은 `선택` |
-| `disclaimer` | **상시 노출, 숨김·접기 불가** (PRD F-07 수용 기준 ③) |
+| `SKIPPED` | 비교 슬라이더 **미렌더링** (참고 사진 미첨부) |
+| `PENDING` | 스켈레톤 + `GET /analyses/{id}` 폴링 계속 |
+| `DONE` | 비교 슬라이더 렌더링 (`currentUrl` 좌 / `peakUrl` 우) |
+| `FAILED` | "예상 이미지는 생성하지 못했어요" 안내, 나머지 결과는 정상 노출 |
 
-- `topChanges`는 **항상 3건**이다. 프론트는 3건 고정 레이아웃으로 만들어도 된다.
-- `recommendedRoutines`는 최대 3건이며 사용자가 여기서 선택한 항목이 `POST /routines` 입력이 된다.
+**필수 규칙**
 
-#### `POST /analyses/{id}/result/feedback`
+- `disclaimer`는 **항상 노출**한다. 숨기거나 접을 수 없다. 이 문구가 없는 결과 화면은 배포 불가다. (PRD F-07)
+- `categoryChanges`는 **항상 3건**이며, 배열 순서는 `profiles.priorities` 순서를 따른다.
+- `changeIntensity`는 **텍스트 배열**이다. 퍼센트 게이지 UI를 만들지 않는다.
 
-결과 화면 ⑧ 블록. **분기와 저장이 한 번에 처리된다.** (PRD R-4)
+> **`새로 분석하기` 버튼은 `outline`으로 구현한다.** 시안은 `danger`(코랄)로 되어 있으나, 재분석은 프로필이 유지되는 비파괴 동작이므로 삭제 버튼과 같은 색을 쓰지 않는다. ([design.md](design.md) §5.4)
 
-```json
-// Request — "마음에 들어요"
-{ "liked": true }
-```
+#### `POST /analyses/{id}/result/save`
 
-```json
-// 200 Response
-{
-  "success": true,
-  "data": { "liked": true, "savedResultId": "s12a...", "nextStep": "MAIN" }
-}
-```
+시안 17의 "서랍에 결과 저장하기".
 
 ```json
-// Request — "다시 분석하기"
-{ "liked": false }
+// 200
+{ "success": true, "data": { "savedResultId": "s12a...", "savedAt": "2026-08-12T04:20:00Z" } }
 ```
 
-```json
-// 200 Response
-{
-  "success": true,
-  "data": {
-    "liked": false,
-    "savedResultId": null,
-    "nextStep": "REANALYZE",
-    "retainedProfileId": "7a2e..."
-  }
-}
-```
+- 저장 후 18 저장 안내를 거쳐 홈으로 이동한다.
+- **자동 저장은 없다.** (PRD R-4)
+- "새로 분석하기"는 별도 API가 없다. 프론트가 12 고점 등록 화면으로 이동해 `POST /analyses`를 새로 호출하며, 서버가 `retriedFrom`을 기록한다. **프로필은 유지되므로 사진 재등록 화면으로 보내지 않는다.** (PRD R-1)
 
-- `liked = true`일 때만 `saved_results`에 저장된다. 자동 저장은 없다.
-- `liked = false`면 프론트는 **추구미 입력 방식 선택 화면**으로 돌아간다. `retainedProfileId`가 내려온다는 것은 **로그인·프로필이 유지된다**는 뜻이다. 사진 재등록 화면으로 보내면 안 된다. (PRD R-1)
-- 재분석은 새 `POST /analyses`로 시작하며, 서버가 `retriedFrom`에 원본 분석 ID를 기록한다.
+#### `DELETE /analyses`
+
+시안 11의 "내 분석 전체 삭제". `204`. 확인 모달을 거친 뒤 호출한다.
 
 ---
 
-### 6.5 서랍 (저장된 결과)
+### 6.5 서랍
 
-#### `GET /saved-results?page=0&size=20`
+#### `GET /saved-results`
+
+**3개 섹션을 한 번에 내려준다.** (시안 19)
 
 ```json
 {
   "success": true,
   "data": {
-    "items": [
-      {
-        "savedResultId": "s12a...",
-        "resultId": "r55a...",
-        "thumbnailUrl": "https://storage.../r55a_thumb.png?X-Amz-Signature=...",
-        "summary": "차분하고 또렷한 분위기",
-        "keywords": ["맑은 피부 표현", "또렷한 눈매"],
-        "savedAt": "2026-08-10T04:20:00Z"
-      }
+    "inProgress": [
+      { "savedResultId": "s12a...", "resultId": "r55a...",
+        "thumbnailUrl": "https://storage.../thumb.png?X-Amz-Signature=...",
+        "title": "17호, 큰 눈, 귀족턱, 다...", "analyzedAt": "2026-08-10T00:00:00Z",
+        "progressRate": 62.5 }
     ],
-    "page": { "number": 0, "size": 20, "totalElements": 3, "totalPages": 1 }
+    "recent": [ ],
+    "all":    [ ]
   }
 }
 ```
 
-`thumbnailUrl`은 이미지가 없는 결과(`SKIPPED` `FAILED`)에서는 `null`이다. 프론트는 대체 카드(키워드 칩 요약)를 노출한다.
+| 섹션 | 화면 문구 | 판정 |
+| --- | --- | --- |
+| `inProgress` | 현재 진행중인 목표 | 진행 중(`ACTIVE`) 목표가 연결된 결과 |
+| `recent` | 최근 분석 결과 | 저장 후 1개월 이내 |
+| `all` | 전체 | 전부 |
+
+- `thumbnailUrl`은 이미지가 없는 결과(`SKIPPED`·`FAILED`)에서 `null`이다. 프론트는 GO. 브랜드 placeholder를 노출한다.
+- `progressRate`는 연결된 목표의 태스크 완료율이다. 목표가 없으면 `null`.
 
 #### `GET /saved-results/{id}`
 
-`GET /analyses/{id}/result`와 **동일한 스키마**를 반환한다. 프론트는 결과 화면 컴포넌트를 재사용한다.
+`GET /analyses/{id}/result`와 **동일한 스키마**를 반환하되 `viewState`가 `SAVED`다. 프론트는 결과 화면 컴포넌트를 재사용한다.
 
 #### `DELETE /saved-results/{id}` — `204`
 
 ---
 
-### 6.6 루틴
+### 6.6 목표
 
-#### `POST /routines`
+#### `POST /routines` — **경로 2종** (PRD F-09)
+
+`sourceType`으로 분기한다.
+
+**경로 A — 저장된 분석 결과 가져오기**
+
+시안 20의 "맞춤형 목표로 설정하기", 그리고 루틴 탭 → 결과 선택이 이 경로다.
 
 ```json
-// Request — 저장된 분석 결과 가져오기
+// Request
 {
+  "sourceType": "FROM_ANALYSIS",
   "sourceAnalysisResultId": "r55a...",
+  "startDate": "2026-08-14"
+}
+```
+
+- 카테고리·기간 파라미터는 없다. AI가 결과와 `profiles.priorities`를 근거로 자동 생성한다.
+- 여러 카테고리에 걸친 **목표 1개**가 만들어진다.
+
+**경로 B — 새 루틴 만들기**
+
+```json
+// Request
+{
+  "sourceType": "STANDALONE",
   "startDate": "2026-08-14",
   "items": [
     { "category": "SKIN",   "durationWeeks": 4 },
@@ -587,35 +615,29 @@
 }
 ```
 
-```json
-// Request — 루틴만 생성
-{
-  "sourceAnalysisResultId": null,
-  "startDate": "2026-08-14",
-  "items": [{ "category": "BODY", "durationWeeks": 2 }]
-}
-```
-
 | 필드 | 검증 |
 | --- | --- |
-| items | 1~3개, `category` 중복 불가 |
-| durationWeeks | **1~12** (PRD O-2) |
+| items | **1~3개**, `category` 중복 불가 |
+| durationWeeks | **1~12** |
 | startDate | 오늘 이후 |
 
+- **카테고리당 목표 1개**가 만들어진다. 위 예시는 목표 2개를 생성한다.
+- 권장 기본값(프론트가 초기값으로 제시): 피부 4주 · 건강 3주 · 체형 2주
+
+**공통 응답**
+
 ```json
-// 201 Response
+// 201
 {
   "success": true,
   "data": {
     "routines": [
       {
         "routineId": "rt01...",
+        "sourceType": "STANDALONE",
         "category": "SKIN",
         "title": "피부·수분 균형 루틴",
         "durationWeeks": 4,
-        "perWeek": 6,
-        "minutesPerDay": 8,
-        "priorityRank": 1,
         "startDate": "2026-08-14",
         "endDate": "2026-09-10",
         "taskCount": 24
@@ -625,99 +647,72 @@
 }
 ```
 
-태스크는 생성 시 **전체 기간분이 일괄 생성**된다. (ERD E-4)
+- 경로 A는 `routines` 배열에 항상 **1개**가 담기며 `category`·`durationWeeks`·`endDate`가 `null`이다.
+- 경로 B는 `items` 개수만큼 담긴다.
 
-#### `GET /routines?status=ACTIVE`
+**GET /saved-results 와의 관계** — 경로 A의 결과 선택 목록은 `GET /saved-results`의 `all` 섹션을 재사용한다. 별도 엔드포인트를 두지 않는다. 목록이 비어 있으면 프론트는 경로 B로 유도한다. (PRD R-5)
 
-루틴 목록 + 진행률.
+#### `GET /routines/{id}`
 
-```json
-{
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "routineId": "rt01...",
-        "category": "SKIN",
-        "title": "피부·수분 균형 루틴",
-        "status": "ACTIVE",
-        "startDate": "2026-08-14",
-        "endDate": "2026-09-10",
-        "progress": { "done": 5, "total": 24, "rate": 20.8 },
-        "missedStreak": 0,
-        "suggestLowerIntensity": false
-      }
-    ]
-  }
-}
-```
-
-`suggestLowerIntensity = true`는 **연속 3회 미수행**을 뜻한다. 프론트는 "강도 낮추기" 제안 카드를 노출한다. 이때 문구는 **사용자를 실패로 규정하지 않는다.** (PRD F-10)
-
-#### `GET /routine-tasks?from=2026-08-14&to=2026-08-20`
-
-루틴 화면의 주간 뷰 데이터.
+시안 23 목표 화면 데이터.
 
 ```json
 {
   "success": true,
   "data": {
-    "items": [
+    "routineId": "rt01...",
+    "sourceType": "FROM_ANALYSIS",
+    "category": null,
+    "durationWeeks": null,
+    "title": "17호, 큰 눈, 귀족턱, 다...",
+    "analyzedAt": "2026-08-12T00:00:00Z",
+    "overview": {
+      "keywords": [{ "id": "k1", "label": "다이아몬드형" }, { "id": "k4", "label": "큰 눈" }],
+      "keepPoints":      ["부드러운 얼굴선", "입매"],
+      "emphasizePoints": ["부드러운 얼굴선", "입매"],
+      "changeIntensity": ["부드러운 얼굴선", "입매"]
+    },
+    "progress": { "done": 2, "total": 5, "rate": 40.0 },
+    "tasks": [
       {
         "taskId": "tk88...",
-        "routineId": "rt01...",
         "category": "SKIN",
-        "title": "저녁 보습 단계 정리",
-        "description": "토너 → 세럼 → 크림 3단계로 단순하게",
+        "title": "자외선 차단제 바르기",
+        "timing": "매일 외출 전",
+        "durationLabel": "약 2분",
+        "amountLabel": "4ml",
         "scheduledDate": "2026-08-14",
-        "scheduledTime": "21:00",
-        "status": "PENDING",
-        "originalDate": null,
-        "rescheduleCount": 0
+        "status": "DONE"
       }
-    ]
+    ],
+    "notification": { "enabled": true, "time": "21:00" }
   }
 }
 ```
 
-`originalDate`가 있으면 **재배치된 태스크**다. 프론트는 "옮겨온 루틴" 표시를 붙일 수 있다.
+**Task Card 표기** — `title` 아래에 `timing / durationLabel / amountLabel`을 ` / `로 연결해 한 줄로 표시한다.
+
+`sourceType`이 `STANDALONE`이면 `overview`가 `null`이다(분석 결과가 없으므로). 프론트는 고점 요약 카드를 렌더링하지 않고 `category` + `durationWeeks`를 대신 표시한다.
 
 #### `PATCH /routine-tasks/{id}`
 
 ```json
 // Request
 { "status": "DONE" }
+// 200
+{ "success": true, "data": { "taskId": "tk88...", "status": "DONE",
+                             "progress": { "done": 3, "total": 5, "rate": 60.0 } } }
 ```
 
-```json
-// 200 Response — 재배치가 발생한 경우
-{
-  "success": true,
-  "data": {
-    "taskId": "tk88...",
-    "status": "MISSED",
-    "rescheduledTask": {
-      "taskId": "tk91...",
-      "scheduledDate": "2026-08-16",
-      "originalDate": "2026-08-14",
-      "rescheduleCount": 1
-    }
-  }
-}
-```
+- 완료 시 카드가 `surface-sunken` 배경으로 흐려진다. ([design.md](design.md) §4.3)
+- 미수행 재배치는 **미구현**이다. `MISSED` 상태만 정의되어 있다. (PRD O-4)
 
-**재배치 규칙** (PRD F-10 / ERD §3.7)
+#### `DELETE /routines/{id}`
 
-- `MISSED` 전환 시 서버가 다음 가능한 날짜로 태스크를 복제한다.
-- **`endDate`를 넘겨 연장하지 않는다.** 기간 내 자리가 없으면 `rescheduledTask`가 `null`로 내려온다.
-- 자정 배치도 동일 로직으로 미수행 태스크를 처리하므로, 프론트가 미수행을 직접 표시할 필요는 없다.
+시안 23의 "내 목표 삭제". `204`. 확인 모달(시안 00)을 거친다.
 
-#### `PATCH /routines/{id}`
-
-```json
-{ "action": "LOWER_INTENSITY" }   // perWeek 하향 + 남은 태스크 재생성
-{ "action": "CANCEL" }            // status = CANCELED
-```
+- 모달 문구: `삭제하시겠어요?` / `삭제한 내용은 복구할 수 없어요.` / `*계정, 목표 정보는 삭제되지 않아요.`
+- 버튼 순서: `되돌아 가기`(primary) 위 → `삭제하기`(danger) 아래
 
 ---
 
@@ -729,7 +724,7 @@
 { "enabled": true, "defaultTime": "21:00" }
 ```
 
-기본값은 `enabled = false`다. 최초 루틴 생성 시 동의를 받고 켠다. (PRD F-11)
+기본값은 `enabled = false`. 최초 목표 생성 시 동의를 받고 켠다. 시안 23의 토글과 "알림 설정 상세"가 이 API를 쓴다.
 
 #### `POST /notifications/device-tokens`
 
@@ -747,10 +742,8 @@
 {
   "success": true,
   "data": {
-    "plan": "TRIAL",
-    "status": "ACTIVE",
+    "plan": "TRIAL", "status": "ACTIVE",
     "analysisCredits": 1,
-    "startedAt": "2026-08-10T00:00:00Z",
     "expiresAt": "2026-09-10T00:00:00Z",
     "canAnalyze": true,
     "canCreateRoutine": true,
@@ -762,61 +755,47 @@
 }
 ```
 
-프론트는 `canAnalyze` / `canCreateRoutine`만 보고 게이팅한다. 만료·잔여 크레딧 계산을 프론트에서 하지 않는다.
+프론트는 `canAnalyze` / `canCreateRoutine`만 보고 게이팅한다. 만료·잔여 계산을 프론트에서 하지 않는다.
 
-#### `POST /subscriptions/checkout`
-
-```json
-// Request
-{ "plan": "MONTHLY" }
-// 200 Response
-{ "success": true, "data": { "paymentId": "p01...", "redirectUrl": "https://pg.../checkout/..." } }
-```
-
-구독 만료 후에도 **서랍 조회와 기존 루틴 수행은 가능**하다. 신규 분석·루틴 생성만 차단한다. (PRD F-12)
+> 관련 화면이 미설계다(PRD O-3). API는 정의해두되 UI 연결은 보류한다.
 
 ---
 
 ## 7. 부록 A — OpenAI 연동 규격 (백엔드 전용)
 
-프론트는 이 절을 구현할 필요가 없다. 다만 **응답 필드가 여기서 나온다**는 점을 알아두면 디버깅에 도움이 된다.
-
 ### 7.1 단계별 모델 매핑
 
-| 단계 | 엔드포인트 | 모델 | 비고 |
-| --- | --- | --- | --- |
-| `PROFILE_ANALYSIS` | `/v1/chat/completions` | 멀티모달 텍스트 모델 | 사용자 사진 + 신체정보 → `analysis_summary` |
-| `KEYWORD_EXTRACTION` | `/v1/chat/completions` | 멀티모달 텍스트 모델 | 텍스트 (+ 참고 이미지) → 키워드 5~8개 |
-| `RESULT_GENERATION` | `/v1/chat/completions` | 멀티모달 텍스트 모델 | 선택 키워드 → 결과 전체 |
-| `IMAGE_GENERATION` | `/v1/images/edits` | 이미지 모델 | 사용자 사진 기반 편집 |
-| `ROUTINE_GENERATION` | `/v1/chat/completions` | 멀티모달 텍스트 모델 | 결과 + 카테고리/기간 → 태스크 |
+| 단계 | 엔드포인트 | 모델 |
+| --- | --- | --- |
+| `PROFILE_ANALYSIS` | `/v1/chat/completions` | 멀티모달 텍스트 |
+| **`INBODY_OCR`** | `/v1/chat/completions` | 멀티모달 텍스트 |
+| `KEYWORD_EXTRACTION` | `/v1/chat/completions` | 멀티모달 텍스트 |
+| `RESULT_GENERATION` | `/v1/chat/completions` | 멀티모달 텍스트 |
+| `IMAGE_GENERATION` | `/v1/images/edits` | 이미지 |
+| `ROUTINE_GENERATION` | `/v1/chat/completions` | 멀티모달 텍스트 |
 
-- **모델 ID는 코드에 하드코딩하지 말고 `application.yml`에 핀 고정한다.** (`openai.model.text`, `openai.model.image`) 모델이 바뀌면 설정만 교체하고, 실제 사용한 값은 `ai_jobs.model`에 기록한다.
-- 모든 텍스트 단계는 `response_format: { "type": "json_schema", "json_schema": { "strict": true, ... } }`를 사용한다. **자유 서술 파싱 금지.** (PRD §8.1)
-- API 키는 서버 환경변수(`OPENAI_API_KEY`)로만 관리한다. **프론트에서 OpenAI를 직접 호출하지 않는다.**
+- **모델 ID를 하드코딩하지 않는다.** `openai.model.text` / `openai.model.image` 설정으로 핀 고정하고 실제 사용값을 `ai_jobs.model`에 기록한다.
+- 모든 텍스트 단계는 `response_format: { "type": "json_schema", "json_schema": { "strict": true, ... } }`. **자유 서술 파싱 금지.**
+- API 키는 서버 환경변수(`OPENAI_API_KEY`)로만 관리한다. **프론트에서 직접 호출하지 않는다.**
 
-### 7.2 Structured Output 스키마 — 키워드 추출
+### 7.2 Schema — 키워드 추출
 
 ```json
 {
   "name": "keyword_extraction",
   "strict": true,
   "schema": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": ["keywords"],
+    "type": "object", "additionalProperties": false, "required": ["keywords"],
     "properties": {
       "keywords": {
         "type": "array", "minItems": 5, "maxItems": 8,
         "items": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["label", "reason", "category", "origin"],
+          "type": "object", "additionalProperties": false,
+          "required": ["label", "reason", "category"],
           "properties": {
             "label":    { "type": "string", "maxLength": 40 },
             "reason":   { "type": "string", "maxLength": 120 },
-            "category": { "type": "string", "enum": ["SKIN", "FACE", "BODY", "HEALTH"] },
-            "origin":   { "type": "string", "enum": ["TEXT", "IMAGE", "COMMON", "CONFLICT"] }
+            "category": { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] }
           }
         }
       }
@@ -825,36 +804,30 @@
 }
 ```
 
-`inputMode = TEXT`인 경우 `origin`은 `TEXT`만 나온다. `IMAGE` `COMMON` `CONFLICT`는 참고 이미지가 있을 때만 유효하다.
-
-### 7.3 Structured Output 스키마 — 결과 생성
+### 7.3 Schema — 결과 생성
 
 ```json
 {
-  "name": "aspiration_result",
+  "name": "peak_result",
   "strict": true,
   "schema": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": ["summary", "keepPoints", "emphasizePoints", "changeIntensity",
-                 "intensityLabel", "topChanges", "dailyCares", "recommendedRoutines"],
+    "type": "object", "additionalProperties": false,
+    "required": ["title", "summary", "keepPoints", "emphasizePoints",
+                 "changeIntensity", "categoryChanges", "dailyCares"],
     "properties": {
-      "summary":          { "type": "string", "maxLength": 120 },
-      "keepPoints":       { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string" } },
-      "emphasizePoints":  { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string" } },
-      "changeIntensity":  { "type": "integer", "minimum": 0, "maximum": 100 },
-      "intensityLabel":   { "type": "string", "maxLength": 20 },
-      "topChanges": {
+      "title":   { "type": "string", "maxLength": 60 },
+      "summary": { "type": "string", "maxLength": 120 },
+      "keepPoints":      { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string", "maxLength": 30 } },
+      "emphasizePoints": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string", "maxLength": 30 } },
+      "changeIntensity": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string", "maxLength": 30 } },
+      "categoryChanges": {
         "type": "array", "minItems": 3, "maxItems": 3,
         "items": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["rank", "title", "description", "tag"],
+          "type": "object", "additionalProperties": false,
+          "required": ["category", "description"],
           "properties": {
-            "rank":        { "type": "integer", "minimum": 1, "maximum": 3 },
-            "title":       { "type": "string", "maxLength": 40 },
-            "description": { "type": "string", "maxLength": 200 },
-            "tag":         { "type": "string", "enum": ["STYLING", "SELF_CARE", "CARE"] }
+            "category":    { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
+            "description": { "type": "string", "maxLength": 200 }
           }
         }
       },
@@ -868,49 +841,62 @@
             "description": { "type": "string", "maxLength": 150 }
           }
         }
-      },
-      "recommendedRoutines": {
-        "type": "array", "minItems": 1, "maxItems": 3,
-        "items": {
-          "type": "object", "additionalProperties": false,
-          "required": ["category", "title", "recommendedWeeks", "minutesPerDay", "perWeek", "priorityRank"],
-          "properties": {
-            "category":         { "type": "string", "enum": ["SKIN", "HEALTH", "BODY"] },
-            "title":            { "type": "string", "maxLength": 40 },
-            "recommendedWeeks": { "type": "integer", "minimum": 1, "maximum": 12 },
-            "minutesPerDay":    { "type": "integer", "minimum": 1, "maximum": 60 },
-            "perWeek":          { "type": "integer", "minimum": 1, "maximum": 7 },
-            "priorityRank":     { "type": "integer", "minimum": 1, "maximum": 3 }
-          }
-        }
       }
     }
   }
 }
 ```
 
-### 7.4 시스템 프롬프트 필수 규칙 (PRD §8.2 가드레일)
+- `categoryChanges` 3건은 **`SKIN`·`BODY`·`HEALTH` 각 1건**이어야 한다. 스키마로 강제되지 않으므로 서버가 검증한다.
+- 배열 순서를 `profiles.priorities` 순서에 맞춰 정렬한 뒤 저장한다.
 
-모든 텍스트 단계의 시스템 프롬프트에 아래를 포함한다. 출력 후 서버가 재검증한다.
+### 7.4 Schema — 인바디 OCR 〔v2 신규〕
+
+```json
+{
+  "name": "inbody_ocr",
+  "strict": true,
+  "schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["bodyWaterL", "proteinKg", "mineralKg", "bodyFatKg", "skeletalMuscleKg", "bmi"],
+    "properties": {
+      "bodyWaterL":       { "type": ["number", "null"] },
+      "proteinKg":        { "type": ["number", "null"] },
+      "mineralKg":        { "type": ["number", "null"] },
+      "bodyFatKg":        { "type": ["number", "null"] },
+      "skeletalMuscleKg": { "type": ["number", "null"] },
+      "bmi":              { "type": ["number", "null"] }
+    }
+  }
+}
+```
+
+- 읽지 못한 항목은 `null`로 반환하고 `unrecognized`에 담아 내려준다. **추측값을 채우지 않는다.**
+
+### 7.5 시스템 프롬프트 필수 규칙
+
+모든 텍스트 단계에 포함하고, 출력 후 서버가 재검증한다.
 
 ```text
 - 외모를 점수·등급·순위로 평가하지 않는다. (G-1)
-- 참고 이미지 속 인물의 얼굴을 복제하지 않는다. 분위기 요소(라인·톤·볼륨)만 적용한다. (G-2)
+- 참고 이미지 속 인물의 얼굴을 복제하지 않는다. 분위기 요소만 적용한다. (G-2)
 - 의료 진단, 시술 권유, 효능 보장 표현을 하지 않는다. (G-3)
 - 체중 목표를 수치로 단정하거나 극단적 식이·단식을 제안하지 않는다. (G-4)
 - 사용자가 입력하지 않은 정보를 근거로 삼지 않으며, 근거에 참조한 입력을 명시한다. (G-5)
 - 결점 중심으로 서술하지 않는다. "부족하다" 대신 "이렇게 하면 가까워진다"로 표현한다. (G-6)
+- 인바디 수치를 읽지 못하면 추측하지 말고 null로 반환한다. (G-8)
 ```
 
-**서버 측 후검증**: 응답 텍스트에 점수 패턴(`\d+점`, `상위 \d+%`)이나 금지어(`치료`, `시술받`, `진단`)가 포함되면 1회 재생성하고, 재차 검출되면 `AI_PROVIDER_ERROR`로 처리한다. 프롬프트만으로 가드레일을 보장하지 않는다.
+**서버 후검증** — 응답에 점수 패턴(`\d+점`, `상위 \d+%`)이나 금지어(`치료`, `시술받`, `진단`)가 포함되면 1회 재생성하고, 재차 검출되면 `AI_PROVIDER_ERROR`로 처리한다. **프롬프트만으로 가드레일을 보장하지 않는다.**
 
-### 7.5 이미지 생성
+### 7.6 이미지 생성
 
-- 입력: **사용자 사진(주)** + 참고 이미지(보조) + 선택 키워드 기반 프롬프트
+- 입력: **사용자 사진(주)** + 참고 사진 N장(보조) + 선택 키워드 기반 프롬프트
 - 프롬프트에 **"참고 이미지의 인물 얼굴을 복제하지 말고 분위기 요소만 반영"** 을 명시한다. (G-2)
-- 출력은 base64로 반환되므로 서버가 디코딩해 스토리지에 저장하고 `comparison_image_key`를 기록한다. 이미지 바이트를 DB에 넣지 않는다. (ERD D-4)
-- **실제 인물 사진 편집은 제공자 정책에 의해 거부될 수 있다.** 거부 시 예외로 처리하지 말고 `image_status = FAILED`로 저장한 뒤 텍스트 결과만 노출한다. 이 경로는 예외가 아니라 **정상 시나리오**로 취급한다. (PRD §8.3)
-- 이미지 실패는 분석권을 차감하지 않는 사유가 **아니다.** 텍스트 결과가 정상 생성되었으면 차감한다.
+- 출력은 base64이므로 서버가 디코딩해 스토리지에 저장하고 `comparison_image_key`를 기록한다.
+- **실제 인물 사진 편집은 제공자 정책에 의해 거부될 수 있다.** 거부 시 예외 처리하지 말고 `image_status = FAILED`로 저장한 뒤 텍스트 결과만 노출한다. 이 경로는 **정상 시나리오**다.
+- 이미지 실패는 분석권 미차감 사유가 **아니다.** 텍스트 결과가 정상 생성되었으면 차감한다.
+- 결과는 `currentUrl`(현재) / `peakUrl`(고점) 두 장으로 내려 비교 슬라이더가 좌우로 나눠 그린다.
 
 ---
 
@@ -921,21 +907,28 @@
 | C-1 | `GET /users/me`의 `hasProfile`로 최초 진입 라우팅을 분기한다 |
 | C-2 | 이미지 업로드는 presigned URL 직접 PUT. 서버로 multipart를 보내지 않는다 |
 | C-3 | 조회용 이미지 URL은 10분 만료다. 캐시·영구 저장하지 않는다 |
-| C-4 | 분석 진행은 `GET /analyses/{id}` 단일 폴링으로만 추적한다 (상한 60초) |
-| C-5 | 키워드는 미선택 상태로 시작하고, `CONFLICT`는 별도 섹션으로 분리한다 |
+| C-4 | 분석 진행은 `GET /analyses/{id}` 단일 폴링 (상한 60초). **`KEYWORDS_READY`에서도 폴링을 멈추지 않는다** |
+| C-5 | 키워드는 미선택 상태로 시작하고, 1개 미만이면 저장 버튼을 `disabled` 처리한다 |
 | C-6 | 결과 화면에서 `disclaimer`를 상시 노출한다 (숨김·접기 금지) |
 | C-7 | `comparisonImage.status` 4가지 분기를 모두 구현한다 |
-| C-8 | "다시 분석하기"에서 사진 재등록 화면으로 보내지 않는다 |
-| C-9 | 구독 게이팅은 `canAnalyze` / `canCreateRoutine` 값만으로 판단한다 |
-| C-10 | 점수·등급·순위 형태의 UI를 만들지 않는다 (서비스 원칙 §1.5) |
+| C-8 | `viewState`로 결과 화면의 칩 형태·CTA·활성 탭을 분기한다 |
+| C-9 | "새로 분석하기"에서 사진 재등록 화면으로 보내지 않는다. `outline` 버튼으로 구현한다 |
+| C-10 | `priorities`는 **배열 순서가 순위**다. 정렬을 바꾸지 않는다 |
+| C-11 | `bmi`는 단위 접미를 붙이지 않는다 |
+| C-12 | 인바디 OCR 결과는 **폼에 채우기만** 하고, 사용자 확인 후 저장 API를 호출한다 |
+| C-13 | 점수·등급·순위 형태의 UI를 만들지 않는다 |
+| C-14 | 루틴 탭은 **경로 2종 선택**부터 보여준다. 저장된 결과가 0개면 경로 A를 `disabled`로 두고 경로 B로 유도한다 |
+| C-15 | `POST /routines` 응답은 항상 **배열**이다. 경로 B는 최대 3개가 한 번에 생성된다 |
 
 ---
 
 ## 9. 미결 사항
 
-| # | 내용 | 확정 필요 시점 |
+| # | 내용 | 확정 필요 |
 | --- | --- | --- |
-| A-1 | `changeIntensity` 산출식 (PRD O-5 / ERD E-1) — 현재는 AI 출력값 그대로 전달 | M1 |
-| A-2 | 소셜 로그인 제공자 확정 → `POST /auth/oauth/{provider}` 스펙 추가 | M2 |
-| A-3 | PG사 확정 → `/subscriptions/checkout` 응답과 웹훅 페이로드 변경 가능 | M6 |
-| A-4 | 알림 전송 수단(FCM vs Web Push) → `device-tokens.platform` 처리 분기 | M6 |
+| A-1 | **홈 화면 수치 대시보드 API 미정의** — PRD O-1 정책 결정 전까지 설계하지 않는다 | M1 |
+| A-2 | `birthDate` / `gender` 필드 — 입력 화면 확정 후 `POST /profiles`에 추가 (PRD O-2) | M2 |
+| A-3 | 목표 생성 2경로의 **화면**이 미설계 (PRD O-4). API는 확정, UI 연결 대기 | M5 |
+| A-4 | 미수행 재배치 API — `PATCH /routine-tasks/{id}` 응답에 `rescheduledTask` 추가 예정 (PRD O-9) | M5 |
+| A-5 | PG사 확정 → `/subscriptions/checkout` 응답·웹훅 변경 가능 | M6 |
+| A-6 | 알림 전송 수단(FCM vs Web Push) | M6 |

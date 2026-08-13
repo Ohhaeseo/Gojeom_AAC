@@ -2,13 +2,26 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서 버전 | v1.0 |
+| 문서 버전 | v2.0 |
 | 최종 수정일 | 2026-08-13 |
-| 상위 문서 | [PRD.md](PRD.md) |
-| 짝 문서 | [API.md](API.md) — 본 문서의 컬럼과 API 필드는 1:1로 대응한다 |
+| 상위 문서 | [PRD.md](PRD.md) · [design.md](design.md) |
+| 짝 문서 | [API.md](API.md) — 컬럼과 API 필드는 1:1 대응 |
 | DBMS | PostgreSQL 16 |
-| 마이그레이션 | Flyway (`src/main/resources/db/migration/V{n}__{name}.sql`) |
+| 마이그레이션 | Flyway (`backend/src/main/resources/db/migration/`) |
 | ORM | Spring Data JPA · Hibernate 6 |
+
+> **v2 변경 요약** — Figma 시안 대조 결과 반영.
+> ① 우선순위가 `analyses`에서 **`profiles`로 이동**하고 단일값 → **순서 있는 3개 배열**이 됨
+> ② 카테고리 Enum이 4종 → **3종**(FACE 제거)
+> ③ 인바디 3종 → **6종**
+> ④ 참고 이미지 단수 → **다중**
+> ⑤ `input_mode` 제거, `input_text` 500자
+> ⑥ `top_changes` 구조 변경 (rank/tag → category)
+> ⑦ `change_intensity` 정수 → 텍스트
+> ⑧ `routine_tasks`에 타이밍·분량 필드 추가
+> ⑨ `ai_jobs`에 `INBODY_OCR` 단계 추가
+>
+> **v2.1** — 목표 생성 경로가 2종(저장된 분석 결과 기반 / 새 루틴)임이 확정되어 `routines`에 `source_type`·`category`·`duration_weeks`·`end_date`를 복원했다.
 
 ---
 
@@ -16,14 +29,14 @@
 
 | # | 규칙 |
 | --- | --- |
-| D-1 | 테이블·컬럼은 `snake_case`, API JSON은 `camelCase`. 매핑은 Jackson `PropertyNamingStrategies.SNAKE_CASE` 미사용 — 엔티티 필드는 camelCase, 컬럼은 `@Column(name=...)`으로 명시한다. |
-| D-2 | 모든 PK는 `UUID` (`gen_random_uuid()`, PG13+ 내장). 순차 ID 노출로 인한 열람 시도를 차단한다. |
-| D-3 | 모든 테이블에 `created_at`, 변경 가능한 테이블에 `updated_at` (`TIMESTAMPTZ`). 시간은 **UTC 저장 / KST 표시**. |
-| D-4 | **이미지 원본은 DB에 저장하지 않는다.** 오브젝트 스토리지 key만 저장하고 조회 시 presigned URL을 발급한다. |
-| D-5 | 사용자 삭제는 **soft delete**(`deleted_at`) 후 배치로 하드 삭제. 단 **사진 객체는 즉시 삭제**한다. (PRD §10) |
-| D-6 | AI 출력 중 **조회·필터·정렬 대상은 컬럼**, **표시 전용 덩어리는 JSONB**. §5 참조. |
-| D-7 | Enum은 DB에서 `VARCHAR` + `CHECK` 제약으로 관리한다. PG enum 타입은 값 추가 시 마이그레이션이 번거로워 쓰지 않는다. |
-| D-8 | 금액은 `INTEGER`(원 단위), 비율은 `NUMERIC(5,2)`. 부동소수 금액 금지. |
+| D-1 | 테이블·컬럼은 `snake_case`, API JSON은 `camelCase`. |
+| D-2 | 모든 PK는 `UUID` (`gen_random_uuid()`). 순차 ID 노출 차단. |
+| D-3 | `created_at` / `updated_at`은 `TIMESTAMPTZ`, **UTC 저장 / KST 표시**. |
+| D-4 | **이미지 원본은 DB에 저장하지 않는다.** 스토리지 key만 저장하고 조회 시 presigned URL 발급. |
+| D-5 | 사용자 삭제는 soft delete 후 배치 하드 삭제. **사진 객체는 즉시 삭제**. |
+| D-6 | AI 출력 중 조회·필터 대상은 컬럼, 표시 전용은 JSONB. |
+| D-7 | Enum은 `VARCHAR` + `CHECK` 제약. PG enum 타입은 쓰지 않는다. |
+| D-8 | 금액은 `INTEGER`(원), 비율은 `NUMERIC`. |
 
 ---
 
@@ -33,27 +46,28 @@
 erDiagram
     users ||--o{ consents : "동의"
     users ||--o{ profiles : "프로필 이력"
-    users ||--o{ analyses : "분석 요청"
+    users ||--o{ analyses : "고점 분석"
     users ||--o{ saved_results : "서랍"
-    users ||--o{ routines : "루틴"
+    users ||--o{ routines : "목표"
     users ||--|| notification_settings : "알림 설정"
     users ||--o{ device_tokens : "기기"
     users ||--o{ subscriptions : "구독"
 
     profiles ||--o{ analyses : "기준 프로필"
+    analyses ||--o{ analysis_reference_images : "참고 사진"
     analyses ||--o{ analysis_keywords : "키워드 후보"
     analyses ||--|| analysis_results : "결과"
     analyses ||--o{ ai_jobs : "AI 호출"
     analysis_results ||--o| saved_results : "저장"
     analysis_results ||--o{ routines : "근거 결과"
-    routines ||--o{ routine_tasks : "일자별 태스크"
+    routines ||--o{ routine_tasks : "태스크"
     subscriptions ||--o{ payments : "결제"
 
     users {
         uuid id PK
         varchar email UK
-        varchar password_hash "소셜 로그인 시 NULL"
-        varchar provider "LOCAL|KAKAO|GOOGLE"
+        varchar password_hash "소셜은 NULL"
+        varchar provider "LOCAL|GOOGLE"
         varchar provider_user_id
         varchar nickname
         timestamptz deleted_at
@@ -73,14 +87,15 @@ erDiagram
     profiles {
         uuid id PK
         uuid user_id FK
-        varchar photo_key "오브젝트 스토리지 key"
-        date birth_date
-        varchar gender "MALE|FEMALE|UNSPECIFIED"
+        varchar photo_key
+        date birth_date "미설계 · nullable"
+        varchar gender "미설계 · nullable"
         smallint height_cm
         numeric weight_kg
         numeric sleep_hours "nullable"
-        jsonb inbody "nullable"
-        jsonb analysis_summary "AI 현재 상태 요약"
+        jsonb inbody "6종 · nullable"
+        jsonb priorities "순서 배열 3개"
+        jsonb analysis_summary
         boolean is_active
         timestamptz created_at
     }
@@ -89,14 +104,18 @@ erDiagram
         uuid id PK
         uuid user_id FK
         uuid profile_id FK
-        varchar priority_category "SKIN|FACE|BODY|HEALTH|NULL"
-        varchar input_mode "TEXT|TEXT_IMAGE"
-        text input_text
-        varchar reference_image_key "nullable"
+        text input_text "10~500자"
         varchar status "CREATED..DONE|FAILED"
         varchar failure_code
-        uuid retried_from FK "재분석 원본"
+        uuid retried_from FK
         timestamptz created_at
+    }
+
+    analysis_reference_images {
+        uuid id PK
+        uuid analysis_id FK
+        varchar image_key
+        smallint display_order
     }
 
     analysis_keywords {
@@ -104,8 +123,7 @@ erDiagram
         uuid analysis_id FK
         varchar label
         text reason
-        varchar category "SKIN|FACE|BODY|HEALTH"
-        varchar origin "TEXT|IMAGE|COMMON|CONFLICT"
+        varchar category "SKIN|BODY|HEALTH"
         smallint display_order
         boolean selected
     }
@@ -113,17 +131,15 @@ erDiagram
     analysis_results {
         uuid id PK
         uuid analysis_id FK UK
+        varchar title "키워드 요약"
         text summary
-        smallint change_intensity "0~100"
-        varchar intensity_label
         jsonb keep_points
         jsonb emphasize_points
-        jsonb top_changes "3건"
-        jsonb daily_cares
-        jsonb recommended_routines
+        jsonb change_intensity
+        jsonb category_changes "3건"
+        jsonb daily_cares "3건"
         varchar comparison_image_key "nullable"
         varchar image_status "SKIPPED|PENDING|DONE|FAILED"
-        boolean liked
         timestamptz created_at
     }
 
@@ -137,29 +153,28 @@ erDiagram
     routines {
         uuid id PK
         uuid user_id FK
-        uuid analysis_result_id FK "nullable = 루틴만 생성"
-        varchar category "SKIN|HEALTH|BODY"
+        varchar source_type "FROM_ANALYSIS|STANDALONE"
+        uuid analysis_result_id FK "A경로만"
+        varchar category "B경로만 · SKIN|BODY|HEALTH"
+        smallint duration_weeks "B경로만 · 1~12"
         varchar title
-        smallint duration_weeks "1~12"
-        smallint per_week
-        smallint minutes_per_day
-        smallint priority_rank
+        varchar status "ACTIVE|COMPLETED|CANCELED"
         date start_date
         date end_date
-        varchar status "ACTIVE|COMPLETED|CANCELED"
         timestamptz created_at
     }
 
     routine_tasks {
         uuid id PK
         uuid routine_id FK
-        date scheduled_date
-        time scheduled_time "nullable"
+        varchar category "SKIN|BODY|HEALTH"
         varchar title
-        text description
-        varchar status "PENDING|DONE|MISSED|RESCHEDULED"
-        date original_date "재배치 추적"
-        smallint reschedule_count
+        varchar timing "매일 외출 전"
+        varchar duration_label "약 2분"
+        varchar amount_label "4ml"
+        date scheduled_date
+        time scheduled_time
+        varchar status "PENDING|DONE|MISSED"
         timestamptz completed_at
     }
 
@@ -201,9 +216,9 @@ erDiagram
     ai_jobs {
         uuid id PK
         uuid analysis_id FK
-        varchar stage "KEYWORD_EXTRACTION 등"
+        varchar stage "INBODY_OCR 등 6종"
         varchar model
-        varchar status "PENDING|DONE|FAILED"
+        varchar status
         integer input_tokens
         integer output_tokens
         integer latency_ms
@@ -218,20 +233,16 @@ erDiagram
 
 ### 3.1 `users`
 
-| 컬럼 | 타입 | 제약 | 설명 |
-| --- | --- | --- | --- |
-| id | UUID | PK | |
-| email | VARCHAR(255) | UNIQUE, NOT NULL | 소셜 로그인도 이메일 필수 |
-| password_hash | VARCHAR(255) | NULL | BCrypt. 소셜 계정은 NULL |
-| provider | VARCHAR(20) | NOT NULL, CHECK | `LOCAL` `KAKAO` `GOOGLE` |
-| provider_user_id | VARCHAR(255) | NULL | 소셜 고유 ID. `(provider, provider_user_id)` UNIQUE |
-| nickname | VARCHAR(20) | NOT NULL | 결과 화면 "{닉네임}님의 추구미" |
-| deleted_at | TIMESTAMPTZ | NULL | soft delete (D-5) |
-| created_at | TIMESTAMPTZ | NOT NULL | |
+| 컬럼 | 타입 | 제약 |
+| --- | --- | --- |
+| email | VARCHAR(255) | UNIQUE, NOT NULL |
+| password_hash | VARCHAR(255) | NULL (소셜 계정) |
+| provider | VARCHAR(20) | `LOCAL` `GOOGLE` — 시안의 프로필 화면이 "Google 로그인"을 표기 |
+| provider_user_id | VARCHAR(255) | `(provider, provider_user_id)` UNIQUE |
+| nickname | VARCHAR(20) | 홈의 "안녕하세요, {닉네임}님" |
+| deleted_at | TIMESTAMPTZ | soft delete |
 
 ### 3.2 `consents`
-
-PRD §10의 **필수/선택 동의 분리**를 위해 동의 항목을 행 단위로 저장한다. 약관 개정 시 `version`이 올라가고 재동의를 받는다.
 
 | code | required | 설명 |
 | --- | --- | --- |
@@ -240,93 +251,158 @@ PRD §10의 **필수/선택 동의 분리**를 위해 동의 항목을 행 단�
 | `BIOMETRIC` | true | 얼굴 사진(생체정보에 준함) 처리 |
 | `MARKETING` | false | 마케팅 수신 |
 
-> `required = true` 항목이 모두 `agreed = true`가 아니면 프로필 생성이 거부된다. `MARKETING` 미동의는 핵심 기능에 영향을 주지 않는다.
+> ⚠️ **동의 UI가 시안에 없다.** (PRD O-2) 테이블은 미리 정의해두되, 화면 설계 전까지는 회원가입 시 기본 레코드를 생성하지 않는다.
 
 ### 3.3 `profiles`
 
-사용자당 여러 행이 존재할 수 있으나 **`is_active = true`는 최대 1행**이다. 사진을 다시 등록하면 기존 행을 비활성화하고 새 행을 만든다. 과거 분석은 그 시점의 `profile_id`를 그대로 참조하므로 결과 재현이 가능하다.
+사용자당 `is_active = true`는 최대 1행. 사진을 다시 등록하면 새 행을 만들고 기존 행을 비활성화한다. 과거 분석은 그 시점 `profile_id`를 참조하므로 재현이 가능하다.
 
-| 컬럼 | 타입 | 제약 | 설명 |
+| 컬럼 | 타입 | 제약 | 비고 |
 | --- | --- | --- | --- |
-| photo_key | VARCHAR(512) | NOT NULL | 예: `profiles/{userId}/{uuid}.jpg` |
-| birth_date | DATE | NOT NULL | 만 14세 이상 (앱·서버 이중 검증) |
-| gender | VARCHAR(20) | CHECK | `MALE` `FEMALE` `UNSPECIFIED` |
-| height_cm | SMALLINT | CHECK 100~250 | |
-| weight_kg | NUMERIC(4,1) | CHECK 30~200 | |
-| sleep_hours | NUMERIC(3,1) | NULL, CHECK 0~14 | 0.5 단위 |
-| inbody | JSONB | NULL | §5.1 |
-| analysis_summary | JSONB | NULL | §5.2. 생성 전에는 NULL |
-| is_active | BOOLEAN | NOT NULL | 부분 유니크 인덱스로 1행 보장 |
+| photo_key | VARCHAR(512) | NOT NULL | |
+| **priorities** | JSONB | NOT NULL | **§5.1 — 순서 있는 3개 배열** 〔v2 신규〕 |
+| birth_date | DATE | **NULL** | 시안에 입력 화면 없음 (PRD O-2) |
+| gender | VARCHAR(20) | **NULL** | 시안에 입력 화면 없음 (PRD O-2) |
+| height_cm | SMALLINT | 100~250 | |
+| weight_kg | NUMERIC(4,1) | 30~200 | |
+| sleep_hours | NUMERIC(3,1) | NULL, 0~14 | 0.5 단위 |
+| inbody | JSONB | NULL | **§5.2 — 6종** 〔v2 확장〕 |
+| analysis_summary | JSONB | NULL | §5.3 |
+
+**우선순위가 프로필로 이동한 이유** 〔v2 주요 변경〕
+
+시안에서 우선순위는 프로필 등록 화면(06·08)에서 지정하고, 프로필 화면(11)의 "우선 순위 변경"으로 언제든 수정한다. 분석마다 다시 고르지 않는다. 따라서 `analyses`가 아니라 `profiles`의 속성이다.
 
 ### 3.4 `analyses`
-
-`status`는 비동기 파이프라인의 단일 진실 공급원이다. 프론트는 이 값만 폴링한다.
 
 ```mermaid
 stateDiagram-v2
     [*] --> CREATED
     CREATED --> EXTRACTING : 키워드 추출 시작
-    EXTRACTING --> KEYWORDS_READY : 후보 5~8개 생성
+    EXTRACTING --> KEYWORDS_READY : 후보 5~8개
     EXTRACTING --> FAILED
     KEYWORDS_READY --> GENERATING : 사용자 키워드 확정
-    GENERATING --> DONE : 텍스트 결과 완성
+    GENERATING --> DONE
     GENERATING --> FAILED
     DONE --> [*]
     FAILED --> [*]
 ```
 
-- 이미지 생성은 이 상태와 **분리**된다. `analysis_results.image_status`로 별도 추적하며, 이미지가 실패해도 `status`는 `DONE`이다. (PRD §8.1)
-- `retried_from`은 "다시 분석하기"로 생성된 행이 원본을 가리킨다. 프로필은 재사용하므로 사진 재등록이 발생하지 않는다. (PRD R-1)
-- `failure_code`는 API 에러 코드와 동일 문자열을 쓴다. ([API.md](API.md) §4)
-
-### 3.5 `analysis_keywords`
-
-- 한 분석당 5~8행. `display_order`로 노출 순서를 고정한다.
-- `origin = CONFLICT`인 키워드는 텍스트와 사진의 방향이 어긋나는 항목으로, UI에서 별도 그룹으로 표시한다. (PRD F-05)
-- `selected`는 사용자가 확정한 키워드에만 `true`. **AI가 기본 선택 상태를 만들지 않는다.** (PRD F-06)
-- 제약: 선택 개수 1~4개는 애플리케이션 레이어에서 검증한다.
-
-### 3.6 `analysis_results`
-
-결과 화면(PRD F-07) 9개 블록과 1:1 대응한다.
-
-| 컬럼 | 대응 블록 |
+| 컬럼 | 비고 |
 | --- | --- |
-| summary | ② 타이틀 하단 한 줄 요약 |
-| comparison_image_key, image_status | ③ 비교 이미지 |
-| keep_points, emphasize_points, change_intensity, intensity_label | ④ 한눈에 보는 추구미 |
-| top_changes | ⑤ 이렇게 바꾸면 가까워져요 |
-| daily_cares | ⑥ 오늘부터 해볼 관리 |
-| recommended_routines | ⑦ 추천 맞춤 루틴 |
-| liked | ⑧ 결과 피드백 |
+| input_text | **10~500자** 〔v2: 300 → 500〕 |
+| ~~input_mode~~ | **삭제** 〔v2〕 — 입력 방식 선택 화면이 없다. 참고 사진 유무는 `analysis_reference_images` 행 수로 판단 |
+| ~~priority_category~~ | **삭제** 〔v2〕 — `profiles.priorities`로 이동 |
+| retried_from | "새로 분석하기"로 생성된 행이 원본을 가리킨다 (PRD R-1) |
 
-- `change_intensity`는 0~100 정수, `intensity_label`은 `자연스럽게` / `또렷하게` 등 표시 문구. **산출 로직은 PRD O-5로 미결**이며, 확정 전까지 AI 출력값을 그대로 저장한다.
-- `image_status = SKIPPED`는 텍스트만 입력한 분석(`input_mode = TEXT`)을 뜻한다. 이 경우 프론트는 ③ 블록을 렌더링하지 않는다.
-- `liked = false` 상태의 결과는 서랍에 저장되지 않는다. (PRD R-4)
+- 이미지 생성은 이 상태와 **분리**된다. `analysis_results.image_status`로 별도 추적하며, 이미지가 실패해도 `status`는 `DONE`이다.
+- 키워드 선택은 분석이 진행되는 **동안** 이루어진다(시안 14). 따라서 `KEYWORDS_READY` → `GENERATING` 전환은 사용자 액션이 트리거한다.
 
-### 3.7 `routines` / `routine_tasks`
+### 3.5 `analysis_reference_images` 〔v2 신규〕
 
-- `category`는 **3종**(`SKIN` `HEALTH` `BODY`)이다. 우선순위는 4종이지만 `FACE`는 루틴이 아닌 변화 Top 3로만 반영된다. (PRD O-4)
-- `duration_weeks`는 1~12. `end_date = start_date + duration_weeks * 7 - 1`.
-- `priority_rank` 1·2는 결과 화면의 `우선 1` `우선 2` 뱃지, 3 이상은 `선택`.
-- **미수행 재배치**(PRD F-10)
-  - 자정 배치가 `scheduled_date < 오늘` AND `status = PENDING`인 태스크를 `MISSED`로 전환한다.
-  - `MISSED` 태스크는 다음 가능한 날짜로 복제되며, 원본은 `RESCHEDULED`가 되고 신규 행에 `original_date`와 `reschedule_count + 1`을 기록한다.
-  - **`end_date`를 넘겨 연장하지 않는다.** 기간 내 재배치가 불가능하면 `MISSED`로 확정한다.
-  - 동일 루틴에서 `MISSED`가 연속 3회 발생하면 "강도 낮추기" 제안을 노출한다. (판정은 조회 시 계산, 별도 컬럼 없음)
+고점 참고 사진은 **여러 장** 첨부할 수 있다(시안 12의 썸네일 스트립). v1의 단일 `reference_image_key` 컬럼을 이 테이블로 대체한다.
 
-### 3.8 `subscriptions`
+| 컬럼 | 타입 | 비고 |
+| --- | --- | --- |
+| image_key | VARCHAR(512) | 스토리지 key |
+| display_order | SMALLINT | 썸네일 표시 순서 |
 
-- `analysis_credits`는 남은 분석권. **차감 시점은 결과 생성 성공 시**이며 실패 시 차감하지 않는다. (PRD O-6)
-- 차감은 `UPDATE ... SET analysis_credits = analysis_credits - 1 WHERE id = ? AND analysis_credits > 0` 단일 문으로 처리해 동시 요청 중복 차감을 막는다.
-- 구독 만료 후에도 저장된 결과·루틴은 **조회 가능**, 신규 분석·루틴 생성만 차단한다. (PRD F-12)
+- 0행이면 텍스트 전용 분석이며, 결과의 `image_status`는 `SKIPPED`가 된다.
 
-### 3.9 `ai_jobs`
+### 3.6 `analysis_keywords`
 
-OpenAI 호출 1건 = 1행. 비용 추적·재시도·장애 분석용이다.
+| 컬럼 | 비고 |
+| --- | --- |
+| category | **`SKIN` `BODY` `HEALTH` 3종** 〔v2: FACE 제거〕 |
+| ~~origin~~ | **삭제** 〔v2〕 — 시안(14)은 구분 없는 단순 체크박스 목록이다 |
+| selected | 사용자 확정 키워드만 `true`. AI가 기본 선택 상태를 만들지 않는다 |
 
-- `stage`: `PROFILE_ANALYSIS` `KEYWORD_EXTRACTION` `RESULT_GENERATION` `IMAGE_GENERATION` `ROUTINE_GENERATION`
-- **프롬프트 원문과 사용자 사진은 저장하지 않는다.** 토큰 수·지연시간·에러코드만 남긴다. (PRD §9 로깅 규칙)
+- 선택 개수 1~4개는 애플리케이션 레이어에서 검증한다.
+- `얼굴형`은 카테고리가 아니라 키워드 **라벨**로 나타난다("다이아몬드형" 등).
+
+### 3.7 `analysis_results`
+
+결과 화면(PRD F-07) 블록과 1:1 대응한다.
+
+| 컬럼 | 대응 블록 | 비고 |
+| --- | --- | --- |
+| title | ① 헤더 | 키워드 요약 문자열 ("17호, 큰 눈, 귀족턱, 다…") |
+| comparison_image_key, image_status | ② 비교 슬라이더 | |
+| summary, keep_points, emphasize_points, change_intensity | ③ 고점 요약 | |
+| category_changes | ④ 이렇게 바꾸면 가까워져요 | **카테고리 3건** |
+| daily_cares | ⑤ 오늘 당장 해볼 수 있는 관리 | 3건 |
+
+**v2 변경**
+
+- `change_intensity`가 `SMALLINT(0~100)` + `intensity_label` → **JSONB 텍스트**가 됐다. 시안은 유지할 점·강조할 점과 동일한 라벨-값 텍스트 형식이다. 퍼센트 UI는 존재하지 않는다.
+- `top_changes`(rank 1~3 + tag) → **`category_changes`**(카테고리별 1건)로 구조가 바뀌었다.
+- `recommended_routines` 컬럼 **삭제**. 시안에 추천 루틴 카드 블록이 없다.
+- `liked` 컬럼 **삭제**. 저장 여부는 `saved_results` 행 존재로 판단한다.
+
+> **면책 문구는 DB에 저장하지 않는다.** 고정 문구이므로 클라이언트 상수 또는 API 응답 상수로 내려준다.
+
+### 3.8 `saved_results` (서랍)
+
+서랍은 **3개 섹션**으로 조회된다(시안 19). 별도 컬럼 없이 조회 시 분류한다.
+
+| 섹션 | 판정 |
+| --- | --- |
+| 현재 진행중인 목표 | `routines`에 `source_type='FROM_ANALYSIS'` AND `status='ACTIVE'`인 행이 있는 결과 |
+| 최근 분석 결과 | `saved_at >= now() - interval '1 month'` |
+| 전체 | 제한 없음 |
+
+### 3.9 `routines` / `routine_tasks`
+
+**목표 생성 경로가 2종이므로 `source_type`으로 분기한다.** (PRD F-09)
+
+| `source_type` | 의미 | 필수 컬럼 | NULL 컬럼 |
+| --- | --- | --- | --- |
+| `FROM_ANALYSIS` | 저장된 분석 결과 기반 | `analysis_result_id` | `category`, `duration_weeks`, `end_date` |
+| `STANDALONE` | 분석 없이 새로 생성 | `category`, `duration_weeks` | `analysis_result_id` |
+
+- `FROM_ANALYSIS`는 여러 카테고리에 걸친 목표 **1개**를 만든다. 카테고리는 태스크 단위 속성이므로 `routines.category`가 NULL이다.
+- `STANDALONE`은 선택한 **카테고리당 목표 1개**를 만든다. 최대 3개가 동시에 생성된다.
+- `end_date = start_date + duration_weeks * 7 - 1` (STANDALONE만).
+
+```sql
+CONSTRAINT ck_routine_source CHECK (
+    (source_type = 'FROM_ANALYSIS'
+        AND analysis_result_id IS NOT NULL
+        AND category IS NULL AND duration_weeks IS NULL)
+ OR (source_type = 'STANDALONE'
+        AND analysis_result_id IS NULL
+        AND category IS NOT NULL AND duration_weeks IS NOT NULL)
+)
+```
+
+| 컬럼 | 비고 |
+| --- | --- |
+| routines.source_type | 〔v2.1 신규〕 |
+| routines.analysis_result_id | **NULL 허용** — `STANDALONE`일 때 NULL |
+| routines.category | `STANDALONE`일 때만 값. 권장 기본 기간: 피부 4주 · 건강 3주 · 체형 2주 |
+| routines.duration_weeks | 1~12 |
+| routine_tasks.timing | `매일 외출 전` 〔v2 신규〕 |
+| routine_tasks.duration_label | `약 2분` 〔v2 신규〕 |
+| routine_tasks.amount_label | `4ml` 〔v2 신규〕 |
+
+**Task Card 표기** — `title` / `timing · duration_label · amount_label`을 ` / `로 연결해 표시한다.
+
+```text
+자외선 차단제 바르기
+매일 외출 전 / 약 2분 / 4ml          [ ] 완료
+```
+
+- 미수행 재배치는 **미설계**다(PRD O-4). `MISSED` 상태값은 미리 정의해두되 재배치 로직은 보류한다.
+- 사용자를 실패로 규정하는 표현을 쓰지 않는다.
+
+### 3.10 `ai_jobs`
+
+OpenAI 호출 1건 = 1행.
+
+`stage`: `PROFILE_ANALYSIS` · **`INBODY_OCR`**〔v2 신규〕 · `KEYWORD_EXTRACTION` · `RESULT_GENERATION` · `IMAGE_GENERATION` · `ROUTINE_GENERATION`
+
+- **프롬프트 원문과 사용자 사진은 저장하지 않는다.** 토큰 수·지연시간·에러코드만 남긴다.
+- `INBODY_OCR`은 분석에 속하지 않으므로 `analysis_id`가 NULL이다.
 
 ---
 
@@ -338,6 +414,7 @@ CREATE UNIQUE INDEX ux_profiles_active    ON profiles(user_id) WHERE is_active;
 CREATE UNIQUE INDEX ux_consents_user_code ON consents(user_id, code);
 CREATE        INDEX ix_analyses_user      ON analyses(user_id, created_at DESC);
 CREATE        INDEX ix_analyses_status    ON analyses(status) WHERE status IN ('CREATED','EXTRACTING','GENERATING');
+CREATE        INDEX ix_ref_images         ON analysis_reference_images(analysis_id, display_order);
 CREATE        INDEX ix_keywords_analysis  ON analysis_keywords(analysis_id, display_order);
 CREATE UNIQUE INDEX ux_results_analysis   ON analysis_results(analysis_id);
 CREATE UNIQUE INDEX ux_saved_result       ON saved_results(analysis_result_id);
@@ -348,79 +425,87 @@ CREATE        INDEX ix_tasks_pending      ON routine_tasks(scheduled_date) WHERE
 CREATE        INDEX ix_ai_jobs_analysis   ON ai_jobs(analysis_id, stage);
 ```
 
-- `ix_analyses_status`는 진행 중 분석만 담는 **부분 인덱스**다. 폴링 쿼리와 좀비 잡 정리 배치가 함께 사용한다.
-- `ix_tasks_pending`은 알림 발송·미수행 판정 배치의 기준 인덱스다.
-
 ---
 
-## 5. JSONB 컬럼 스키마
+## 5. JSONB 스키마
 
-JSONB에 넣는 값은 **표시 전용**이다. 이 안의 값으로 필터링·정렬하는 쿼리를 만들지 않는다. 필요해지면 컬럼으로 승격한다. (D-6)
+### 5.1 `profiles.priorities` 〔v2 신규〕
 
-### 5.1 `profiles.inbody`
+**순서가 곧 순위다.** 정확히 3개, 중복 없음.
 
 ```json
-{ "skeletalMuscleKg": 28.4, "bodyFatRate": 22.1, "bmi": 21.8 }
+["SKIN", "HEALTH", "BODY"]
 ```
 
-### 5.2 `profiles.analysis_summary`
+| 인덱스 | 의미 |
+| --- | --- |
+| `[0]` | 1순위 |
+| `[1]` | 2순위 |
+| `[2]` | 3순위 |
+
+애플리케이션에서 검증한다: 길이 3, 값은 `SKIN`/`BODY`/`HEALTH`, 중복 불가.
+
+### 5.2 `profiles.inbody` 〔v2 확장 — 3종 → 6종〕
+
+```json
+{
+  "bodyWaterL":       32.5,
+  "proteinKg":         8.7,
+  "mineralKg":         3.1,
+  "bodyFatKg":        14.2,
+  "skeletalMuscleKg": 24.1,
+  "bmi":              19.5
+}
+```
+
+- 각 항목은 개별 선택 입력이다. 일부만 채워도 저장된다.
+- **`bmi`는 무단위다.** 시안의 `kg` 표기는 오류이므로 UI에서 단위 접미를 제거한다.
+- `INBODY_OCR`로 채운 값도 이 구조에 들어가되, **사용자 확인을 거친 뒤 저장한다** (PRD G-8).
+
+### 5.3 `profiles.analysis_summary`
 
 ```json
 {
   "faceImpression": ["부드러운 얼굴선", "자연스러운 표정"],
   "bodyRange": "표준 범위",
   "healthNotes": ["평균 수면 6.5시간 · 사용자 입력 기준"],
-  "modelVersion": "gpt-4.1-2025-04-14",
+  "modelVersion": "<application.yml의 openai.model.text>",
   "analyzedAt": "2026-08-10T04:12:00Z"
 }
 ```
 
 > **점수·등급 필드를 두지 않는다.** (PRD G-1)
 
-### 5.3 `analysis_results.keep_points` / `emphasize_points`
+### 5.4 `analysis_results.keep_points` / `emphasize_points` / `change_intensity`
+
+셋 다 동일한 형태다. 결과 화면에서 라벨-값 3행으로 표시된다.
 
 ```json
-["부드러운 얼굴선과 자연스러운 표정"]
+["부드러운 얼굴선", "입매"]
 ```
 
-### 5.4 `analysis_results.top_changes`
+### 5.5 `analysis_results.category_changes` 〔v2 구조 변경〕
 
-정확히 3개 원소. `rank`는 1~3.
-
-```json
-[
-  {
-    "rank": 1,
-    "title": "눈썹선을 조금 더 선명하게",
-    "description": "완만한 일자형으로 정돈하면 차분하면서 또렷한 인상이 살아나요. 진한 색보다 현재 모발과 비슷한 색을 추천해요.",
-    "tag": "STYLING"
-  }
-]
-```
-
-`tag`: `STYLING`(스타일링) · `SELF_CARE`(셀프 관리) · `CARE`(케어)
-
-### 5.5 `analysis_results.daily_cares`
-
-```json
-[{ "title": "수분 진정 루틴", "description": "아침에는 자외선 관리, 저녁에는 보습 단계를 단순하게 유지해 보세요." }]
-```
-
-### 5.6 `analysis_results.recommended_routines`
-
-결과 화면 ⑦ 블록. 사용자가 여기서 선택한 항목이 `routines` 행으로 확정된다.
+정확히 3개 원소. 카테고리당 1건.
 
 ```json
 [
   {
     "category": "SKIN",
-    "title": "피부·수분 균형 루틴",
-    "recommendedWeeks": 4,
-    "minutesPerDay": 8,
-    "perWeek": 6,
-    "priorityRank": 1
-  }
+    "description": "체수분 수치가 낮고 사진상 모공이 도드라져 수분 섭취가 필요해 보여요. 광택을 과하게 더하기 보단 피부톤을 균일하게 유지해보세요."
+  },
+  { "category": "BODY",   "description": "..." },
+  { "category": "HEALTH", "description": "..." }
 ]
+```
+
+- 배열 순서는 **`profiles.priorities` 순서를 따른다.** 1순위 카테고리가 맨 위에 온다.
+- v1의 `rank` / `tag(STYLING·SELF_CARE·CARE)` 필드는 삭제됐다.
+
+### 5.6 `analysis_results.daily_cares`
+
+```json
+[{ "title": "수분 진정 루틴", "description": "아침에는 자외선 관리, 저녁에는 보습 단계를 단순하게 유지해 보세요." }]
 ```
 
 ---
@@ -434,7 +519,7 @@ CREATE TABLE users (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email            VARCHAR(255) NOT NULL UNIQUE,
     password_hash    VARCHAR(255),
-    provider         VARCHAR(20)  NOT NULL CHECK (provider IN ('LOCAL','KAKAO','GOOGLE')),
+    provider         VARCHAR(20)  NOT NULL CHECK (provider IN ('LOCAL','GOOGLE')),
     provider_user_id VARCHAR(255),
     nickname         VARCHAR(20)  NOT NULL,
     deleted_at       TIMESTAMPTZ,
@@ -456,32 +541,37 @@ CREATE TABLE profiles (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     photo_key        VARCHAR(512) NOT NULL,
-    birth_date       DATE         NOT NULL,
-    gender           VARCHAR(20)  NOT NULL CHECK (gender IN ('MALE','FEMALE','UNSPECIFIED')),
+    priorities       JSONB        NOT NULL,
+    birth_date       DATE,
+    gender           VARCHAR(20)  CHECK (gender IN ('MALE','FEMALE','UNSPECIFIED')),
     height_cm        SMALLINT     NOT NULL CHECK (height_cm BETWEEN 100 AND 250),
     weight_kg        NUMERIC(4,1) NOT NULL CHECK (weight_kg BETWEEN 30 AND 200),
     sleep_hours      NUMERIC(3,1) CHECK (sleep_hours BETWEEN 0 AND 14),
     inbody           JSONB,
     analysis_summary JSONB,
     is_active        BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_priorities_len CHECK (jsonb_array_length(priorities) = 3)
 );
 
 CREATE TABLE analyses (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    profile_id          UUID NOT NULL REFERENCES profiles(id),
-    priority_category   VARCHAR(10) CHECK (priority_category IN ('SKIN','FACE','BODY','HEALTH')),
-    input_mode          VARCHAR(20) NOT NULL CHECK (input_mode IN ('TEXT','TEXT_IMAGE')),
-    input_text          TEXT        NOT NULL CHECK (char_length(input_text) BETWEEN 10 AND 300),
-    reference_image_key VARCHAR(512),
-    status              VARCHAR(20) NOT NULL DEFAULT 'CREATED'
-                        CHECK (status IN ('CREATED','EXTRACTING','KEYWORDS_READY','GENERATING','DONE','FAILED')),
-    failure_code        VARCHAR(50),
-    retried_from        UUID REFERENCES analyses(id),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT ck_reference_image CHECK (input_mode = 'TEXT' OR reference_image_key IS NOT NULL)
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_id   UUID NOT NULL REFERENCES profiles(id),
+    input_text   TEXT        NOT NULL CHECK (char_length(input_text) BETWEEN 10 AND 500),
+    status       VARCHAR(20) NOT NULL DEFAULT 'CREATED'
+                 CHECK (status IN ('CREATED','EXTRACTING','KEYWORDS_READY','GENERATING','DONE','FAILED')),
+    failure_code VARCHAR(50),
+    retried_from UUID REFERENCES analyses(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE analysis_reference_images (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    analysis_id   UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
+    image_key     VARCHAR(512) NOT NULL,
+    display_order SMALLINT     NOT NULL DEFAULT 0
 );
 
 CREATE TABLE analysis_keywords (
@@ -489,8 +579,7 @@ CREATE TABLE analysis_keywords (
     analysis_id   UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
     label         VARCHAR(40) NOT NULL,
     reason        TEXT        NOT NULL,
-    category      VARCHAR(10) NOT NULL CHECK (category IN ('SKIN','FACE','BODY','HEALTH')),
-    origin        VARCHAR(10) NOT NULL CHECK (origin IN ('TEXT','IMAGE','COMMON','CONFLICT')),
+    category      VARCHAR(10) NOT NULL CHECK (category IN ('SKIN','BODY','HEALTH')),
     display_order SMALLINT    NOT NULL,
     selected      BOOLEAN     NOT NULL DEFAULT FALSE
 );
@@ -498,18 +587,16 @@ CREATE TABLE analysis_keywords (
 CREATE TABLE analysis_results (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     analysis_id          UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
-    summary              TEXT     NOT NULL,
-    change_intensity     SMALLINT NOT NULL CHECK (change_intensity BETWEEN 0 AND 100),
-    intensity_label      VARCHAR(20) NOT NULL,
-    keep_points          JSONB    NOT NULL DEFAULT '[]',
-    emphasize_points     JSONB    NOT NULL DEFAULT '[]',
-    top_changes          JSONB    NOT NULL DEFAULT '[]',
-    daily_cares          JSONB    NOT NULL DEFAULT '[]',
-    recommended_routines JSONB    NOT NULL DEFAULT '[]',
+    title                VARCHAR(60) NOT NULL,
+    summary              TEXT        NOT NULL,
+    keep_points          JSONB       NOT NULL DEFAULT '[]',
+    emphasize_points     JSONB       NOT NULL DEFAULT '[]',
+    change_intensity     JSONB       NOT NULL DEFAULT '[]',
+    category_changes     JSONB       NOT NULL DEFAULT '[]',
+    daily_cares          JSONB       NOT NULL DEFAULT '[]',
     comparison_image_key VARCHAR(512),
     image_status         VARCHAR(20) NOT NULL DEFAULT 'PENDING'
                          CHECK (image_status IN ('SKIPPED','PENDING','DONE','FAILED')),
-    liked                BOOLEAN,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -523,32 +610,40 @@ CREATE TABLE saved_results (
 CREATE TABLE routines (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_type        VARCHAR(20) NOT NULL
+                       CHECK (source_type IN ('FROM_ANALYSIS','STANDALONE')),
     analysis_result_id UUID REFERENCES analysis_results(id),
-    category           VARCHAR(10) NOT NULL CHECK (category IN ('SKIN','HEALTH','BODY')),
+    category           VARCHAR(10) CHECK (category IN ('SKIN','BODY','HEALTH')),
+    duration_weeks     SMALLINT    CHECK (duration_weeks BETWEEN 1 AND 12),
     title              VARCHAR(60) NOT NULL,
-    duration_weeks     SMALLINT    NOT NULL CHECK (duration_weeks BETWEEN 1 AND 12),
-    per_week           SMALLINT    NOT NULL CHECK (per_week BETWEEN 1 AND 7),
-    minutes_per_day    SMALLINT    NOT NULL,
-    priority_rank      SMALLINT    NOT NULL DEFAULT 3,
-    start_date         DATE        NOT NULL,
-    end_date           DATE        NOT NULL,
     status             VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
                        CHECK (status IN ('ACTIVE','COMPLETED','CANCELED')),
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    start_date         DATE        NOT NULL,
+    end_date           DATE,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_routine_source CHECK (
+        (source_type = 'FROM_ANALYSIS'
+            AND analysis_result_id IS NOT NULL
+            AND category IS NULL AND duration_weeks IS NULL)
+     OR (source_type = 'STANDALONE'
+            AND analysis_result_id IS NULL
+            AND category IS NOT NULL AND duration_weeks IS NOT NULL)
+    )
 );
 
 CREATE TABLE routine_tasks (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    routine_id       UUID NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
-    scheduled_date   DATE NOT NULL,
-    scheduled_time   TIME,
-    title            VARCHAR(60) NOT NULL,
-    description      TEXT,
-    status           VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-                     CHECK (status IN ('PENDING','DONE','MISSED','RESCHEDULED')),
-    original_date    DATE,
-    reschedule_count SMALLINT NOT NULL DEFAULT 0,
-    completed_at     TIMESTAMPTZ
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    routine_id     UUID NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+    category       VARCHAR(10) NOT NULL CHECK (category IN ('SKIN','BODY','HEALTH')),
+    title          VARCHAR(60) NOT NULL,
+    timing         VARCHAR(40),
+    duration_label VARCHAR(20),
+    amount_label   VARCHAR(20),
+    scheduled_date DATE NOT NULL,
+    scheduled_time TIME,
+    status         VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                   CHECK (status IN ('PENDING','DONE','MISSED')),
+    completed_at   TIMESTAMPTZ
 );
 
 CREATE TABLE notification_settings (
@@ -602,16 +697,17 @@ CREATE TABLE ai_jobs (
 
 ---
 
-## 7. 개인정보 관련 데이터 처리
+## 7. 개인정보 관련 처리
 
 | 요구 (PRD §10) | 구현 |
 | --- | --- |
-| 사진 삭제 | `DELETE /api/v1/profiles/me/photo` → 스토리지 객체 즉시 삭제, `photo_key`를 NULL로. 기존 분석 결과의 비교 이미지는 별도 삭제 대상 |
-| 계정 삭제 | `users.deleted_at` 기록 + **모든 이미지 객체 즉시 삭제** → 30일 후 배치로 행 하드 삭제 |
+| 사진 삭제 | 스토리지 객체 즉시 삭제, `photo_key` NULL |
+| 분석 전체 삭제 | 시안 11의 "내 분석 전체 삭제" → `analyses` 및 연결 이미지 전부 삭제 |
+| 계정 삭제 | `deleted_at` 기록 + 모든 이미지 즉시 삭제 → 30일 후 하드 삭제 |
 | 필수/선택 동의 분리 | `consents.required` |
-| 만 14세 미만 차단 | `birth_date` 서버 검증. 위반 시 `PROFILE_UNDERAGE` |
-| 저장 리전 | 오브젝트 스토리지는 **국내 리전**. 해외 리전 사용 시 국외 이전 동의 항목 추가 필요 |
-| 로그 분리 | `ai_jobs`에 프롬프트 원문·이미지 미저장 |
+| 만 14세 미만 차단 | `birth_date` 검증 — **입력 화면 미설계로 현재 불가** (PRD O-2) |
+| 저장 리전 | 국내 리전 |
+| 로그 분리 | `ai_jobs`에 프롬프트·이미지 미저장 |
 
 ---
 
@@ -619,7 +715,9 @@ CREATE TABLE ai_jobs (
 
 | # | 내용 | 영향 |
 | --- | --- | --- |
-| E-1 | `change_intensity` 산출식 미정 (PRD O-5) | 현재는 AI 출력값 그대로 저장. 확정 시 계산 로직을 서버로 이관 |
-| E-2 | 소셜 로그인 제공자 확정 (KAKAO/GOOGLE 중 무엇을 MVP에 넣을지) | `provider` CHECK 제약 조정 |
-| E-3 | PG사 미정 | `payments` 컬럼이 PG 응답 스펙에 따라 변경될 수 있음 |
-| E-4 | 루틴 태스크 생성 시점 — 전체 기간 일괄 생성 vs 주 단위 생성 | 현재 설계는 **생성 시 전체 기간 일괄**. 12주 × 7일 = 최대 84행/루틴 |
+| E-1 | `profiles.birth_date` / `gender`가 nullable — 입력 화면 미설계 (PRD O-2) | 만 14세 검증 불가. 화면 확정 후 NOT NULL 전환 |
+| E-2 | `consents` 테이블은 정의됐으나 쓰이지 않음 — 동의 화면 미설계 | 법적 요구사항 |
+| E-3 | `FROM_ANALYSIS` 목표의 기간 개념이 없어 `routine_tasks`를 몇 일치 만들지 불명확 | `STANDALONE`은 `duration_weeks`로 확정. `FROM_ANALYSIS`는 AI 출력 태스크를 `start_date` 기준으로 배치 |
+| E-4 | 미수행 재배치 로직 보류 — `MISSED` 상태만 정의 (PRD O-9) | |
+| E-5 | PG사 미정 → `payments` 컬럼 변경 가능 | |
+| E-6 | 홈의 피부 상태 수치(수분·요철·각질·톤)를 저장할 테이블이 없음 | **PRD O-1 정책 결정 후 설계.** 유지하기로 하면 `profile_metrics` 테이블 신설 필요 |
