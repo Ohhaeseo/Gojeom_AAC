@@ -10,14 +10,25 @@
 
 **아래 3개가 정해지지 않으면 금요일 오후부터 막힌다.** 코딩보다 먼저 처리한다.
 
-### 0-1. OpenAI 키와 모델 확정 — 없으면 토요일 전체가 죽는다
+### 0-1. ✅ OpenAI 키와 모델 확정 — **완료 (8/13)**
 
-- [ ] OpenAI 계정 결제 수단 등록 · 사용 한도 설정
-- [ ] API 키 발급 → `backend/.env`의 `OPENAI_API_KEY`에 입력
-- [ ] 텍스트 모델 ID 확정 → `OPENAI_MODEL_TEXT`
-- [ ] `curl`로 호출 1회 성공 확인 (모델 ID가 유효한지)
+- [x] API 키 발급 · 크레딧 충전 ($100)
+- [x] `.env`에 실제 키 입력 → `/v1/models` 인증 성공 (126개 모델)
+- [x] 모델 핀 고정 — `OPENAI_MODEL_TEXT=gpt-5.4-mini` · `OPENAI_MODEL_IMAGE=gpt-image-1`
 
-> 지금 `.env`에는 `local-dummy`가 들어 있다. 실제 키로 교체해야 한다.
+**스파이크 결과** — 실제 스키마로 3개 모델 비교. 셋 다 strict JSON Schema를 지켰고 한국어 출력도 정상.
+
+| 모델 | 지연 | 출력 토큰 | 비고 |
+| --- | --- | --- | --- |
+| `gpt-4.1-mini` | 5.4초 | 358 | 설명이 일반적 |
+| `gpt-5.4` | 10.9초 | 649 | 가장 구체적, 느림 |
+| **`gpt-5.4-mini`** | **4.5초** | 490 | 채택 — 구체적이면서 가장 빠름 |
+
+- 결과 생성 스키마(중첩 배열 2개 포함)까지 통과. `categoryChanges` 3건도 SKIN·BODY·HEALTH로 정확히 나옴
+- **P95 30초 목표에 여유가 크다.** 키워드 추출 + 결과 생성을 합쳐도 10초 안쪽
+- 발견된 문제와 조치는 §0-5 참조
+
+> `gpt-image-1`은 미검증이다. 이미지 생성은 이번 스프린트 범위 밖이라 나중에 확인한다.
 
 ### 0-2. 오브젝트 스토리지 결정 — 없으면 사진 업로드가 안 된다
 
@@ -47,6 +58,18 @@
 
 - [ ] `AUTH_EMAIL_DUPLICATED` (409) 에러 코드 추가 — 회원가입 이메일 중복. 현재 API.md에 없다
 - [ ] `ErrorCode` enum에도 동일하게 추가
+
+### 0-5. ✅ 키워드 카테고리 FACE 추가 — **완료 (8/13)**
+
+스파이크에서 발견한 실제 문제. `"차분한 인상"`·`"또렷한 인상"` 같은 얼굴 관련 키워드가 3종(SKIN/BODY/HEALTH) 강제 탓에 **`HEALTH`로 오분류**됐다. Figma 시안의 실제 키워드(`다이아몬드형`·`귀족턱`·`큰 눈`)도 대부분 얼굴 관련이라 같은 문제가 난다.
+
+- [x] `V2__keyword_category_face.sql` — `analysis_keywords.category` CHECK를 4종으로 확장 (적용·검증 완료)
+- [x] `KeywordCategory` enum 신설 (4종) — `Category`(3종)와 분리
+- [x] API.md · ERD.md 반영
+
+**키워드만 4종이다.** `profiles.priorities` · `routines.category` · `routine_tasks.category` · `categoryChanges`는 3종 그대로다. 우선순위와 루틴에는 얼굴형이 없기 때문이다.
+
+> 구현 시 `Category`에 `FACE`를 추가하고 싶어질 수 있는데, 그러면 우선순위에 얼굴형이 들어가 시안(06 우선 순위 등록)과 어긋난다. 두 enum을 합치지 않는다.
 
 ---
 

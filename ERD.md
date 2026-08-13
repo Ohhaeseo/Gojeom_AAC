@@ -22,6 +22,8 @@
 > ⑨ `ai_jobs`에 `INBODY_OCR` 단계 추가
 >
 > **v2.1** — 목표 생성 경로가 2종(저장된 분석 결과 기반 / 새 루틴)임이 확정되어 `routines`에 `source_type`·`category`·`duration_weeks`·`end_date`를 복원했다.
+>
+> **v2.2** — `analysis_keywords.category`에 `FACE`를 추가해 **4종**으로 넓혔다(`V2__keyword_category_face.sql`). 다른 카테고리 컬럼은 3종 그대로다.
 
 ---
 
@@ -313,12 +315,13 @@ stateDiagram-v2
 
 | 컬럼 | 비고 |
 | --- | --- |
-| category | **`SKIN` `BODY` `HEALTH` 3종** 〔v2: FACE 제거〕 |
+| category | **`SKIN` `FACE` `BODY` `HEALTH` 4종** 〔v2.2〕 — 키워드만 `FACE`를 갖는다 |
 | ~~origin~~ | **삭제** 〔v2〕 — 시안(14)은 구분 없는 단순 체크박스 목록이다 |
 | selected | 사용자 확정 키워드만 `true`. AI가 기본 선택 상태를 만들지 않는다 |
 
 - 선택 개수 1~4개는 애플리케이션 레이어에서 검증한다.
-- `얼굴형`은 카테고리가 아니라 키워드 **라벨**로 나타난다("다이아몬드형" 등).
+- **키워드만 4종이다.** `profiles.priorities` · `routines.category` · `routine_tasks.category` · `category_changes`는 모두 3종을 유지한다. 얼굴형은 우선순위나 루틴의 대상이 아니기 때문이다.
+- 근거: 2026-08-13 AI 스파이크에서 "차분한 인상"·"또렷한 인상" 같은 얼굴 키워드가 3종 강제 탓에 `HEALTH`로 오분류되는 것을 확인했다. 마이그레이션 `V2__keyword_category_face.sql`.
 
 ### 3.7 `analysis_results`
 

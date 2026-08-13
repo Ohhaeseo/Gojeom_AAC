@@ -65,6 +65,7 @@
 | --- | --- | --- |
 | `Provider` | `LOCAL` `GOOGLE` | — |
 | **`Category`** | `SKIN` `BODY` `HEALTH` | 피부 / 체형 / 건강 |
+| **`KeywordCategory`** | `SKIN` `FACE` `BODY` `HEALTH` | 피부 / 얼굴형 / 체형 / 건강 |
 | `Gender` | `MALE` `FEMALE` `UNSPECIFIED` | 남성 / 여성 / 선택 안 함 |
 | `AnalysisStatus` | `CREATED` `EXTRACTING` `KEYWORDS_READY` `GENERATING` `DONE` `FAILED` | — |
 | `ImageStatus` | `SKIPPED` `PENDING` `DONE` `FAILED` | — |
@@ -79,8 +80,10 @@
 
 | 삭제 | 사유 |
 | --- | --- |
-| `PriorityCategory` (4종) | `Category`(3종)로 통합. `FACE`는 카테고리가 아니라 키워드 라벨이다 |
+| `PriorityCategory` (4종) | `Category`(3종)로 통합. 우선순위에는 얼굴형이 없다 |
 | `RoutineCategory` | `Category`와 동일해져 통합 |
+
+> **`Category`(3종)와 `KeywordCategory`(4종)를 합치지 않는다.** 우선순위·루틴·`categoryChanges`는 3종이고, **키워드만 `FACE`를 갖는다.** 2026-08-13 AI 스파이크에서 "차분한 인상" 같은 얼굴 키워드가 3종 강제 탓에 `HEALTH`로 오분류되는 것을 확인해 분리했다.
 | `InputMode` | 입력 방식 선택 화면이 없다 |
 | `KeywordOrigin` | 시안의 키워드 목록에 공통/충돌 구분이 없다 |
 | `ChangeTag` | `categoryChanges`가 카테고리 기반으로 바뀌었다 |
@@ -421,10 +424,10 @@
     "minSelect": 1,
     "maxSelect": 4,
     "keywords": [
-      { "id": "k1", "label": "다이아몬드형", "reason": "얼굴선 비율에서 도출했어요.", "category": "SKIN",   "displayOrder": 1 },
-      { "id": "k2", "label": "귀족턱",       "reason": "입력하신 '단정한 인상'과 연결돼요.", "category": "SKIN", "displayOrder": 2 },
+      { "id": "k1", "label": "다이아몬드형", "reason": "얼굴선 비율에서 도출했어요.", "category": "FACE", "displayOrder": 1 },
+      { "id": "k2", "label": "귀족턱",       "reason": "입력하신 '단정한 인상'과 연결돼요.", "category": "FACE", "displayOrder": 2 },
       { "id": "k3", "label": "17호 피부",     "reason": "사진의 피부 톤 범위예요.", "category": "SKIN", "displayOrder": 3 },
-      { "id": "k4", "label": "큰 눈",         "reason": "'또렷한 인상'에서 도출했어요.", "category": "SKIN", "displayOrder": 4 }
+      { "id": "k4", "label": "큰 눈",         "reason": "'또렷한 인상'에서 도출했어요.", "category": "FACE", "displayOrder": 4 }
     ]
   }
 }
@@ -795,7 +798,7 @@
           "properties": {
             "label":    { "type": "string", "maxLength": 40 },
             "reason":   { "type": "string", "maxLength": 120 },
-            "category": { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] }
+            "category": { "type": "string", "enum": ["SKIN", "FACE", "BODY", "HEALTH"] }
           }
         }
       }
