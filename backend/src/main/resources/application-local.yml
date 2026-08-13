@@ -1,0 +1,20 @@
+# 로컬 개발용 오버라이드
+# 실행: SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+#
+# 시크릿은 여기에 적지 않는다. .env 또는 IDE 실행 구성의 환경 변수로 주입한다.
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/gojeom}
+    username: ${DB_USERNAME:gojeom}
+    password: ${DB_PASSWORD:gojeom}
+  jpa:
+    properties:
+      hibernate:
+        show_sql: true
+
+logging:
+  level:
+    com.gojeom: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
