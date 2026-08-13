@@ -261,7 +261,7 @@ erDiagram
 
 | 컬럼 | 타입 | 제약 | 비고 |
 | --- | --- | --- | --- |
-| photo_key | VARCHAR(512) | NOT NULL | |
+| photo_key | VARCHAR(512) | **NULL 허용** | 사진 삭제 시 NULL. 사진 없는 프로필로는 신규 분석 불가 (§7) |
 | **priorities** | JSONB | NOT NULL | **§5.1 — 순서 있는 3개 배열** 〔v2 신규〕 |
 | birth_date | DATE | **NULL** | 시안에 입력 화면 없음 (PRD O-2) |
 | gender | VARCHAR(20) | **NULL** | 시안에 입력 화면 없음 (PRD O-2) |
@@ -543,7 +543,7 @@ CREATE TABLE consents (
 CREATE TABLE profiles (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    photo_key        VARCHAR(512) NOT NULL,
+    photo_key        VARCHAR(512),          -- 사진 삭제 시 NULL (V3에서 nullable 전환)
     priorities       JSONB        NOT NULL,
     birth_date       DATE,
     gender           VARCHAR(20)  CHECK (gender IN ('MALE','FEMALE','UNSPECIFIED')),

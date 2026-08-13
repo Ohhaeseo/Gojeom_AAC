@@ -156,25 +156,33 @@
 
 > `hasProfile`은 프론트의 최초 진입 라우팅 기준이다. D1-7 완료 시 반드시 실제 값으로 바꿔야 한다. ([API.md](../API.md) C-1)
 
-### D1-6. storage presigned (2h)
+### D1-6. ✅ storage presigned — 완료
 
-- [ ] `storage/ObjectKeyFactory` — `profiles/{userId}/{uuid}.{ext}` 등 4종 규칙
-- [ ] `storage/StorageService` — `S3Presigner`로 PUT 5분 / GET 10분 URL 발급
-- [ ] `storage/UploadController` — `POST /uploads/presigned`
-- [ ] `contentLength > 10MB` → `FILE_TOO_LARGE`
-- [ ] **발급된 key가 요청자 소유 경로인지 검증하는 유틸** (저장 시점에 재확인)
+- [x] `storage/UploadPurpose` — `PROFILE_PHOTO` · `REFERENCE_IMAGE` · `INBODY_DOCUMENT`
+- [x] `storage/ObjectKeyFactory` — key 생성 + **소유권 검증** + 허용 이미지 타입 제한
+- [x] `storage/StorageService` — PUT 5분 / GET 10분 presign, 삭제
+- [x] `storage/UploadController` — `POST /uploads/presigned`
+- [x] `common/config/StorageConfig` — AWS면 endpointOverride 생략, MinIO·NCP는 적용
 
-**완료 판정** — 발급받은 URL로 실제 파일 PUT 성공, GET URL로 조회 성공
+**키 경로 변경** — ERD §8은 참고 사진 키를 `references/{userId}/{analysisId}/...`로 정의했으나, presign 시점에는 분석이 아직 생성되지 않아 `analysisId`를 알 수 없다. `references/{userId}/{uuid}.{ext}`로 단순화했다.
 
-### D1-7. profile 도메인 (2.5h)
+**허용 타입** — JPG · PNG · HEIC · WEBP만 URL을 발급한다. 그 외는 `400 VALIDATION_ERROR`.
 
-- [ ] `profile/entity/Profile` — JSONB 3개(`priorities`·`inbody`·`analysisSummary`)에 `@JdbcTypeCode(SqlTypes.JSON)`
-- [ ] `profile/dto/ProfileCreateRequest` + **`priorities` 커스텀 검증** (길이 3 · 중복 없음 · `SKIN`/`BODY`/`HEALTH`)
-- [ ] `profile/ProfileController` — `POST /profiles` · `GET /profiles/me`
-- [ ] `POST`: photoKey 소유 검증 → 기존 active 프로필 비활성화 → 새 행 생성
-- [ ] `GET`: `photoUrl`을 presigned GET URL로 발급
+### D1-7. ✅ profile 도메인 — 완료
 
-**이 시점의 `analysisSummary`는 `null`이다.** AI 연동이 D2-2에서 붙는다. 가짜 값을 넣지 않는다. 프론트에 "아직 null로 내려간다"고 공유한다.
+- [x] `profile/entity/Profile` — JSONB 3개에 `@JdbcTypeCode(SqlTypes.JSON)`
+- [x] `Inbody`(6종) · `ProfileAnalysisSummary` 레코드
+- [x] `@Priorities` 커스텀 검증 — 정확히 3개 · 중복 없음 · 3종 전부
+- [x] `POST /profiles` · `GET /profiles/me` · `PATCH /profiles/me` · `PATCH /profiles/me/priorities` · `DELETE /profiles/me/photo`
+- [x] photoKey 소유 검증 → 기존 활성 프로필 비활성화 → 새 행 생성
+- [x] **`GET /users/me`의 `hasProfile`을 실제 조회로 교체** (D1-5에서 남겨둔 항목)
+
+**`analysisSummary`는 여전히 `null`이다.** D2-2에서 AI가 채운다. 가짜 값을 넣지 않는다.
+
+**고친 결함 2건**
+
+1. **`photo_key`가 `NOT NULL`이라 사진 삭제가 500으로 실패**했다. PRD §10과 ERD §7은 "삭제 시 NULL"을 규정하는데 V1 스키마가 어긋나 있었다. `V3__profile_photo_key_nullable.sql`로 맞췄다.
+2. **`Inbody.isEmpty()`가 JSONB에 `"empty": false`로 저장**됐다. Jackson이 파생 메서드를 속성으로 본 것이다. `@JsonIgnore`로 차단했다.
 
 ### D1-8. 🔴 AI 스파이크 (2h) — 저녁
 
@@ -207,6 +215,27 @@
 **DB 확인** — 한글 닉네임 정상 저장, BCrypt 해시 60자, `users=1 subscriptions=1`(트랜잭션 정합성).
 
 **추가로 고친 것** — 12번 시나리오에서 깨진 JSON이 **500으로 나가는 결함**을 발견해 `HttpMessageNotReadableException` 핸들러를 추가했다. 클라이언트 잘못을 서버 장애로 보이게 하는 문제였다.
+
+### D1-6·D1-7 검증 (8/14)
+
+실제 S3와 PostgreSQL로 확인.
+
+| 시나리오 | 결과 |
+| --- | --- |
+| presigned 발급 → **실제 S3 PUT** | 200 |
+| 10MB 초과 | 413 `FILE_TOO_LARGE` |
+| PDF 등 비허용 타입 | 400 + 사유 |
+| **B가 A의 photoKey로 프로필 등록** | **403 `FORBIDDEN_RESOURCE`** |
+| priorities 2개 / 중복 / FACE 포함 | 400 전부 차단 |
+| 키 300cm | 400 + 필드 사유 |
+| 프로필 등록 → 조회 | photoUrl presigned 발급 확인 |
+| 우선순위 변경 | 순서 반영 확인 |
+| **사진 삭제 → S3 객체** | 200 → 403 = **즉시 삭제 확인** |
+| `hasProfile` | 등록 전 false → 등록 후 true |
+
+**S3 삭제 판정 주의** — 최소 권한 정책이라 `ListBucket`이 없다. 이 경우 S3는 없는 객체에 **404가 아니라 403**을 반환한다. `200 → 403` 전이가 삭제 확인이다.
+
+**DB 확인** — `priorities` 순서 보존, 인바디 6종 JSONB 정상, 사용자별 활성 프로필 1행, `analysis_summary` 전부 null(D2-2 전이므로 정상).
 
 **금요일 총 13h.** 많다. D1-8을 지키기 위해 D1-6·D1-7이 밀리면 토요일 오전으로 넘긴다.
 

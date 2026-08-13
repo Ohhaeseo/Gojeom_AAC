@@ -2,6 +2,7 @@ package com.gojeom.user;
 
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.profile.repository.ProfileRepository;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
 import com.gojeom.user.dto.UserDtos.MeResponse;
@@ -21,6 +22,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final ProfileRepository profileRepository;
 
     @Transactional(readOnly = true)
     public MeResponse getMe(UUID userId) {
@@ -30,9 +32,8 @@ public class UserService {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         Subscription subscription = subscriptionRepository.findByUserId(userId).orElse(null);
 
-        // 프로필 도메인은 D1-7에서 붙는다. 그때까지는 항상 false다.
-        // 프론트는 이 값에 따라 프로필 등록 화면으로 보낸다.
-        boolean hasProfile = false;
+        // 프론트의 최초 진입 라우팅 기준. false면 프로필 등록 화면으로 보낸다. (API.md C-1)
+        boolean hasProfile = profileRepository.existsByUserIdAndIsActiveTrue(userId);
 
         return new MeResponse(
                 user.getId(),

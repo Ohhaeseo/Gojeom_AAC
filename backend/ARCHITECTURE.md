@@ -389,12 +389,14 @@ int consumeCredit(@Param("id") UUID id);
 
 ```text
 profiles/{userId}/{uuid}.{ext}
-references/{userId}/{analysisId}/{uuid}.{ext}
+references/{userId}/{uuid}.{ext}
 results/{userId}/{resultId}/{current|peak}.png
 inbody/{userId}/{uuid}.{ext}
 ```
 
 ### presigned URL
+
+> 참고 사진 키에 `analysisId`를 넣지 않는다. presigned URL 발급 시점에는 분석이 아직 생성되지 않아 ID를 알 수 없다. 어떤 분석에 속하는지는 `analysis_reference_images` 행이 기록한다.
 
 | 용도 | 만료 |
 | --- | --- |
