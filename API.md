@@ -97,6 +97,7 @@
 | 400 | `VALIDATION_ERROR` | 입력값을 다시 확인해주세요. |
 | 401 | `AUTH_TOKEN_EXPIRED` | 로그인이 만료되었어요. |
 | 401 | `AUTH_INVALID_CREDENTIALS` | 이메일 또는 비밀번호를 확인해주세요. |
+| 409 | `AUTH_EMAIL_DUPLICATED` | 이미 가입된 이메일이에요. |
 | 403 | `FORBIDDEN_RESOURCE` | 접근할 수 없는 항목이에요. |
 | 403 | `CONSENT_REQUIRED` | 필수 항목에 동의해주세요. |
 | 403 | `PROFILE_UNDERAGE` | 만 14세 이상만 이용할 수 있어요. |
