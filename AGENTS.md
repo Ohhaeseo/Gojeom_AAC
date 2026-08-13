@@ -20,6 +20,7 @@
 | DB 스키마 | [ERD.md](ERD.md) |
 | 프론트 구조 | [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) |
 | 백엔드 구조·비동기·AI 연동 | [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) |
+| **백엔드 작업을 이어받을 때** | [backend/HANDOVER.md](backend/HANDOVER.md) → [backend/TASKS.md](backend/TASKS.md) |
 
 **충돌 시 우선순위** — Figma 시안 > design.md > 나머지 문서.
 시안과 문서가 다르면 문서를 고치고, 고친 이유를 남긴다.

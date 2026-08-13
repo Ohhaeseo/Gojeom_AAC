@@ -180,13 +180,23 @@
 {
   "success": true,
   "data": {
-    "accessToken": "eyJ...", "refreshToken": "eyJ...",
-    "user": { "id": "0f8c...", "email": "user@example.com", "nickname": "멋쟁이 사자" }
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "expiresIn": 1800,
+    "user": {
+      "id": "0f8c...",
+      "email": "user@example.com",
+      "nickname": "멋쟁이 사자",
+      "provider": "LOCAL"
+    }
   }
 }
 ```
 
-가입 시 `TRIAL` 구독과 **분석권 1회**가 자동 생성된다.
+- `expiresIn`은 accessToken의 유효 시간(초)이다. 프론트는 이 값으로 갱신 시점을 잡는다.
+- 가입 시 `TRIAL` 구독과 **분석권 1회**가 자동 생성된다.
+- **이메일은 소문자로 정규화**된다. `A@x.com`과 `a@x.com`은 같은 계정이며, 두 번째 가입은 `409 AUTH_EMAIL_DUPLICATED`.
+- `POST /auth/login` · `POST /auth/refresh`도 **같은 형식**을 반환한다.
 
 #### `POST /auth/oauth/google`
 
@@ -246,6 +256,8 @@
 
 `purpose`: `PROFILE_PHOTO` | `REFERENCE_IMAGE` | `INBODY_DOCUMENT`
 
+**허용 `contentType`** — `image/jpeg` · `image/png` · `image/heic` · `image/webp`. 그 외는 `400 VALIDATION_ERROR`이며 URL을 발급하지 않는다.
+
 ```json
 // 200
 {
@@ -304,17 +316,30 @@
     "profileId": "7a2e...",
     "photoUrl": "https://storage.../a1b2.jpg?X-Amz-Signature=...",
     "priorities": ["SKIN", "HEALTH", "BODY"],
-    "analysisSummary": {
-      "faceImpression": ["부드러운 얼굴선", "자연스러운 표정"],
-      "bodyRange": "표준 범위",
-      "healthNotes": ["평균 수면 6.5시간 · 사용자 입력 기준"]
+    "heightCm": 164,
+    "weightKg": 52.4,
+    "sleepHours": 6.5,
+    "inbody": {
+      "bodyWaterL": 32.5, "proteinKg": 8.7, "mineralKg": 3.1,
+      "bodyFatKg": 14.2, "skeletalMuscleKg": 24.1, "bmi": 19.5
     },
-    "createdAt": "2026-08-10T03:50:00Z"
+    "analysisSummary": null,
+    "createdAt": "2026-08-14T03:50:00Z"
   }
 }
 ```
 
-- 생성에 3~8초가 걸린다. 프론트는 로딩 화면(시안 10)을 붙인다.
+`GET /profiles/me` · `PATCH /profiles/me` · `PATCH /profiles/me/priorities`도 **같은 형식**을 반환한다.
+
+- ⚠️ **`analysisSummary`는 현재 항상 `null`이다.** AI 연동(D2-2) 전이라 채울 값이 없고, 가짜 값을 넣지 않는다. 연동되면 아래 형태가 들어간다.
+  ```json
+  { "faceImpression": ["부드러운 얼굴선"], "bodyRange": "표준 범위",
+    "healthNotes": ["평균 수면 6.5시간 · 사용자 입력 기준"],
+    "modelVersion": "...", "analyzedAt": "2026-08-14T04:12:00Z" }
+  ```
+- `photoUrl`은 사진을 삭제하면 `null`이 된다.
+- **`priorities` 검증** — 정확히 3개, 중복 없이, `SKIN`·`BODY`·`HEALTH` 전부. 어긋나면 `400 VALIDATION_ERROR`.
+- **`photoKey` 소유 검증** — 다른 사용자의 key를 보내면 `403 FORBIDDEN_RESOURCE`.
 - **응답에 점수·등급 필드는 없다.** 프론트도 임의 환산 UI를 만들지 않는다.
 
 #### `GET /profiles/me`
