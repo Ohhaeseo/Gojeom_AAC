@@ -21,8 +21,12 @@
 | 프론트 구조 | [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) |
 | 백엔드 구조·비동기·AI 연동 | [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) |
 
-**충돌 시 우선순위** — `assets/images/UI/`의 Figma 시안 > design.md > 나머지 문서.
+**충돌 시 우선순위** — Figma 시안 > design.md > 나머지 문서.
 시안과 문서가 다르면 문서를 고치고, 고친 이유를 남긴다.
+
+> **시안은 저장소에 없다.** 저장소가 공개라 제외했다.
+> [Figma 원본](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)을 보고,
+> 로컬 참조가 필요하면 `assets/images/UI/`(gitignore 대상)에 PNG로 export 해둔다.
 
 ---
 
@@ -36,7 +40,7 @@
 ├─ design.md              디자인 시스템
 ├─ API.md                 FE ⇄ BE 계약
 ├─ ERD.md                 데이터 모델
-├─ assets/images/UI/      Figma export 41장 (원본 폭 458px) — 디자인 정본
+├─ assets/images/UI/      Figma export (원본 폭 458px) — 디자인 정본 · gitignore 대상
 │
 ├─ frontend/              React · TypeScript · Vite
 │  ├─ ARCHITECTURE.md

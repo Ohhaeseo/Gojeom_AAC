@@ -73,7 +73,7 @@
 | [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) | 프론트 구조 · 라우팅 · API 계층 |
 | [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) | 백엔드 기술 아키텍처 · 패키지 구조 |
 
-시안 원본은 `assets/images/UI/` 에 있습니다.
+디자인 시안은 [Figma 원본](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)이 정본입니다. 저장소에는 포함하지 않으며, 로컬에서 참조할 때는 `assets/images/UI/`(gitignore 대상)에 PNG로 export 해서 사용합니다.
 
 ## 📁 구조
 

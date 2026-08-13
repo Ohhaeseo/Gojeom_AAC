@@ -4,7 +4,7 @@
 | --- | --- |
 | 문서 버전 | v2.0 |
 | 최종 수정일 | 2026-08-13 |
-| 근거 | `assets/images/UI/` 의 Figma export 41장 (원본 폭 458px) |
+| 근거 | [Figma 원본](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)에서 export한 시안 41장 (원본 폭 458px) |
 | 상위 문서 | [PRD.md](PRD.md) |
 | 짝 문서 | [API.md](API.md) · [ERD.md](ERD.md) |
 
@@ -1074,7 +1074,7 @@ accessibility:
 
 디자인 해석이 필요할 때의 우선순위.
 
-1. Figma 원본 (`assets/images/UI/`)
+1. [Figma 원본](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.) — 저장소에 시안을 포함하지 않는다
 2. 이 문서의 Design Token
 3. 컴포넌트 공통 규칙 (§4)
 4. 화면별 레이아웃 (§5)

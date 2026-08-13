@@ -52,7 +52,7 @@ frontend/src/
 
 ## 디자인
 
-토큰과 컴포넌트는 [design.md](../design.md)를 따른다. 시안 원본은 `assets/images/UI/`에 있으며, 문서와 시안이 다르면 **시안이 우선**이다(design.md §13).
+토큰과 컴포넌트는 [design.md](../design.md)를 따른다. 시안 원본은 [Figma](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)이며(저장소에 미포함), 문서와 시안이 다르면 **시안이 우선**이다(design.md §13).
 
 `(근사)` 표기된 수치는 export 이미지에서 판독한 값이므로 Figma 실측값으로 교체가 필요하다.
 
