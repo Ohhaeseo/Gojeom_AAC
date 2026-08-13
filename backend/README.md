@@ -81,6 +81,23 @@ Testcontainers가 PostgreSQL을 띄우므로 **Docker가 실행 중이어야 한
 cd backend && ./gradlew test
 ```
 
+### ⚠️ 현재 검증 상태
+
+| 항목 | 상태 |
+| --- | --- |
+| `compileJava` · `compileTestJava` | ✅ 통과 |
+| `build` (bootJar) | ✅ 통과 |
+| `test` (컨텍스트 로딩) | ⚠️ **미실행** |
+| `V1__init.sql` 실제 적용 | ⚠️ **미확인** |
+
+개발 환경에 Docker가 없어 Testcontainers를 띄우지 못했다. 즉 **컴파일은 되지만 앱이 실제로 기동하는지, Flyway 마이그레이션이 PostgreSQL에서 정상 적용되는지는 아직 확인되지 않았다.**
+
+Docker Desktop 설치 후(관리자 권한 + WSL2 필요) 아래를 실행해 검증해야 한다.
+
+```bash
+cd backend && ./gradlew test
+```
+
 ## 환경 변수
 
 `application.yml`에 값을 직접 적지 않는다. 전부 환경 변수로 주입한다. 목록은 [.env.example](.env.example) 참조.
