@@ -17,10 +17,14 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAppState();
-  const submit = () => {
-    const result = login(email, password);
-    if (result === 'NOT_FOUND') return setError('존재하지 않거나 삭제된 계정이에요. 회원가입을 진행해주세요.');
-    if (result === 'WRONG_PASSWORD') return setError('비밀번호가 일치하지 않아요.');
+  const [pending, setPending] = useState(false);
+  const submit = async () => {
+    setPending(true);
+    // 서버는 "없는 계정"과 "비밀번호 틀림"을 구분해 주지 않는다. 계정 존재 여부를
+    // 흘리지 않으려는 의도이므로, 서버가 준 문구를 그대로 보여준다.
+    const result = await login(email, password);
+    setPending(false);
+    if (!result.ok) return setError(result.message ?? '로그인에 실패했어요.');
     setError(''); router.replace('/home');
   };
   return (
@@ -31,7 +35,7 @@ export default function LoginScreen() {
         <FormField label="비밀번호" required value={password} onChangeText={(value) => { setPassword(value); setError(''); }} secureTextEntry placeholder="비밀번호를 입력해 주세요." error={error || undefined} />
       </View>
       <View style={styles.linkRow}><Text style={styles.muted}>아직 고점 회원이 아니신가요?</Text><Pressable onPress={() => router.replace('/signup')}><Text style={styles.link}>회원가입 하기</Text></Pressable></View>
-      <AppButton label="로그인" disabled={!email || !password} onPress={submit} />
+      <AppButton label={pending ? '로그인 중...' : '로그인'} disabled={!email || !password || pending} onPress={submit} />
       <View style={styles.social}>{social.map((source, index) => <Pressable key={index} accessibilityRole="button" accessibilityLabel="소셜 로그인 준비 중" style={styles.socialButton}><Image source={source} contentFit="contain" style={styles.socialIcon} /></Pressable>)}</View>
     </AppScreen>
   );

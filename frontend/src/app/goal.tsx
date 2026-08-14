@@ -1,29 +1,31 @@
 import { BlurView } from 'expo-blur';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
+import { ComparisonImage } from '@/components/analysis/ComparisonImage';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
 type Overlay = 'none' | 'loading' | 'done';
-const comparison = require('../../assets/comparison-before-after-reference.png');
 
 export default function GoalScreen() {
-  const { result } = useAppState();
+  const { result, ensureRoutine } = useAppState();
   const [overlay, setOverlay] = useState<Overlay>('none');
+  const [error, setError] = useState('');
   const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    if (overlay !== 'loading') return;
-    const id = setTimeout(() => setOverlay('done'), 2300);
-    return () => clearTimeout(id);
-  }, [overlay]);
+  // 목표 생성은 AI 호출이라 몇 초 걸린다. 오버레이를 띄운 채 실제 응답을 기다린다.
+  const createRoutine = async () => {
+    setOverlay('loading'); setError('');
+    const outcome = await ensureRoutine();
+    if (!outcome.ok) { setOverlay('none'); setError(outcome.message ?? '목표를 만들지 못했어요.'); return; }
+    setOverlay('done');
+  };
 
   useEffect(() => {
     if (overlay !== 'done') return;
@@ -36,11 +38,19 @@ export default function GoalScreen() {
     router.replace('/routines');
   };
 
+  if (!result) return (
+    <AppScreen navigation contentStyle={styles.content}>
+      <Text style={styles.title}>아직 분석 결과가 없어요</Text>
+      <Text style={styles.description}>고점 분석을 먼저 완료하면 목표를 만들 수 있어요.</Text>
+      <AppButton label="고점 분석하기" onPress={() => router.replace('/analysis-new')} />
+    </AppScreen>
+  );
+
   return (
     <AppScreen navigation contentStyle={styles.content}>
       <Text style={styles.title}>{result.title}</Text>
       <Text style={styles.description}>2026.08.12</Text>
-      <Image source={comparison} contentFit="cover" style={styles.comparison} />
+      <ComparisonImage image={result.comparisonImage} aspectRatio={1.08} />
 
       <Text style={styles.sectionTitle}>한눈에 보는 고점 요약</Text>
       <Text style={styles.description}>사용자가 구성한 정보를 중심으로 이루어진 요약이에요.</Text>
@@ -58,7 +68,8 @@ export default function GoalScreen() {
       <View style={styles.card}>{result.dailyCares.map((item) => <View key={item.title} style={styles.change}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.body}>{item.description}</Text></View>)}</View>
 
       <Text style={styles.question}>결과가 마음에 든다면?</Text>
-      <AppButton label="맞춤형 목표로 설정하기" onPress={() => setOverlay('loading')} />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <AppButton label="맞춤형 목표로 설정하기" onPress={createRoutine} />
 
       <Modal transparent visible={overlay !== 'none'} animationType="fade" presentationStyle="overFullScreen" statusBarTranslucent>
         <View style={[styles.overlayRoot, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 20) }]}>
@@ -77,11 +88,11 @@ export default function GoalScreen() {
 }
 
 const styles = StyleSheet.create({
+  errorText: { ...typography.caption, color: colors.danger },
   content: { gap: spacing.md },
   title: { ...typography.h1, color: colors.text },
   sectionTitle: { ...typography.h1, color: colors.text, marginTop: spacing.sm },
   description: { ...typography.body, color: colors.textMuted },
-  comparison: { width: '100%', aspectRatio: 1.08, borderRadius: radius.lg },
   card: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow },
   cardTitle: { ...typography.subtitle, color: colors.text },
   chips: { flexDirection: 'row', gap: 12 },

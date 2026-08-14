@@ -15,8 +15,15 @@ const social = [require('../../assets/figma/login-naver.svg'), require('../../as
 export default function SignupScreen() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [confirm, setConfirm] = useState('');
   const [error, setError] = useState(''); const { register } = useAppState();
+  const [pending, setPending] = useState(false);
   const valid = Boolean(email && password && password === confirm);
-  const submit = () => { if (!register(email, password)) return setError('이미 사용 중인 아이디예요.'); setError(''); router.replace('/name'); };
+  const submit = async () => {
+    setPending(true);
+    const result = await register(email, password);
+    setPending(false);
+    if (!result.ok) return setError(result.message ?? '회원가입에 실패했어요.');
+    setError(''); router.replace('/name');
+  };
   return (
     <AppScreen title="회원가입" headerLogo={false} contentStyle={styles.content}>
       <BrandLogo variant="face" style={styles.logo} />
@@ -26,7 +33,7 @@ export default function SignupScreen() {
         <FormField label="비밀번호 확인" required value={confirm} onChangeText={setConfirm} secureTextEntry placeholder="비밀번호를 다시 입력해 주세요." error={confirm && password !== confirm ? '비밀번호가 일치하지 않아요.' : undefined} />
       </View>
       <View style={styles.linkRow}><Text style={styles.muted}>이미 고점 회원이신가요?</Text><Pressable onPress={() => router.replace('/login')}><Text style={styles.link}>로그인 하기</Text></Pressable></View>
-      <AppButton label="회원가입 하기" disabled={!valid} onPress={submit} />
+      <AppButton label={pending ? '가입 중...' : '회원가입 하기'} disabled={!valid || pending} onPress={submit} />
       <View style={styles.social}>{social.map((source, index) => <Image key={index} source={source} contentFit="contain" style={styles.socialIcon} />)}</View>
       <Text style={styles.privacy}>GO.는 민감한 건강정보를 최소한으로 수집하고{`\n`}사용자 동의에 따라 철저하게 관리합니다.</Text>
     </AppScreen>

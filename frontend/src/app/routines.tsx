@@ -10,7 +10,7 @@ import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
 export default function RoutinesScreen() {
   const { tasks, toggleTask, result, hasAnalysis } = useAppState(); const [notification, setNotification] = useState(true);
-  if (!hasAnalysis) {
+  if (!hasAnalysis || !result) {
     return <AppScreen navigation contentStyle={styles.content}><View style={styles.empty}><Text style={styles.emptyTitle}>아직 생성된 루틴이 없어요.</Text><Text style={styles.description}>새로 진단을 완료하면 분석 결과를 바탕으로 맞춤 루틴이 생성돼요.</Text><AppButton label="새로 진단하기" onPress={() => router.push('/analysis-new')} /></View></AppScreen>;
   }
   return (
