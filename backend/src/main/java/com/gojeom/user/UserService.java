@@ -1,8 +1,11 @@
 package com.gojeom.user;
 
+import com.gojeom.analysis.service.AnalysisPurgeService;
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
+import com.gojeom.storage.StorageService;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
 import com.gojeom.user.dto.UserDtos.MeResponse;
@@ -23,6 +26,8 @@ public class UserService {
     private final UserRepository userRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final ProfileRepository profileRepository;
+    private final AnalysisPurgeService analysisPurgeService;
+    private final StorageService storageService;
 
     @Transactional(readOnly = true)
     public MeResponse getMe(UUID userId) {
@@ -44,6 +49,39 @@ public class UserService {
                 hasProfile,
                 subscription == null ? 0 : subscription.getAnalysisCredits(),
                 toInfo(subscription, now));
+    }
+
+    /**
+     * 계정 삭제. (PRD §10 · ERD.md §7 · API.md §5 7번)
+     *
+     * <p><b>계정 행은 soft delete, 이미지는 즉시 하드 삭제.</b> 두 가지를 다르게
+     * 다루는 이유가 있다. 계정은 착오 삭제와 정산·감사 대비로 유예를 두지만,
+     * 얼굴 사진은 생체정보에 준하므로 유예 없이 지운다. (ERD.md D-5)
+     *
+     * <p>지우는 객체 — 모든 프로필 사진(비활성 이력 포함) + 참고 사진 + 비교 이미지.
+     *
+     * <p>삭제 후에는 기존 액세스 토큰이 있어도 조회가 막힌다. 모든 조회가
+     * {@code findBy...AndDeletedAtIsNull}을 쓰기 때문이다.
+     *
+     * <p><b>30일 후 하드 삭제 배치는 아직 없다.</b> (ARCHITECTURE.md §11 {@code AccountPurger})
+     */
+    @Transactional
+    public void deleteAccount(UUID userId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        // 분석과 그에 딸린 이미지를 먼저 정리한다. 목표는 남는다 — 계정이 하드
+        // 삭제될 때 users FK CASCADE로 함께 사라진다.
+        analysisPurgeService.purgeAll(userId);
+
+        // 프로필 사진은 활성 행만이 아니라 이력 전부를 지운다. 예전 사진이
+        // 스토리지에 남으면 삭제 요구를 지킨 것이 아니다.
+        profileRepository.findByUserId(userId).stream()
+                .map(Profile::getPhotoKey)
+                .filter(key -> key != null && !key.isBlank())
+                .forEach(storageService::delete);
+
+        user.softDelete(OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     private SubscriptionInfo toInfo(Subscription subscription, OffsetDateTime now) {

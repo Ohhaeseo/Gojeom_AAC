@@ -40,6 +40,17 @@ public final class AuthDtos {
             @NotBlank String refreshToken) {
     }
 
+    /**
+     * Google 로그인. 프론트가 Google에서 받은 <b>ID 토큰</b>을 그대로 보낸다.
+     *
+     * <p>응답은 {@code POST /auth/login}과 동일한 {@link TokenResponse}다.
+     * 프론트가 로그인 방식에 따라 분기하지 않게 하기 위해서다. (API.md §6.1)
+     */
+    public record GoogleLoginRequest(
+            @NotBlank(message = "ID 토큰이 필요해요.")
+            String idToken) {
+    }
+
     public record TokenResponse(
             String accessToken,
             String refreshToken,

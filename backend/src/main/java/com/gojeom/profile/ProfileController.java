@@ -2,6 +2,8 @@ package com.gojeom.profile;
 
 import com.gojeom.common.response.ApiResponse;
 import com.gojeom.common.security.UserPrincipal;
+import com.gojeom.profile.dto.InbodyScanDtos.InbodyScanRequest;
+import com.gojeom.profile.dto.InbodyScanDtos.InbodyScanResponse;
 import com.gojeom.profile.dto.ProfileDtos.PrioritiesUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileResponse;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProfileController {
 
     private final ProfileService profileService;
+    private final InbodyScanService inbodyScanService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProfileResponse>> create(
@@ -58,5 +61,18 @@ public class ProfileController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePhoto(@AuthenticationPrincipal UserPrincipal me) {
         profileService.deletePhoto(me.id());
+    }
+
+    /**
+     * 시안 08의 "카메라로 서류 스켄하기".
+     *
+     * <p><b>결과를 저장하지 않는다.</b> 폼을 채워줄 뿐이며 사용자가 확인한 뒤
+     * {@code POST /profiles}나 {@code PATCH /profiles/me}로 저장한다. (PRD G-8)
+     */
+    @PostMapping("/inbody/scan")
+    public ApiResponse<InbodyScanResponse> scanInbody(
+            @AuthenticationPrincipal UserPrincipal me,
+            @Valid @RequestBody InbodyScanRequest request) {
+        return ApiResponse.ok(inbodyScanService.scan(me.id(), request));
     }
 }

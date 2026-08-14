@@ -15,6 +15,7 @@ import com.gojeom.storage.UploadPurpose;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,12 +26,17 @@ public class ProfileService {
     private final ProfileRepository profileRepository;
     private final StorageService storageService;
     private final ObjectKeyFactory keyFactory;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 프로필 등록.
      *
      * <p>기존 활성 프로필이 있으면 비활성화하고 새 행을 만든다. 갱신이 아니라 이력이다.
      * 과거 분석이 그 시점 프로필을 계속 가리킬 수 있어야 하기 때문이다. (ERD.md §3.3)
+     *
+     * <p>커밋 후 프로필 AI 분석이 비동기로 돌아 {@code analysisSummary}를 채운다.
+     * 응답 시점에는 아직 null이다 — 프론트는 필요하면 {@code GET /profiles/me}로
+     * 다시 읽는다. (D2-2)
      */
     @Transactional
     public ProfileResponse create(UUID userId, ProfileCreateRequest request) {
@@ -48,6 +54,7 @@ public class ProfileService {
                 request.sleepHours(),
                 request.inbody()));
 
+        eventPublisher.publishEvent(new ProfileCreatedEvent(profile.getId()));
         return toResponse(profile);
     }
 

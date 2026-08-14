@@ -57,6 +57,11 @@ jwt:
   access-minutes: 30
   refresh-days: 14
 
+google:
+  # 프론트와 공유하는 웹 클라이언트 ID. 시크릿은 필요 없다 (ID 토큰 검증 방식).
+  # 비어 있으면 Google 로그인만 비활성화되고 나머지는 정상 동작한다.
+  client-id: ${GOOGLE_CLIENT_ID:}
+
 openai:
   api-key: ${OPENAI_API_KEY}
   base-url: https://api.openai.com/v1
