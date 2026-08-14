@@ -1,6 +1,6 @@
 # GO. 시뮬레이션 실행 가이드
 
-이 문서는 Windows 개발 PC에서 iPhone의 Expo Go로 GO. 프론트엔드를 실행하는 방법을 설명합니다.
+이 문서는 개발 PC에서 iPhone의 Expo Go로 GO. 프론트엔드를 실행하는 방법을 설명합니다.
 
 ## 1. 준비물
 
@@ -13,12 +13,27 @@ Expo Go가 오래된 버전이면 `Project is incompatible with this version of 
 
 ## 2. 최초 설치
 
-저장소 루트에서 다음을 실행합니다.
+저장소를 처음 받는 경우:
+
+```bash
+git clone https://github.com/Ohhaeseo/Gojeom_AAC.git
+cd Gojeom_AAC
+git switch frontend
+cd frontend
+```
+
+Windows PowerShell:
 
 ```powershell
-cd frontend
 npm ci
 Copy-Item .env.example .env
+```
+
+macOS / Linux:
+
+```bash
+npm ci
+cp .env.example .env
 ```
 
 백엔드가 아직 없거나 프론트 화면만 확인할 때는 기본 `.env.example`을 그대로 복사하면 mock 모드로 실행됩니다.

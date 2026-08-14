@@ -12,10 +12,28 @@ GO. 모바일 앱의 Expo React Native 프론트엔드입니다. iPhone을 우�
 
 ## 빠른 실행
 
-```powershell
+저장소를 처음 받는 팀원은 프론트 브랜치를 선택합니다.
+
+```bash
+git clone https://github.com/Ohhaeseo/Gojeom_AAC.git
+cd Gojeom_AAC
+git switch frontend
 cd frontend
+```
+
+Windows PowerShell:
+
+```powershell
 npm ci
 Copy-Item .env.example .env
+npm run start
+```
+
+macOS / Linux:
+
+```bash
+npm ci
+cp .env.example .env
 npm run start
 ```
 
