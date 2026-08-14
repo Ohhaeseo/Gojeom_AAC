@@ -92,6 +92,37 @@ public class AnalysisResult extends BaseCreatedEntity {
         this.imageStatus = imageStatus;
     }
 
+    /**
+     * 비교 이미지 저장 위치. (ERD.md §8)
+     *
+     * <p><b>고점 이미지 한 장만 저장한다.</b> "현재" 쪽은 사용자가 이미 올린 프로필
+     * 사진을 그대로 쓰므로 복제할 이유가 없다. 그래서 컬럼 하나
+     * ({@code comparison_image_key})로 충분하다.
+     */
+    public static String peakImageKey(UUID userId, UUID resultId) {
+        return "results/%s/%s/peak.png".formatted(userId, resultId);
+    }
+
+    /** 생성 성공. 실패로 정리됐다가 뒤늦게 도착해도 성공이 사실이므로 덮어쓴다. */
+    public void applyComparisonImage(String key) {
+        this.comparisonImageKey = key;
+        this.imageStatus = ImageStatus.DONE;
+    }
+
+    /**
+     * 생성 실패. <b>텍스트 결과는 그대로 남는다.</b>
+     *
+     * <p>이미 성공한 건은 건드리지 않는다. 좀비 정리와 실제 완료가 겹칠 때
+     * 멀쩡한 이미지를 실패로 덮어쓰지 않기 위해서다.
+     */
+    public boolean markImageFailed() {
+        if (imageStatus == ImageStatus.DONE) {
+            return false;
+        }
+        this.imageStatus = ImageStatus.FAILED;
+        return true;
+    }
+
     public static AnalysisResult create(UUID analysisId, String title, String summary,
                                         List<String> keepPoints, List<String> emphasizePoints,
                                         List<String> changeIntensity,

@@ -9,6 +9,7 @@ import com.gojeom.storage.StorageService;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
 import com.gojeom.user.dto.UserDtos.MeResponse;
+import com.gojeom.user.dto.UserDtos.NicknameUpdateRequest;
 import com.gojeom.user.dto.UserDtos.SubscriptionInfo;
 import com.gojeom.user.entity.User;
 import com.gojeom.user.repository.UserRepository;
@@ -49,6 +50,21 @@ public class UserService {
                 hasProfile,
                 subscription == null ? 0 : subscription.getAnalysisCredits(),
                 toInfo(subscription, now));
+    }
+
+    /**
+     * 닉네임 변경.
+     *
+     * <p>가입 흐름이 회원가입 → 닉네임 입력 순서라 이 엔드포인트가 없으면
+     * 사용자가 정한 이름이 서버에 남지 않는다. (API.md에 없던 추가)
+     */
+    @Transactional
+    public MeResponse updateNickname(UUID userId, NicknameUpdateRequest request) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+
+        user.changeNickname(request.nickname().trim());
+        return getMe(userId);
     }
 
     /**

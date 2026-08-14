@@ -79,6 +79,11 @@ public class User extends BaseTimeEntity {
         return passwordHash != null;
     }
 
+    /** 홈의 "안녕하세요, {닉네임}님"에 쓰인다. 가입 후 언제든 바꿀 수 있다. */
+    public void changeNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
     public void softDelete(OffsetDateTime at) {
         this.deletedAt = at;
     }

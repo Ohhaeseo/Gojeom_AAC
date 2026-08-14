@@ -148,6 +148,72 @@ public class AnalysisTxService {
     }
 
     /**
+     * 비교 이미지를 만들 수 있는 분석인지.
+     *
+     * <p>참고 사진이 한 장도 없으면 만들지 않는다 — 무엇을 향해 바꿀지 알 수 없다.
+     * (PRD F-05 · ERD.md §3.5)
+     */
+    @Transactional(readOnly = true)
+    public boolean hasReferenceImages(UUID analysisId) {
+        return !referenceImageRepository.findByAnalysisIdOrderByDisplayOrderAsc(analysisId).isEmpty();
+    }
+
+    /**
+     * 비교 이미지 생성에 필요한 값 묶음. 트랜잭션 밖으로 나간다.
+     *
+     * @param photoKey 사용자 사진. 없으면 이미지를 만들 수 없다
+     */
+    public record ImageContext(
+            UUID analysisId,
+            UUID userId,
+            UUID resultId,
+            String photoKey,
+            List<String> referenceKeys,
+            List<String> keywordLabels) {
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ImageContext> loadImageContext(UUID analysisId) {
+        AnalysisResult result = resultRepository.findByAnalysisId(analysisId).orElse(null);
+        Analysis analysis = analysisRepository.findById(analysisId).orElse(null);
+        if (result == null || analysis == null) {
+            return Optional.empty();
+        }
+        Profile profile = profileRepository.findById(analysis.getProfileId()).orElse(null);
+        if (profile == null || profile.getPhotoKey() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new ImageContext(
+                analysisId,
+                analysis.getUserId(),
+                result.getId(),
+                profile.getPhotoKey(),
+                referenceImageRepository.findByAnalysisIdOrderByDisplayOrderAsc(analysisId).stream()
+                        .map(image -> image.getImageKey())
+                        .toList(),
+                keywordRepository.findByAnalysisIdAndSelectedTrueOrderByDisplayOrderAsc(analysisId).stream()
+                        .map(keyword -> keyword.getLabel())
+                        .toList()));
+    }
+
+    @Transactional
+    public void markImageDone(UUID analysisId, String comparisonImageKey) {
+        resultRepository.findByAnalysisId(analysisId)
+                .ifPresent(result -> result.applyComparisonImage(comparisonImageKey));
+    }
+
+    /** 이미지 실패는 <b>분석권 미차감 사유가 아니다.</b> 텍스트 결과는 이미 저장됐다. */
+    @Transactional
+    public void markImageFailed(UUID analysisId) {
+        resultRepository.findByAnalysisId(analysisId)
+                .ifPresent(result -> {
+                    if (result.markImageFailed()) {
+                        log.info("비교 이미지 실패 처리");
+                    }
+                });
+    }
+
+    /**
      * 실패 기록. 이미 끝난 분석은 건드리지 않는다.
      *
      * <p>실패해도 <b>분석권은 차감하지 않는다.</b> 차감은 결과 저장과 같은

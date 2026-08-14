@@ -52,19 +52,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AnalysisPipeline {
 
-    /**
-     * 비교 이미지 생성은 이번 스프린트 범위 밖이다. (TASKS.md §0-1 · ARCHITECTURE.md §13 6단계)
-     *
-     * <p>따라서 결과는 항상 {@code SKIPPED}로 저장한다. {@code PENDING}으로 두면
-     * 영영 끝나지 않는 폴링이 되고, {@code FAILED}로 두면 만들려고 시도조차 하지
-     * 않은 것을 실패라고 알리는 셈이다. 프론트는 {@code SKIPPED}에서 비교 슬라이더를
-     * 렌더링하지 않으므로 화면이 정상적으로 성립한다. (API.md §6.4)
-     *
-     * <p>이미지 생성을 붙일 때 이 상수를 지우고, 참고 사진 유무로 분기한다.
-     */
-    private static final ImageStatus IMAGE_STATUS_UNTIL_IMAGE_STAGE_EXISTS = ImageStatus.SKIPPED;
-
     private final AnalysisTxService analysisTx;
+    private final ImagePipeline imagePipeline;
     private final StorageService storageService;
     private final AiTextService aiTextService;
     private final TruncationDetector truncationDetector;
@@ -149,10 +138,19 @@ public class AnalysisPipeline {
 
             warnIfTruncated(result);
 
+            // 참고 사진이 있어야 무엇을 향해 바꿀지 알 수 있다. 없으면 만들지 않는다.
+            boolean willGenerateImage = !context.referenceImageKeys().isEmpty();
+
             analysisTx.completeWithResult(analysisId, context.userId(), result,
                     orderByPriorities(result, context.priorities()),
-                    IMAGE_STATUS_UNTIL_IMAGE_STAGE_EXISTS);
+                    willGenerateImage ? ImageStatus.PENDING : ImageStatus.SKIPPED);
             log.info("결과 생성 완료");
+
+            // 텍스트 결과는 이미 확정됐다. 이미지는 별도 풀에서 뒤따라간다 —
+            // 여기서 기다리면 사용자가 35초를 더 본다. (ARCHITECTURE.md §5.3)
+            if (willGenerateImage) {
+                imagePipeline.run(analysisId);
+            }
 
         } catch (AiException e) {
             analysisTx.markFailed(analysisId, e.errorCode());

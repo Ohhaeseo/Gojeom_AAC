@@ -8,9 +8,13 @@ import com.gojeom.analysis.dto.AnalysisDtos.OverviewKeyword;
 import com.gojeom.analysis.dto.AnalysisDtos.ResultResponse;
 import com.gojeom.analysis.entity.AnalysisResult;
 import com.gojeom.analysis.repository.AnalysisKeywordRepository;
+import com.gojeom.analysis.repository.AnalysisRepository;
 import com.gojeom.common.enums.ImageStatus;
 import com.gojeom.common.enums.ResultViewState;
 import com.gojeom.drawer.repository.SavedResultRepository;
+import com.gojeom.profile.entity.Profile;
+import com.gojeom.profile.repository.ProfileRepository;
+import com.gojeom.storage.StorageService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -41,6 +45,9 @@ public class ResultAssembler {
 
     private final AnalysisKeywordRepository keywordRepository;
     private final SavedResultRepository savedResultRepository;
+    private final AnalysisRepository analysisRepository;
+    private final ProfileRepository profileRepository;
+    private final StorageService storageService;
 
     public ResultResponse assemble(AnalysisResult result, ResultViewState viewState) {
         List<OverviewKeyword> keywords = keywordRepository
@@ -68,16 +75,27 @@ public class ResultAssembler {
     }
 
     /**
-     * 비교 이미지 블록.
+     * 비교 이미지 블록. 좌 {@code currentUrl}(현재) / 우 {@code peakUrl}(고점).
      *
-     * <p>이미지 생성 단계가 아직 없어 실제로는 {@code SKIPPED}로만 내려간다.
-     * 프론트는 {@code SKIPPED}에서 슬라이더를 렌더링하지 않으므로 화면이 성립한다.
+     * <p><b>"현재"는 사용자의 프로필 사진을 그대로 쓴다.</b> 생성하는 것은 고점 쪽
+     * 한 장뿐이다. 지금 모습은 이미 사용자가 올려둔 사진이 정답이라, 굳이 AI로
+     * 다시 만들면 사실과 다른 "현재"를 보여주게 된다.
+     *
+     * <p>사진을 지운 프로필이면 {@code currentUrl}이 null이다. 프론트는 두 URL이
+     * 모두 있어야 슬라이더를 그린다.
      */
     private ComparisonImage comparisonImage(AnalysisResult result) {
         if (result.getImageStatus() != ImageStatus.DONE) {
             return new ComparisonImage(result.getImageStatus(), null, null);
         }
-        // 이미지 생성 단계가 붙으면 여기서 presigned URL 2장을 만든다.
-        return new ComparisonImage(ImageStatus.DONE, null, null);
+        String currentKey = analysisRepository.findById(result.getAnalysisId())
+                .flatMap(analysis -> profileRepository.findById(analysis.getProfileId()))
+                .map(Profile::getPhotoKey)
+                .orElse(null);
+
+        return new ComparisonImage(
+                ImageStatus.DONE,
+                storageService.presignDownload(currentKey),
+                storageService.presignDownload(result.getComparisonImageKey()));
     }
 }

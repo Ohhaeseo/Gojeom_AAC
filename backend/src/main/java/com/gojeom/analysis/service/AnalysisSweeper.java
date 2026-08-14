@@ -1,6 +1,7 @@
 package com.gojeom.analysis.service;
 
 import com.gojeom.analysis.repository.AnalysisRepository;
+import com.gojeom.analysis.repository.AnalysisResultRepository;
 import com.gojeom.common.config.AnalysisProperties;
 import com.gojeom.common.exception.ErrorCode;
 import java.time.OffsetDateTime;
@@ -29,7 +30,16 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AnalysisSweeper {
 
+    /**
+     * 비교 이미지 생성 상한.
+     *
+     * <p>분석 본체(3분)와 따로 둔다. 이미지는 실측 35초라 텍스트 단계보다 훨씬 느려,
+     * 같은 기준을 쓰면 정상 생성 중인 건을 실패로 돌릴 수 있다.
+     */
+    private static final int IMAGE_TIMEOUT_MINUTES = 8;
+
     private final AnalysisRepository analysisRepository;
+    private final AnalysisResultRepository resultRepository;
     private final AnalysisProperties properties;
 
     @Scheduled(fixedDelayString = "60000")
@@ -41,6 +51,11 @@ public class AnalysisSweeper {
         int swept = analysisRepository.failStale(threshold, now, ErrorCode.ANALYSIS_TIMEOUT.name());
         if (swept > 0) {
             log.warn("좀비 분석 {}건을 ANALYSIS_TIMEOUT으로 정리했다", swept);
+        }
+
+        int images = resultRepository.failStaleImages(now.minusMinutes(IMAGE_TIMEOUT_MINUTES));
+        if (images > 0) {
+            log.warn("멈춘 비교 이미지 {}건을 FAILED로 정리했다", images);
         }
     }
 }

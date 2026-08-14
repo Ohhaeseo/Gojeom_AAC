@@ -79,6 +79,33 @@ public class StorageService {
     }
 
     /**
+     * 객체 바이트를 읽어온다. <b>비교 이미지 생성 전용이다.</b>
+     *
+     * <p>평소에는 이미지 바이트가 이 서버를 통과하지 않는다(A-1). 그러나 이미지
+     * 편집은 OpenAI에 원본 바이트를 보내야 해서 서버가 한 번 읽을 수밖에 없다.
+     * ARCHITECTURE.md §6.5가 이 경로를 예외로 규정한다.
+     *
+     * <p><b>DB에 넣지 않는다.</b> 메모리에서 OpenAI로 흘려보내고 버린다.
+     */
+    public byte[] download(String key) {
+        return s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                .bucket(properties.bucket())
+                .key(key)
+                .build()).asByteArray();
+    }
+
+    /** 생성된 비교 이미지를 저장한다. 업로드 경로 중 유일하게 서버가 직접 쓴다. */
+    public void upload(String key, byte[] bytes, String contentType) {
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(properties.bucket())
+                        .key(key)
+                        .contentType(contentType)
+                        .build(),
+                software.amazon.awssdk.core.sync.RequestBody.fromBytes(bytes));
+    }
+
+    /**
      * 객체 삭제.
      *
      * <p>사진 삭제·계정 삭제 시 <b>즉시</b> 지운다. (PRD §10)
