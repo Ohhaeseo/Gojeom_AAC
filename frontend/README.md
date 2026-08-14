@@ -1,65 +1,127 @@
-# GO. — Frontend
+# GO. 프론트엔드
 
-React · TypeScript 기반 모바일 웹 클라이언트.
+GO. 모바일 앱의 Expo React Native 프론트엔드입니다. iPhone을 우선 대상으로 하며, 현재 전체 사용자 흐름은 프론트 mock 데이터로 동작합니다.
 
 ## 기술 스택
 
-| 영역 | 선택 |
-| --- | --- |
-| Framework | React 18 · TypeScript |
-| Build | Vite |
-| 라우팅 | React Router |
-| 서버 상태 | TanStack Query (분석 상태 폴링에 사용) |
-| 스타일 | 미정 (Tailwind CSS 또는 CSS Modules) |
-| 이미지 검증 | MediaPipe Face Detector (업로드 1차 검증) |
+- Expo SDK 54 / React Native 0.81 / React 19
+- TypeScript / Expo Router
+- React Native SVG, Expo Image Picker, Expo Blur
+- AsyncStorage 기반 로컬 세션·데모 상태
+- Pretendard 로컬 폰트
 
-## 작업 브랜치
+## 빠른 실행
 
-이 폴더의 작업은 `frontend` 브랜치에서 진행한다.
-
-```bash
-git switch frontend
+```powershell
+cd frontend
+npm ci
+Copy-Item .env.example .env
+npm run start
 ```
 
-## 구조 · 아키텍처
+재현 가능한 설치를 위해 Node `24.15.0`과 커밋된 `package-lock.json`을 기준으로 합니다. nvm/asdf 사용자는 `.nvmrc` 또는 `.node-version`으로 같은 버전을 선택할 수 있습니다.
 
-**[ARCHITECTURE.md](ARCHITECTURE.md)** 가 정본이다. 디렉터리 구조, 라우팅, API 계층, 분석 폴링, 디자인 토큰 적용 방식을 담고 있다.
+Metro에 표시되는 QR을 iPhone의 Expo Go로 스캔합니다. 상세 절차와 오류 해결은 [SIMULATION_GUIDE.md](SIMULATION_GUIDE.md)를 확인하세요.
+
+## 현재 구현 범위
+
+- 실행 로고 모션, 로그인·회원가입 UI, 이름 설정
+- 프로필 사진·우선순위·키/몸무게·수면/인바디 등록
+- 프로필 분석 로딩/완료와 홈·프로필·설정
+- 고점 입력, 참고 이미지 선택, 분석 상태·키워드 선택·결과
+- 결과 저장, 서랍, 목표 생성, 루틴 상세와 완료 진행률
+- 빈 상태, 삭제/이탈 모달, 오류·재시도 UI
+- 공통 고정 헤더, 하단 네비게이션, 스위치, 버튼, 브랜드 로고 모션
+
+소셜 로그인은 버튼과 로고만 구현되어 있습니다. 실제 OAuth, 사용자 인증, 데이터 영속화, 이미지 저장, AI 처리, 푸시 알림은 백엔드 연결이 필요합니다.
+
+## 백엔드 팀 연동 안내
+
+### 계약 정본
+
+프론트와 백엔드의 계약 정본은 저장소 루트의 [API.md](../API.md)입니다. `frontend/docs/API_SPEC.md`는 초기 초안이므로 구현 판단에 사용하지 않습니다.
+
+- API Base: `https://{host}/api/v1`
+- JSON 필드: `camelCase`
+- 성공: `{ "success": true, "data": ... }`
+- 실패: `{ "success": false, "error": { "code", "message", "details" } }`
+- 날짜: ISO-8601 UTC. KST 변환은 프론트가 담당합니다.
+- 인증: `Authorization: Bearer {accessToken}`
+
+공개 Base URL만 `frontend/.env`에 둡니다.
+
+```env
+EXPO_PUBLIC_API_BASE_URL=https://api.example.com/api/v1
+```
+
+OpenAI 키, 스토리지 Secret, JWT Secret, PG 키 등 비밀값은 프론트 번들에 넣으면 안 됩니다.
+
+### 현재 연결 지점
+
+- 공통 HTTP 래퍼: `src/services/api.ts`
+- mock 서비스: `src/services/mockApi.ts`
+- API 공통 타입: `src/types/api.ts`
+- 화면/세션 상태: `src/state/AppState.tsx`
+
+`EXPO_PUBLIC_API_BASE_URL`이 없으면 `isMockMode`가 `true`입니다. 현재 화면 흐름은 대부분 `AppState`와 mock 서비스에 연결되어 있으므로, 실제 연동 시 화면에서 `fetch`를 직접 추가하지 말고 서비스 인터페이스 아래에 HTTP adapter를 붙여 교체해야 합니다.
+
+### 반드시 맞춰야 하는 규칙
+
+1. Access Token 만료 시 `AUTH_TOKEN_EXPIRED`를 반환합니다. 프론트는 refresh 후 원 요청을 한 번만 재시도합니다.
+2. 계정 삭제 후 기존 토큰과 refresh token을 모두 무효화해야 합니다. 모든 사용자 데이터는 계정 ID로 격리되어야 합니다.
+3. 이미지는 `POST /uploads/presigned`로 URL을 받은 뒤 스토리지에 직접 PUT합니다. 서버 multipart 업로드를 사용하지 않습니다.
+4. 조회용 이미지 URL은 10분 만료이므로 영구 식별자로 쓰지 않습니다. API에는 `objectKey`를 전달합니다.
+5. `priorities` 배열 순서가 1~3순위입니다. `SKIN`, `BODY`, `HEALTH`를 중복 없이 정확히 한 번씩 받습니다.
+6. 평균 수면 시간은 `0~14`, `0.5` 단위입니다. 키는 `100~250cm`, 몸무게는 `30~200kg`입니다.
+7. 분석 상태는 `CREATED → EXTRACTING → KEYWORDS_READY → GENERATING → DONE`입니다. `GET /analyses/{id}`의 `pollAfterMs`를 제공해 주세요.
+8. `KEYWORDS_READY`에서도 상태 조회는 계속됩니다. 분석 전체 폴링 상한은 60초입니다.
+9. 키워드 확정은 1~4개이며 `KeywordCategory`만 `FACE`를 포함합니다. 프로필/루틴의 `Category`에는 `FACE`가 없습니다.
+10. 결과의 `comparisonImage.status`는 `SKIPPED | PENDING | DONE | FAILED`를 모두 지원해야 합니다.
+11. 결과 `disclaimer`와 `categoryChanges` 3건은 필수입니다. 외모 점수·등급·순위 필드는 만들지 않습니다.
+12. 결과는 자동 저장하지 않습니다. `POST /analyses/{id}/result/save` 호출 때만 서랍에 저장합니다.
+13. 루틴 생성 응답의 `routines`는 항상 배열입니다. `FROM_ANALYSIS`와 `STANDALONE` 두 경로를 지원합니다.
+14. `204` 응답은 JSON body가 없으므로 공통 HTTP 파서가 빈 응답을 처리할 수 있어야 합니다.
+
+### 백엔드 준비 완료 시 필요한 값
+
+- 개발/스테이징 API Base URL
+- CORS 및 실제 iPhone LAN/HTTPS 접근 허용 여부
+- JWT 저장·재발급 정책과 refresh token 전달 방식
+- presigned PUT에 필요한 헤더와 허용 content type
+- 분석 상태별 최소 mock/fixture ID
+- 에러 코드별 테스트 계정 또는 재현 방법
+- 계정 삭제 및 사진/분석 삭제의 실제 보관 정책
+
+### 프론트가 기대하는 주요 API
+
+전체 36개 엔드포인트와 스키마는 루트 `API.md`를 따릅니다. 최초 통합에 필요한 핵심 순서는 다음과 같습니다.
+
+1. `/auth/signup`, `/auth/login`, `/auth/refresh`, `/users/me`
+2. `/uploads/presigned`, `/profiles`, `/profiles/me`
+3. `/analyses`, `/analyses/{id}`, 키워드 조회·선택, 결과 조회·저장
+4. `/saved-results`, `/routines`, `/routine-tasks/{id}`
+5. 알림 설정과 삭제 API
+
+## 프로젝트 구조
 
 ```text
-frontend/src/
-├─ app/       라우터 · 프로바이더
-├─ pages/     라우트 = 시안 화면과 1:1
-├─ features/  도메인 로직 (auth · profile · analysis · drawer · routine)
-└─ shared/    api · ui · layout · hooks · lib · styles
+frontend/
+├─ assets/               로고, 아이콘, 폰트, 시각 검수 에셋
+├─ docs/                 프론트 구현·디자인 분석 문서
+├─ src/app/              Expo Router 화면
+├─ src/components/       공통 UI와 브랜드 모션
+├─ src/mocks/            API 형태의 데모 데이터
+├─ src/services/         HTTP·mock 서비스
+├─ src/state/            세션 및 앱 상태
+├─ src/theme/            색상·간격·타이포 토큰
+└─ src/types/            API·도메인 타입
 ```
 
-특히 아래 두 가지는 구현 전에 읽어야 한다.
+## 검증
 
-- **§6 분석 진행 폴링** — `KEYWORDS_READY`에서 멈추지 않기, `DONE` 이후 이미지 폴링 유지
-- **§3 shared/ui 대응표** — design.md §4 컴포넌트와 파일이 1:1로 매핑된다
+```powershell
+npm run typecheck
+npm run lint
+```
 
-## 구현 시 반드시 지킬 것
-
-[API.md](../API.md) 부록 B의 체크리스트 13항목을 따른다. 특히:
-
-- 이미지 업로드는 presigned URL로 **스토리지에 직접 PUT**한다. 서버로 multipart를 보내지 않는다.
-- 조회용 이미지 URL은 **10분 만료**다. 캐시하거나 localStorage에 저장하지 않는다.
-- 분석 진행은 `GET /analyses/{id}` **단일 폴링**으로만 추적한다(상한 60초). `KEYWORDS_READY`에서도 폴링을 멈추지 않는다.
-- 결과 화면의 `disclaimer`는 **상시 노출**하며 숨기거나 접지 않는다.
-- `viewState`(`FRESH`/`SAVED`)로 결과 화면의 칩 형태·CTA·활성 탭을 분기한다.
-- `priorities`는 **배열 순서가 곧 순위**다. 정렬을 바꾸지 않는다.
-- **점수·등급·순위 형태의 UI를 만들지 않는다.** (PRD §1.6 서비스 원칙)
-
-## 디자인
-
-토큰과 컴포넌트는 [design.md](../design.md)를 따른다. 시안 원본은 [Figma](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)이며(저장소에 미포함), 문서와 시안이 다르면 **시안이 우선**이다(design.md §13).
-
-`(근사)` 표기된 수치는 export 이미지에서 판독한 값이므로 Figma 실측값으로 교체가 필요하다.
-
-## 관련 문서
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — **프론트 구조 · 라우팅 · API 계층 · 폴링**
-- [PRD.md](../PRD.md) — 제품 요구사항
-- [design.md](../design.md) — 디자인 토큰 · 컴포넌트 · 화면 레이아웃
-- [API.md](../API.md) — API 계약 (요청/응답 · Enum · 에러 코드)
-- [ERD.md](../ERD.md) — 데이터 모델
+구현 판단은 저장소 루트 `API.md`, `frontend/docs/FRONTEND_IMPLEMENTATION.md`, 최신 Figma 순서로 확인합니다.

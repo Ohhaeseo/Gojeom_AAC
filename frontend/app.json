@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "추구미 생산기",
+    "slug": "chugumi-producer",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "chugumi",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.chugumi.producer"
+    },
+    "android": {
+      "package": "com.chugumi.producer",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "분위기 분석에 사용할 사진을 선택하려면 사진 접근 권한이 필요해요.",
+          "cameraPermission": "분위기 분석에 사용할 사진을 촬영하려면 카메라 권한이 필요해요."
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

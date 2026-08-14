@@ -5,7 +5,7 @@
 ### 남을 닮지 말고, 나다운 분위기의 고점으로.
 
 [![Project](https://img.shields.io/badge/Project-LIKELION%2014th%20Hackathon-FF7710?style=flat-square)](https://likelion.net/)
-![Platform](https://img.shields.io/badge/Platform-Mobile%20Web-111111?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20Expo-111111?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-MVP%20Development-7C3AED?style=flat-square)
 
 </div>
@@ -54,7 +54,7 @@
 
 | 영역 | 기술 |
 | --- | --- |
-| Frontend | React · TypeScript · Mobile First |
+| Frontend | Expo React Native · TypeScript · Expo Router |
 | Backend | Spring Boot 3.x · Spring Data JPA · REST API |
 | Database | PostgreSQL 16 · Flyway |
 | Storage | S3 호환 오브젝트 스토리지 (국내 리전) |
@@ -73,12 +73,12 @@
 | [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) | 프론트 구조 · 라우팅 · API 계층 |
 | [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) | 백엔드 기술 아키텍처 · 패키지 구조 |
 
-디자인 시안은 [Figma 원본](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)이 정본입니다. 저장소에는 포함하지 않으며, 로컬에서 참조할 때는 `assets/images/UI/`(gitignore 대상)에 PNG로 export 해서 사용합니다.
+디자인 시안은 [Figma 원본](https://www.figma.com/design/8AX19ImZG4ou6jqCwU0tPJ/GO.)이 정본입니다. 전체 디자인 export는 저장소에 포함하지 않으며, 앱 실행에 필요한 로고·아이콘·폰트만 `frontend/assets`에서 버전 관리합니다.
 
 ## 📁 구조
 
 ```text
-├─ frontend/    React · TypeScript      (작업 브랜치: frontend)
+├─ frontend/    Expo React Native · TypeScript (작업 브랜치: frontend)
 └─ backend/     Spring Boot             (작업 브랜치: backend)
 ```
 
