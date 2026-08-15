@@ -168,13 +168,15 @@ POST   /notifications/device-tokens
 | `NotificationScheduler` (발송) | FCM vs Web Push 미정. 설정·토큰은 이미 쌓임 |
 | `GET /consents/terms` | 동의 화면 미설계 (PRD O-2) |
 
-### 알려진 구멍 3가지
+### 알려진 구멍 1가지
 
 | # | 내용 | 규모 |
 | --- | --- | --- |
-| 1 | **`ProfileResponse.analysisSummary`가 null일 때 키째로 사라짐.** 다른 응답은 고쳤는데 프로필만 남음 | 한 줄 |
-| 2 | **인바디 서류 사진이 S3에 영구 잔존.** key를 DB에 안 남기는 설계라 지울 대상을 알 수 없다 | 버킷 수명 주기 정책 |
 | 3 | **`PATCH /profiles/me` 후 `analysis_summary` 미갱신.** 신체 정보를 고쳐도 AI 요약은 그대로 | 정책 결정 필요 |
+
+**2026-08-16 해소** — `ProfileResponse.analysisSummary`는 null 키를 유지한다.
+인바디 OCR 원본은 소유권 검증 후 성공·실패와 무관하게 영속 삭제 큐에 기록하고,
+S3 삭제 실패 시 스케줄러가 재시도한다.
 
 ### 검증 못 한 것
 
@@ -182,8 +184,10 @@ POST   /notifications/device-tokens
 | --- | --- |
 | **Google 로그인 성공 경로** | `GOOGLE_CLIENT_ID`가 자리표시자. 실패 경로만 확인 |
 | **실제 인물 사진의 이미지 합성** | 검증은 전부 합성 이미지로 했다. 실사진은 제공자가 거부할 수 있다(→ `FAILED`로 정상 처리) |
-| **Testcontainers 통합 테스트** | Docker 없음 |
 | **실기기 동작** | 웹 번들만 확인 |
+
+**2026-08-16 추가 검증** — Docker Desktop 29.7.2에서 Testcontainers 1.21.4로
+`clean integrationTest`를 실행해 `BUILD SUCCESSFUL`을 확인했다.
 
 ---
 
@@ -220,7 +224,6 @@ POST   /notifications/device-tokens
 | 5 | **`ProfileResponse.analysisSummary` null 키 소실** | **코드 (§6-1)** |
 | 6 | 결과 `overview.keywords`가 선택분인지 전체 후보인지 모호 → 예시대로 선택분만 | **FE 협의** |
 | 8 | ERD §6의 V1 전문에 `profiles.updated_at` 누락 | 문서 |
-| 9 | `.env.example` 한글 주석 깨짐 (mojibake) | 파일 |
 | 10 | 사진 없는 프로필로 분석 시도할 전용 에러 코드 없음 → `PROFILE_REQUIRED` 대체 | 문서 |
 | 12 | 목표 생성 **201 동기 vs 202 비동기** 문서 충돌 → API.md 따라 201 | 문서 |
 | 13 | `GET /routines` 응답 미정의 → `RoutineSummary` 재사용 | 문서 |
@@ -232,7 +235,7 @@ POST   /notifications/device-tokens
 | 19 | 알림 응답만 공통 봉투 없이 예시됨 → §1 봉투 적용 | 문서 |
 | 20 | **인바디 서류 사진 스토리지 잔존** | **운영 (§6-2)** |
 
-**해소된 것** — #7(`comparison_image_key` 1개 vs URL 2장), #11(구독 만료 에러 코드), G-2 문구.
+**해소된 것** — #7(`comparison_image_key` 1개 vs URL 2장), #9(`.env.example` UTF-8 복구), #11(구독 만료 에러 코드), G-2 문구.
 
 **PRD 미결도 그대로** — **O-1**(수치 대시보드 ↔ G-1 충돌, 최우선) · **O-2**(동의 화면·생년월일, 법적) · O-4 · O-5.
 

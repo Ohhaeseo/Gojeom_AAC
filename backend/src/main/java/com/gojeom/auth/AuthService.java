@@ -17,6 +17,7 @@ import com.gojeom.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,10 +49,17 @@ public class AuthService {
             throw new BusinessException(ErrorCode.AUTH_EMAIL_DUPLICATED);
         }
 
-        User user = userRepository.save(User.ofLocal(
-                email,
-                passwordEncoder.encode(request.password()),
-                request.nickname().trim()));
+        User user;
+        try {
+            // exists 검사는 빠른 실패용일 뿐 동시 요청을 직렬화하지 못한다.
+            // 즉시 flush해 ux_users_email_active 충돌을 이 메서드 안에서 409로 변환한다.
+            user = userRepository.saveAndFlush(User.ofLocal(
+                    email,
+                    passwordEncoder.encode(request.password()),
+                    request.nickname().trim()));
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.AUTH_EMAIL_DUPLICATED);
+        }
 
         subscriptionRepository.save(
                 Subscription.startTrial(user.getId(), OffsetDateTime.now(ZoneOffset.UTC)));

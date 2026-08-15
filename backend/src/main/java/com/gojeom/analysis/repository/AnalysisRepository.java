@@ -3,7 +3,9 @@ package com.gojeom.analysis.repository;
 import com.gojeom.analysis.entity.Analysis;
 import com.gojeom.common.enums.AnalysisStatus;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -13,6 +15,9 @@ import org.springframework.data.repository.query.Param;
 public interface AnalysisRepository extends JpaRepository<Analysis, UUID> {
 
     List<Analysis> findByUserId(UUID userId);
+
+    Optional<Analysis> findFirstByUserIdAndStatusInOrderByCreatedAtDesc(
+            UUID userId, Collection<AnalysisStatus> statuses);
 
     /**
      * 좀비 분석 정리. (ARCHITECTURE.md §5.4)

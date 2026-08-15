@@ -1,15 +1,19 @@
 package com.gojeom.profile;
 
 import com.gojeom.profile.entity.ProfileAnalysisSummary;
+import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
+import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 프로필 AI 분석의 <b>짧은 트랜잭션</b>만 담당하는 빈.
+ * 프로필 저장과 AI 분석 결과 반영의 <b>짧은 트랜잭션</b>만 담당하는 빈.
  *
  * <p>{@link ProfileAnalysisPipeline}과 분리한 이유 — 같은 클래스 안에서 호출하면
  * 프록시를 타지 않아 {@code @Transactional}이 걸리지 않는다. AI 호출 사이사이의
@@ -21,6 +25,24 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProfileTxService {
 
     private final ProfileRepository profileRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 사진 AI 검증이 끝난 뒤 DB 변경만 짧은 트랜잭션으로 처리한다. */
+    @Transactional
+    public Profile replaceActive(UUID userId, ProfileCreateRequest request) {
+        profileRepository.findByUserIdAndIsActiveTrue(userId).ifPresent(Profile::deactivate);
+
+        Profile profile = profileRepository.save(Profile.create(
+                userId,
+                request.photoKey(),
+                List.copyOf(request.priorities()),
+                request.heightCm(),
+                request.weightKg(),
+                request.sleepHours(),
+                request.inbody()));
+        eventPublisher.publishEvent(new ProfileCreatedEvent(profile.getId()));
+        return profile;
+    }
 
     /** 프로필이 이미 비활성화·삭제됐을 수 있으므로 {@code Optional}이다. */
     @Transactional(readOnly = true)

@@ -24,10 +24,12 @@ class JsonSchemasTest {
     private final JsonSchemas schemas = new JsonSchemas(new ObjectMapper());
 
     @Test
-    @DisplayName("세 스키마 모두 strict 모드 불변식을 지킨다")
+    @DisplayName("모든 스키마가 strict 모드 불변식을 지킨다")
     void strict_불변식() {
-        for (JsonNode root : List.of(schemas.keywordExtraction(),
-                schemas.resultGeneration(), schemas.profileAnalysis())) {
+        for (JsonNode root : List.of(
+                schemas.keywordExtraction(), schemas.resultGeneration(), schemas.profileAnalysis(),
+                schemas.routineFromAnalysis(), schemas.routineStandalone(),
+                schemas.inbodyOcr())) {
 
             assertThat(root.path("strict").asBoolean()).isTrue();
             assertThat(root.path("name").asText()).isNotBlank();

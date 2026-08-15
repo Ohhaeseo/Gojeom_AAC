@@ -1,9 +1,11 @@
 package com.gojeom.subscription.repository;
 
 import com.gojeom.subscription.entity.Subscription;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,6 +13,11 @@ import org.springframework.data.repository.query.Param;
 public interface SubscriptionRepository extends JpaRepository<Subscription, UUID> {
 
     Optional<Subscription> findByUserId(UUID userId);
+
+    /** 같은 사용자의 분석 생성 요청을 직렬화한다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Subscription s WHERE s.userId = :userId")
+    Optional<Subscription> findByUserIdForUpdate(@Param("userId") UUID userId);
 
     /**
      * 분석권 1회 차감.

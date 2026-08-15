@@ -23,7 +23,7 @@ import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
-import com.gojeom.storage.ObjectKeyFactory;
+import com.gojeom.storage.StorageService;
 import com.gojeom.storage.UploadPurpose;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
@@ -56,6 +56,13 @@ public class AnalysisService {
     private static final int MIN_SELECT = 1;
     private static final int MAX_SELECT = 4;
 
+    /** 분석권이 아직 차감되지 않은 비종료 상태. 사용자당 동시에 하나만 허용한다. */
+    private static final List<AnalysisStatus> ACTIVE_ANALYSIS_STATUSES = List.of(
+            AnalysisStatus.CREATED,
+            AnalysisStatus.EXTRACTING,
+            AnalysisStatus.KEYWORDS_READY,
+            AnalysisStatus.GENERATING);
+
     private final ResultAssembler resultAssembler;
     private final AnalysisRepository analysisRepository;
     private final AnalysisKeywordRepository keywordRepository;
@@ -63,7 +70,7 @@ public class AnalysisService {
     private final AnalysisResultRepository resultRepository;
     private final ProfileRepository profileRepository;
     private final SubscriptionRepository subscriptionRepository;
-    private final ObjectKeyFactory keyFactory;
+    private final StorageService storageService;
     private final ApplicationEventPublisher eventPublisher;
 
     // ------------------------------------------------------------ 생성
@@ -83,6 +90,23 @@ public class AnalysisService {
                     Map.of("inputText", "10자 이상 적어주세요."));
         }
 
+        // 사용자별 구독 행을 잠가 동시 생성 요청을 직렬화한다. 잠금 없이
+        // exists 검사만 하면 두 요청이 모두 "진행 중 분석 없음"을 보고 AI 작업을 만든다.
+        Subscription subscription = subscriptionRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NO_ANALYSIS_CREDIT));
+        if (!subscription.canAnalyze(OffsetDateTime.now(ZoneOffset.UTC))) {
+            throw new BusinessException(ErrorCode.NO_ANALYSIS_CREDIT);
+        }
+        analysisRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(
+                        userId, ACTIVE_ANALYSIS_STATUSES)
+                .ifPresent(active -> {
+                    throw new BusinessException(ErrorCode.ANALYSIS_INVALID_STATE,
+                            Map.of(
+                                    "analysisId", active.getId(),
+                                    "status", active.getStatus(),
+                                    "message", "진행 중인 분석을 먼저 완료해주세요."));
+                });
+
         Profile profile = profileRepository.findByUserIdAndIsActiveTrue(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PROFILE_REQUIRED));
         if (profile.getPhotoKey() == null) {
@@ -91,15 +115,10 @@ public class AnalysisService {
                     Map.of("photo", "사진을 먼저 등록해주세요."));
         }
 
-        Subscription subscription = subscriptionRepository.findByUserId(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NO_ANALYSIS_CREDIT));
-        if (!subscription.canAnalyze(OffsetDateTime.now(ZoneOffset.UTC))) {
-            throw new BusinessException(ErrorCode.NO_ANALYSIS_CREDIT);
-        }
-
         // 클라이언트가 남의 경로 key를 보낼 수 있다. 저장 전에 다시 확인한다. (§8)
         List<String> referenceKeys = List.copyOf(new LinkedHashSet<>(request.safeReferenceImageKeys()));
-        referenceKeys.forEach(key -> keyFactory.assertOwned(key, UploadPurpose.REFERENCE_IMAGE, userId));
+        referenceKeys.forEach(key -> storageService.validateUploadedImage(
+                key, UploadPurpose.REFERENCE_IMAGE, userId));
 
         UUID retriedFrom = resolveRetriedFrom(userId, request.retriedFrom());
 

@@ -1,5 +1,6 @@
 package com.gojeom.profile.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.gojeom.common.enums.Category;
 import com.gojeom.profile.entity.Inbody;
 import com.gojeom.profile.entity.ProfileAnalysisSummary;
@@ -75,6 +76,7 @@ public final class ProfileDtos {
             BigDecimal weightKg,
             BigDecimal sleepHours,
             Inbody inbody,
+            @JsonInclude(JsonInclude.Include.ALWAYS)
             ProfileAnalysisSummary analysisSummary,
             OffsetDateTime createdAt) {
     }

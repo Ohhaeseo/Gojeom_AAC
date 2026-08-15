@@ -6,7 +6,7 @@ import com.gojeom.analysis.entity.AnalysisResult;
 import com.gojeom.analysis.repository.AnalysisReferenceImageRepository;
 import com.gojeom.analysis.repository.AnalysisRepository;
 import com.gojeom.analysis.repository.AnalysisResultRepository;
-import com.gojeom.storage.StorageService;
+import com.gojeom.storage.deletion.StorageDeletionService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -34,7 +34,7 @@ public class AnalysisPurgeService {
     private final AnalysisRepository analysisRepository;
     private final AnalysisReferenceImageRepository referenceImageRepository;
     private final AnalysisResultRepository resultRepository;
-    private final StorageService storageService;
+    private final StorageDeletionService storageDeletionService;
 
     /**
      * 사용자의 분석을 전부 지운다. 시안 11의 "내 분석 전체 삭제". (F-13)
@@ -53,7 +53,7 @@ public class AnalysisPurgeService {
         List<UUID> analysisIds = analyses.stream().map(Analysis::getId).toList();
 
         // 행을 지우기 전에 key를 모아야 한다. 지운 뒤에는 무엇을 지울지 알 수 없다.
-        collectStorageKeys(analysisIds).forEach(storageService::delete);
+        storageDeletionService.enqueueAll(collectStorageKeys(analysisIds));
 
         analysisRepository.deleteAll(analyses);
         log.info("분석 {}건 삭제", analyses.size());

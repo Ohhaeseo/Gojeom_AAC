@@ -27,6 +27,10 @@ ext {
     jjwtVersion = '0.12.6'
     awsSdkVersion = '2.29.9'
     googleApiClientVersion = '2.7.0'
+
+    // Spring Boot 3.3.5의 기본값(1.19.8)은 Docker Engine 29의 최소 API와 호환되지 않는다.
+    // Spring Boot 연동 API를 유지하기 위해 Testcontainers 1.x의 Docker 29 대응 릴리스를 사용한다.
+    set('testcontainers.version', '1.21.4')
 }
 
 dependencies {
@@ -54,6 +58,15 @@ dependencies {
     // S3Presigner는 s3 모듈에 포함되어 있다. 별도 아티팩트가 아니다.
     implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
     implementation 'software.amazon.awssdk:s3'
+
+    // --- Image validation ---
+    // OpenPnP 패키지가 운영체제별 OpenCV 네이티브 바이너리를 함께 제공한다.
+    implementation 'org.openpnp:opencv:4.9.0-0'
+    // OpenCV 공식 frontal-face cascade 리소스만 사용한다. OpenIMAJ 코드는 로드하지 않으며,
+    // 오래된 전이 의존성이 compileClasspath로 들어오지 않도록 반드시 비활성화한다.
+    runtimeOnly('org.openimaj:object-detection:1.3.10') {
+        transitive = false
+    }
 
     // --- Ops ---
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

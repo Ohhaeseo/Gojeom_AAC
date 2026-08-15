@@ -5,7 +5,7 @@ import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
-import com.gojeom.storage.StorageService;
+import com.gojeom.storage.deletion.StorageDeletionService;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
 import com.gojeom.user.dto.UserDtos.MeResponse;
@@ -28,7 +28,7 @@ public class UserService {
     private final SubscriptionRepository subscriptionRepository;
     private final ProfileRepository profileRepository;
     private final AnalysisPurgeService analysisPurgeService;
-    private final StorageService storageService;
+    private final StorageDeletionService storageDeletionService;
 
     @Transactional(readOnly = true)
     public MeResponse getMe(UUID userId) {
@@ -95,7 +95,7 @@ public class UserService {
         profileRepository.findByUserId(userId).stream()
                 .map(Profile::getPhotoKey)
                 .filter(key -> key != null && !key.isBlank())
-                .forEach(storageService::delete);
+                .forEach(storageDeletionService::enqueue);
 
         user.softDelete(OffsetDateTime.now(ZoneOffset.UTC));
     }

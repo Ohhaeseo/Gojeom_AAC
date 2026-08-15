@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,10 +67,16 @@ public class SavedResultService {
         AnalysisResult result = analysisService.requireCompletedResult(userId, analysisId);
 
         if (savedResultRepository.existsByAnalysisResultId(result.getId())) {
-            throw new BusinessException(ErrorCode.ANALYSIS_INVALID_STATE,
-                    Map.of("savedResult", "이미 서랍에 저장된 결과예요."));
+            throw alreadySaved();
         }
-        SavedResult saved = savedResultRepository.save(SavedResult.of(userId, result.getId()));
+        SavedResult saved;
+        try {
+            // exists 검사 뒤 동시에 들어온 요청도 ux_saved_result가 막는다.
+            // 즉시 flush해야 트랜잭션 커밋 시점이 아니라 여기서 충돌을 409로 바꿀 수 있다.
+            saved = savedResultRepository.saveAndFlush(SavedResult.of(userId, result.getId()));
+        } catch (DataIntegrityViolationException exception) {
+            throw alreadySaved();
+        }
         return new SaveResponse(saved.getId(), saved.getSavedAt());
     }
 
@@ -200,6 +207,11 @@ public class SavedResultService {
             throw new BusinessException(ErrorCode.FORBIDDEN_RESOURCE);
         }
         return saved;
+    }
+
+    private BusinessException alreadySaved() {
+        return new BusinessException(ErrorCode.ANALYSIS_INVALID_STATE,
+                Map.of("savedResult", "이미 서랍에 저장된 결과예요."));
     }
 
     /** 소수점 첫째 자리까지. (API.md 예시 {@code 62.5} · {@code 40.0}) */

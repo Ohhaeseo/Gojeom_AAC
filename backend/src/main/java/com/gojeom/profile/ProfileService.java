@@ -9,13 +9,12 @@ import com.gojeom.profile.dto.ProfileDtos.ProfileResponse;
 import com.gojeom.profile.dto.ProfileDtos.ProfileUpdateRequest;
 import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
-import com.gojeom.storage.ObjectKeyFactory;
 import com.gojeom.storage.StorageService;
 import com.gojeom.storage.UploadPurpose;
+import com.gojeom.storage.deletion.StorageDeletionService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,8 +24,9 @@ public class ProfileService {
 
     private final ProfileRepository profileRepository;
     private final StorageService storageService;
-    private final ObjectKeyFactory keyFactory;
-    private final ApplicationEventPublisher eventPublisher;
+    private final StorageDeletionService storageDeletionService;
+    private final ProfileTxService profileTxService;
+    private final ProfilePhotoValidator profilePhotoValidator;
 
     /**
      * 프로필 등록.
@@ -38,23 +38,15 @@ public class ProfileService {
      * 응답 시점에는 아직 null이다 — 프론트는 필요하면 {@code GET /profiles/me}로
      * 다시 읽는다. (D2-2)
      */
-    @Transactional
     public ProfileResponse create(UUID userId, ProfileCreateRequest request) {
         // 클라이언트가 남의 경로 key를 보낼 수 있으므로 저장 전에 다시 확인한다.
-        keyFactory.assertOwned(request.photoKey(), UploadPurpose.PROFILE_PHOTO, userId);
+        storageService.validateUploadedImage(
+                request.photoKey(), UploadPurpose.PROFILE_PHOTO, userId);
 
-        profileRepository.findByUserIdAndIsActiveTrue(userId).ifPresent(Profile::deactivate);
+        // 스토리지 I/O와 CPU 얼굴 탐지는 DB 트랜잭션을 열기 전에 끝낸다.
+        profilePhotoValidator.validate(storageService.download(request.photoKey()));
 
-        Profile profile = profileRepository.save(Profile.create(
-                userId,
-                request.photoKey(),
-                List.copyOf(request.priorities()),
-                request.heightCm(),
-                request.weightKg(),
-                request.sleepHours(),
-                request.inbody()));
-
-        eventPublisher.publishEvent(new ProfileCreatedEvent(profile.getId()));
+        Profile profile = profileTxService.replaceActive(userId, request);
         return toResponse(profile);
     }
 
@@ -88,7 +80,7 @@ public class ProfileService {
         Profile profile = findActive(userId);
         String key = profile.getPhotoKey();
         profile.removePhoto();
-        storageService.delete(key);
+        storageDeletionService.enqueue(key);
     }
 
     private Profile findActive(UUID userId) {
