@@ -68,6 +68,12 @@ public final class ProfileDtos {
             List<Category> priorities) {
     }
 
+    /**
+     * 선택 정보라 {@code sleepHours}·{@code inbody}가 null일 수 있고,
+     * {@code analysisSummary}는 AI 분석이 끝나기 전까지 null이다.
+     * 전역 {@code non_null} 설정이 이 키들을 통째로 지우지 않게 막는다. (AGENTS.md N-7)
+     */
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public record ProfileResponse(
             UUID profileId,
             String photoUrl,
@@ -76,7 +82,6 @@ public final class ProfileDtos {
             BigDecimal weightKg,
             BigDecimal sleepHours,
             Inbody inbody,
-            @JsonInclude(JsonInclude.Include.ALWAYS)
             ProfileAnalysisSummary analysisSummary,
             OffsetDateTime createdAt) {
     }
