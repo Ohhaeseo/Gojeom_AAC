@@ -6,7 +6,17 @@ import * as backend from '@/services/backend';
 import { clearSession, currentSession, restoreSession } from '@/services/session';
 import type { AnalysisResult, Category, Inbody, Profile, RoutineTask } from '@/types/api';
 
+export type { DrawerItem, InbodyScan } from '@/services/backend';
+
 export type ActionResult = { ok: boolean; message?: string };
+
+/** 서랍 3섹션. (API.md §6.5) */
+export type DrawerSections = { inProgress: backend.DrawerItem[]; recent: backend.DrawerItem[]; all: backend.DrawerItem[] };
+
+export type NotificationSettings = { enabled: boolean; defaultTime: string };
+
+/** 인바디 스캔 결과. 실패해도 화면은 직접 입력으로 계속 갈 수 있어야 한다. */
+export type InbodyScanResult = ActionResult & { scan?: backend.InbodyScan };
 
 export type ProfileDraft = {
   priorities: Category[];
@@ -51,6 +61,19 @@ type AppStateValue = {
   hasAnalysis: boolean;
   saved: boolean;
   saveToDrawer: () => Promise<ActionResult>;
+
+  // ---- 서랍
+  loadDrawer: () => Promise<DrawerSections>;
+  /** 서랍 항목을 결과 화면에 올린다. `viewState`가 `SAVED`로 온다. (API.md §6.5) */
+  openSavedResult: (savedResultId: string) => Promise<ActionResult>;
+
+  // ---- 알림 설정
+  notificationSettings: NotificationSettings;
+  loadNotificationSettings: () => Promise<void>;
+  updateNotificationSettings: (patch: Partial<NotificationSettings>) => Promise<ActionResult>;
+
+  /** 인바디 서류 사진을 올려 판독한다. 저장은 하지 않는다 — 폼을 채울 뿐이다. (PRD G-8) */
+  scanInbody: (uri: string) => Promise<InbodyScanResult>;
 
   tasks: RoutineTask[];
   toggleTask: (taskId: string) => void;
@@ -111,6 +134,25 @@ type AccountData = {
   tasks: RoutineTask[];
 };
 
+const emptyDrawer: DrawerSections = { inProgress: [], recent: [], all: [] };
+
+/**
+ * mock 모드 서랍 — 데모 결과 하나를 저장 여부와 목표 진행률에 맞춰 세 섹션에 배치한다.
+ *
+ * 서랍은 **저장한 결과**를 보여주는 곳이라 저장 전에는 비어 있어야 하고,
+ * `inProgress`는 목표가 붙어 있을 때만 나온다. (API.md §6.5)
+ */
+function mockDrawer(account: AccountData): DrawerSections {
+  if (!account.saved) return emptyDrawer;
+  const done = account.tasks.filter((task) => task.status === 'DONE').length;
+  const item = {
+    savedResultId: 'saved-demo-1', resultId: demoResult.resultId, thumbnailUrl: null,
+    title: demoResult.title, analyzedAt: demoResult.analyzedAt,
+    progressRate: account.tasks.length ? Math.round((done / account.tasks.length) * 1000) / 10 : null,
+  };
+  return { inProgress: account.tasks.length ? [item] : [], recent: [item], all: [item] };
+}
+
 const AppStateContext = createContext<AppStateValue | null>(null);
 const ACCOUNTS_STORAGE_KEY = '@go/mock-accounts-v1';
 
@@ -142,6 +184,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [tasks, setTasks] = useState<RoutineTask[]>([]);
   const [analysisKeywords, setAnalysisKeywords] = useState<KeywordChoice[]>([]);
   const [analysisStatusText, setAnalysisStatusText] = useState('');
+  // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
   const analysisId = useRef<string | undefined>(undefined);
   const routineId = useRef<string | undefined>(undefined);
 
@@ -195,6 +239,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setNicknameState('새로운 회원'); setPhotoUri(undefined); setPriorities([]);
     setProfileState(undefined); setResult(undefined); setSaved(false); setTasks([]);
     setAnalysisKeywords([]); setAnalysisStatusText('');
+    setNotificationSettings({ enabled: false, defaultTime: '21:00' });
     analysisId.current = undefined; routineId.current = undefined;
   }, []);
 
@@ -316,6 +361,23 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, photoUri, updateAccount]);
 
+  /**
+   * 인바디 서류 사진 → OCR 판독값.
+   *
+   * 서류 사진도 presigned URL로 스토리지에 직접 올린다(AGENTS.md 규칙 10). 서버는 읽기만
+   * 하고 저장하지 않으므로, 사용자가 폼에서 확인한 뒤 프로필 저장으로 넘겨야 값이 남는다.
+   */
+  const scanInbody = useCallback(async (uri: string): Promise<InbodyScanResult> => {
+    // mock 모드에는 AI가 없다. 가짜 판독값을 만들지 않고 직접 입력으로 보낸다. (AGENTS.md 규칙 15)
+    if (mode === 'mock') return { ok: false, message: '인바디 자동 입력은 서버에 연결했을 때만 쓸 수 있어요. 아래에 직접 입력해주세요.' };
+    try {
+      const documentKey = await backend.uploadImage('INBODY_DOCUMENT', uri);
+      return { ok: true, scan: await backend.scanInbody(documentKey) };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '인바디 정보를 읽지 못했어요. 아래에 직접 입력해주세요.') };
+    }
+  }, [mode]);
+
   // ---------------------------------------------------------------- 고점 분석
 
   const startAnalysis = useCallback(async (inputText: string, imageUris: string[]): Promise<ActionResult> => {
@@ -410,6 +472,53 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, updateAccount]);
 
+  // ---------------------------------------------------------------- 서랍
+
+  const loadDrawer = useCallback(async (): Promise<DrawerSections> => {
+    if (mode === 'mock') return mockDrawer(account);
+    // 서랍이 비는 것은 정상이다. 못 불러온 것과 구분해야 하므로 오류는 화면으로 올린다.
+    return backend.getDrawer();
+  }, [account, mode]);
+
+  const openSavedResult = useCallback(async (savedResultId: string): Promise<ActionResult> => {
+    // mock 모드의 서랍 항목은 데모 결과 하나뿐이라 이미 올라와 있다.
+    if (mode === 'mock') return { ok: true };
+    try {
+      const loaded = await backend.getSavedResult(savedResultId);
+      setResult(loaded);
+      setSaved(true);
+      analysisId.current = loaded.analysisId;
+      // 다른 결과로 갈아탔으므로 앞 결과의 목표를 재사용하면 안 된다.
+      routineId.current = undefined;
+      setTasks([]);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '저장한 결과를 불러오지 못했어요.') };
+    }
+  }, [mode]);
+
+  // ---------------------------------------------------------------- 알림 설정
+
+  const loadNotificationSettings = useCallback(async () => {
+    if (mode === 'mock') return;
+    const loaded = await backend.getNotificationSettings().catch(() => undefined);
+    if (loaded) setNotificationSettings(loaded);
+  }, [mode]);
+
+  const updateNotificationSettings = useCallback(async (patch: Partial<NotificationSettings>): Promise<ActionResult> => {
+    // 낙관적 갱신 — 토글은 즉시 움직이고 서버 확인이 뒤따른다.
+    let previous: NotificationSettings = { enabled: false, defaultTime: '21:00' };
+    setNotificationSettings((current) => { previous = current; return { ...current, ...patch }; });
+    if (mode === 'mock') return { ok: true };
+    try {
+      setNotificationSettings(await backend.updateNotificationSettings(patch));
+      return { ok: true };
+    } catch (error) {
+      setNotificationSettings(previous);
+      return { ok: false, message: messageOf(error, '알림 설정을 저장하지 못했어요.') };
+    }
+  }, [mode]);
+
   // ---------------------------------------------------------------- 목표
 
   const ensureRoutine = useCallback(async (): Promise<ActionResult> => {
@@ -473,6 +582,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setPriorities,
     profile: serverMode ? profile : account.profile,
     saveProfile,
+    scanInbody,
     analysisStatusText,
     analysisKeywords,
     startAnalysis,
@@ -481,13 +591,20 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     hasAnalysis: serverMode ? Boolean(result) : account.hasAnalysis,
     saved: serverMode ? saved : account.saved,
     saveToDrawer,
+    loadDrawer,
+    openSavedResult,
+    notificationSettings,
+    loadNotificationSettings,
+    updateNotificationSettings,
     tasks: serverMode ? tasks : account.tasks,
     toggleTask,
     ensureRoutine,
   }), [
     account, analysisKeywords, analysisStatusText, confirmKeywords, currentAccountId, deleteAccount,
-    ensureRoutine, login, logout, mode, nickname, photoUri, priorities, profile, ready, register,
-    result, saveProfile, saveToDrawer, saved, serverMode, setNickname, startAnalysis, tasks, toggleTask,
+    ensureRoutine, loadDrawer, loadNotificationSettings, login, logout, mode, nickname,
+    notificationSettings, openSavedResult, photoUri, priorities, profile, ready, register, result,
+    saveProfile, saveToDrawer, saved, scanInbody, serverMode, setNickname, startAnalysis, tasks,
+    toggleTask, updateNotificationSettings,
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

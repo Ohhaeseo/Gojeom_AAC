@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
@@ -8,14 +8,32 @@ import { GoModal } from '@/components/ui/GoModal';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
+/** 알림 시각 후보. 서버 계약이 `"HH:mm"`이다. (API.md §6.7 · AGENTS.md N-6) */
+const times = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
+
 export default function SettingsScreen() {
-  const [notification, setNotification] = useState(true); const [exit, setExit] = useState(false); const [remove, setRemove] = useState(false);
-  const { logout, deleteAccount } = useAppState();
+  const { notificationSettings, loadNotificationSettings, updateNotificationSettings, logout, deleteAccount } = useAppState();
+  const [exit, setExit] = useState(false); const [remove, setRemove] = useState(false); const [open, setOpen] = useState(false); const [error, setError] = useState('');
+
+  useFocusEffect(useCallback(() => { void loadNotificationSettings(); }, [loadNotificationSettings]));
+
+  const apply = async (patch: { enabled?: boolean; defaultTime?: string }) => {
+    setError('');
+    const outcome = await updateNotificationSettings(patch);
+    if (!outcome.ok) setError(outcome.message ?? '알림 설정을 저장하지 못했어요.');
+  };
+
   return (
     <AppScreen navigation contentStyle={styles.content}>
       <Text style={styles.title}>알림 설정</Text><Text style={styles.lead}>목표 알림을 받을 시간을 직접 설정해 보세요.</Text>
-      <View style={styles.row}><View><Text style={styles.label}>루틴 알림</Text><Text style={styles.description}>설정한 시간에 루틴 알림을 받을게요.</Text></View><AnimatedSwitch value={notification} onValueChange={setNotification} accessibilityLabel="루틴 알림" /></View>
-      <Text style={styles.title}>루틴별 알림 시간</Text><View style={styles.card}>{Array.from({ length: 5 }, (_, index) => <View key={index} style={styles.timeRow}><View><Text style={styles.label}>아침 스킨 케어</Text><Text style={styles.description}>매일 오전</Text></View><View style={styles.timeSelect}><Text style={styles.timeText}>시간⌄</Text></View></View>)}</View>
+      <View style={styles.row}><View style={styles.rowCopy}><Text style={styles.label}>루틴 알림</Text><Text style={styles.description}>설정한 시간에 루틴 알림을 받을게요.</Text></View><AnimatedSwitch value={notificationSettings.enabled} onValueChange={(enabled) => void apply({ enabled })} accessibilityLabel="루틴 알림" /></View>
+      <Text style={styles.title}>알림 시간</Text>
+      {/* 서버는 계정 단위 기본 시각 하나만 갖는다. 목표별 시각을 바꾸는 API가 아직 없다. */}
+      <View style={styles.card}>
+        <View style={styles.timeRow}><View style={styles.rowCopy}><Text style={styles.label}>기본 알림 시간</Text><Text style={styles.description}>모든 목표 알림이 이 시간에 전송돼요.</Text></View><Pressable onPress={() => setOpen(!open)} disabled={!notificationSettings.enabled} style={[styles.timeSelect, notificationSettings.enabled ? null : styles.timeSelectOff]}><Text style={styles.timeText}>{notificationSettings.defaultTime}⌄</Text></Pressable></View>
+        {open ? <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.options}>{times.map((time) => <Pressable key={time} onPress={() => { setOpen(false); void apply({ defaultTime: time }); }} style={styles.option}><Text style={styles.optionText}>{time}</Text></Pressable>)}</ScrollView> : null}
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <View style={styles.card}><Text style={styles.label}>알림 권한 설정</Text><Text style={styles.description}>알림을 받으려면 기기에서 GO.의 알림 권한을 허용해야 해요.{`\n`}권한을 허용하지 않으면 알림이 전송되지 않아요.</Text><Text style={styles.underline}>알림 권한 확인하기</Text></View>
       <View style={styles.card}><Text style={styles.label}>개인정보 보호 안내</Text><Text style={styles.description}>얼굴 사진과 건강 정보는 분석 및 개인화 결과 제공 목적으로만 사용되며, 다른 사용자나 공개 영역에 노출되지 않습니다.</Text></View>
       <Text onPress={() => setRemove(true)} style={styles.danger}>원본 사진, 분석 정보 삭제</Text><Text onPress={() => setExit(true)} style={styles.action}>로그아웃</Text>
@@ -24,4 +42,4 @@ export default function SettingsScreen() {
     </AppScreen>
   );
 }
-const styles = StyleSheet.create({ content: { gap: spacing.md }, title: { ...typography.h1, color: colors.text }, lead: { ...typography.body, color: colors.textTertiary }, row: { minHeight: 96, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, card: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, timeSelect: { width: 145, height: 50, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 18, borderRadius: radius.md, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, timeText: { ...typography.body, color: colors.textTertiary }, label: { ...typography.label, color: colors.text }, description: { ...typography.caption, color: colors.textMuted }, underline: { ...typography.caption, color: colors.text, textDecorationLine: 'underline' }, action: { ...typography.body, color: colors.text, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface }, danger: { ...typography.body, color: colors.danger, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger }, version: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: 'auto' } });
+const styles = StyleSheet.create({ content: { gap: spacing.md }, title: { ...typography.h1, color: colors.text }, lead: { ...typography.body, color: colors.textTertiary }, row: { minHeight: 96, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, rowCopy: { flex: 1, gap: 4 }, card: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }, timeSelect: { width: 120, height: 50, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 18, borderRadius: radius.md, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, timeSelectOff: { opacity: 0.45 }, timeText: { ...typography.body, color: colors.textTertiary }, options: { maxHeight: 220, borderRadius: radius.md, backgroundColor: colors.surfaceSunken, overflow: 'hidden' }, option: { padding: 12 }, optionText: { ...typography.body, color: colors.textTertiary }, label: { ...typography.label, color: colors.text }, description: { ...typography.caption, color: colors.textMuted }, underline: { ...typography.caption, color: colors.text, textDecorationLine: 'underline' }, action: { ...typography.body, color: colors.text, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface }, danger: { ...typography.body, color: colors.danger, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger }, errorText: { ...typography.caption, color: colors.danger } });
