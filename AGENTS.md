@@ -234,14 +234,22 @@ analysis.markDone();
 
 > **응답 형식은 기능 테스트가 아니라 직렬화 테스트로 지킨다.** 시각·날짜·null 처리는 값이 맞아도 모양이 틀릴 수 있다.
 
-### N-7. 전역 `non_null` 설정이 문서에 명시된 `null` 키를 지운다 〔2026-08-14 · D2·D3〕
+### N-7. 전역 `non_null` 설정이 문서에 명시된 `null` 키를 지운다 〔2026-08-14 · D2·D3 / 2026-08-15 마무리〕
 
 `application.yml`의 `spring.jackson.default-property-inclusion: non_null` 때문에 값이 null인 필드는 **키째로** 응답에서 사라진다. API.md가 `"failureCode": null`, `"category": null`, `"thumbnailUrl": null`처럼 null을 명시한 자리까지 없어진다.
 
-**재발 방지** — null을 계약한 응답 레코드에 `@JsonInclude(JsonInclude.Include.ALWAYS)`를 붙였다(`AnalysisStatusResponse` · `ResultResponse` · `ComparisonImage` · `RoutineSummary` · `RoutineDetailResponse` · `TaskView` · `DrawerItem`). `RoutineDtosSerializationTest`가 회귀를 막는다.
+**재발 방지** — null을 계약한 응답 레코드에 `@JsonInclude(JsonInclude.Include.ALWAYS)`를 붙였다.
+
+| 레코드 | 고정한 테스트 |
+| --- | --- |
+| `AnalysisStatusResponse` · `ResultResponse` · `ComparisonImage` | — |
+| `RoutineSummary` · `RoutineDetailResponse` · `TaskView` · `DrawerItem` | `RoutineDtosSerializationTest` |
+| `ProfileResponse` 〔2026-08-15〕 | `ProfileDtosSerializationTest` |
+
+**`ProfileResponse`만 하루 늦게 붙었다.** 나머지를 고칠 때 같이 못 본 이유가 있다 — 이 구멍은 **값이 null일 때만** 드러나는데, `analysisSummary`가 null인 구간은 프로필 등록 직후 AI 분석이 끝나기 전 **몇 초뿐**이다. 화면을 열어보는 방식으로는 재현 확률이 낮다.
 
 > **새 응답 DTO를 만들 때** — API.md 예시에 `null`이 찍혀 있으면 `@JsonInclude(ALWAYS)`가 필요하다. 아니면 프론트가 "값이 null"과 "필드가 없음"을 따로 다뤄야 한다.
-> 참고: `ProfileResponse.analysisSummary`는 아직 이 처리가 안 되어 있다. (HANDOVER.md §9-5)
+> **찾는 방법은 화면이 아니라 grep이다.** 응답 레코드에서 nullable 필드를 세고, `@JsonInclude`가 없는 레코드를 목록으로 뽑는다. "null이 잠깐만 스치는 필드"는 눈으로 보면 반드시 놓친다.
 
 ### N-8. soft delete 테이블의 UNIQUE 제약은 범위를 좁혀야 한다 〔2026-08-14 · D3-5〕
 

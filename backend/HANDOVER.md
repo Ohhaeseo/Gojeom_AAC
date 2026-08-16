@@ -4,6 +4,10 @@
 
 **먼저 읽을 것** — [AGENTS.md](../AGENTS.md) §3 규칙 · §4-1 오답 노트 → 이 문서 → [TASKS.md](TASKS.md)
 
+> **백엔드 안정성 작업(얼굴 검출·스토리지 삭제 큐·동시성·V6/V7)은 별도 문서에 있다** —
+> [docs/BACKEND_HANDOVER_2026-08-16.md](../docs/BACKEND_HANDOVER_2026-08-16.md) (커밋 `f7e7a20`).
+> 이 문서는 그 위에 얹힌 2순위 화면 연결 작업 기준이다.
+
 ---
 
 ## 1. 한 줄 요약
@@ -13,9 +17,9 @@
 
 | | 상태 |
 | --- | --- |
-| 백엔드 | 엔드포인트 22개 · AI 6단계 전부 실동작 · 마이그레이션 V1~V5 |
+| 백엔드 | 엔드포인트 22개 · AI 6단계 전부 실동작 · 마이그레이션 **V1~V7** |
 | 프론트 | 화면 22개 · HTTP 어댑터 연결 완료 · 웹 번들 빌드 통과 |
-| 검증 | E2E **218건** · 단위 테스트 **41건** · AI 호출 실패 0 |
+| 검증 | E2E **218건** · 단위 테스트 **67건** · AI 호출 실패 0 |
 
 ---
 
@@ -47,8 +51,8 @@ npx expo start --web
 
 ```bash
 cd backend
-./gradlew test              # Docker 불필요. 41건
-./gradlew integrationTest   # Docker 필요 (현재 환경에는 없음)
+./gradlew test              # Docker 불필요. 67건
+./gradlew integrationTest   # Docker 필요. Testcontainers 1.21.4로 고정(Docker 29 대응)
 
 cd frontend
 npm run typecheck && npm run lint
@@ -66,14 +70,18 @@ npm run typecheck && npm run lint
 | 2 | **S3 버킷 CORS에 `http://localhost:8081` 추가** | 웹 브라우저에서 사진 업로드 테스트가 불가능하다 |
 | 3 | **가비아 서버 확인 (0-3)** | 배포 주소가 정해져야 CORS 양쪽에 넣는다 |
 
-### 🟡 2순위 — 짧고 효과 큰 것
+### 🟡 2순위 — 짧고 효과 큰 것 〔2026-08-15 전부 완료〕
 
-| # | 할 일 | 규모 |
+| # | 할 일 | 상태 |
 | --- | --- | --- |
-| 4 | `ProfileResponse.analysisSummary`에 `@JsonInclude(ALWAYS)` | **한 줄.** 계약 위반 하나가 사라진다 |
-| 5 | 프론트 **서랍 화면**을 `getDrawer()`에 연결 | 어댑터 함수는 이미 있다. 3섹션 렌더링만 |
-| 6 | 프론트 **설정 화면**의 알림 토글을 API에 연결 | `getNotificationSettings` / `updateNotificationSettings` 이미 있음 |
-| 7 | 프론트 **인바디 스캔 버튼** 추가 (시안 08) | `scanInbody()` 이미 있음. 폼 자동 채우기만 |
+| 4 | `ProfileResponse.analysisSummary`에 `@JsonInclude(ALWAYS)` | ✅ `ProfileDtosSerializationTest`가 회귀를 막는다 |
+| 5 | 프론트 **서랍 화면**을 `getDrawer()`에 연결 | ✅ 3섹션 · 진행률 바 · 항목 탭 → `getSavedResult` |
+| 6 | 프론트 **설정 화면**의 알림 토글을 API에 연결 | ✅ 토글 + 기본 알림 시간. 아래 주의 참조 |
+| 7 | 프론트 **인바디 스캔 버튼** 추가 (시안 08) | ✅ 선택 정보 화면. 업로드 경로는 미검증(1순위 2번) |
+
+> **6번 — 시안 23의 "루틴별 알림 시간" 5줄을 지웠다.** 하드코딩된 가짜 행이었고,
+> **목표별 알림 시각을 바꾸는 API가 없다**(계정 단위 `defaultTime` 하나뿐). 자리에
+> `defaultTime` 선택기를 넣었다. 시안대로 가려면 백엔드에 엔드포인트가 먼저 필요하다.
 
 ### 🟢 3순위 — 화면이 없는 기능
 
@@ -83,9 +91,8 @@ npm run typecheck && npm run lint
 | 9 | 결과 **서랍 열람**(`viewState=SAVED`) 화면 — `getSavedResult` 준비됨 |
 | 10 | 소셜 로그인 버튼 연결 (1번 완료 후) |
 
-> **어댑터에는 있는데 화면이 안 쓰는 함수** — `getDrawer` · `getSavedResult` ·
-> `deleteSavedResult` · `scanInbody` · `createStandaloneRoutine` · `listRoutines` ·
-> `deleteRoutine` · `updateNotificationSettings` · `deleteAllAnalyses`.
+> **어댑터에는 있는데 화면이 안 쓰는 함수** 〔2026-08-15 갱신〕 — `deleteSavedResult` ·
+> `createStandaloneRoutine` · `listRoutines` · `deleteRoutine` · `deleteAllAnalyses`.
 > 전부 백엔드에서 검증된 것들이라 **화면에서 부르기만 하면 된다.**
 
 ---
@@ -168,15 +175,14 @@ POST   /notifications/device-tokens
 | `NotificationScheduler` (발송) | FCM vs Web Push 미정. 설정·토큰은 이미 쌓임 |
 | `GET /consents/terms` | 동의 화면 미설계 (PRD O-2) |
 
-### 알려진 구멍 1가지
+### 알려진 구멍 — 남은 것 2가지
 
 | # | 내용 | 규모 |
 | --- | --- | --- |
+| ~~1~~ | ~~`ProfileResponse.analysisSummary`가 null일 때 키째로 사라짐~~ | **2026-08-15 해소** |
+| ~~2~~ | ~~인바디 서류 사진이 S3에 영구 잔존~~ → 소유권 검증 후 성공·실패와 무관하게 삭제 큐에 기록하고 스케줄러가 재시도한다 (V6) | **2026-08-16 해소** |
 | 3 | **`PATCH /profiles/me` 후 `analysis_summary` 미갱신.** 신체 정보를 고쳐도 AI 요약은 그대로 | 정책 결정 필요 |
-
-**2026-08-16 해소** — `ProfileResponse.analysisSummary`는 null 키를 유지한다.
-인바디 OCR 원본은 소유권 검증 후 성공·실패와 무관하게 영속 삭제 큐에 기록하고,
-S3 삭제 실패 시 스케줄러가 재시도한다.
+| 4 | **목표별 알림 시각 변경 API 없음.** 설정 화면이 시안 23의 루틴별 시간 목록을 못 그린다 | 엔드포인트 신설 |
 
 ### 검증 못 한 것
 
@@ -186,8 +192,7 @@ S3 삭제 실패 시 스케줄러가 재시도한다.
 | **실제 인물 사진의 이미지 합성** | 검증은 전부 합성 이미지로 했다. 실사진은 제공자가 거부할 수 있다(→ `FAILED`로 정상 처리) |
 | **실기기 동작** | 웹 번들만 확인 |
 
-**2026-08-16 추가 검증** — Docker Desktop 29.7.2에서 Testcontainers 1.21.4로
-`clean integrationTest`를 실행해 `BUILD SUCCESSFUL`을 확인했다.
+> ~~Testcontainers 통합 테스트~~ — **2026-08-16 검증됨.** Docker Desktop 29.7.2 + Testcontainers 1.21.4로 `clean integrationTest` 통과.
 
 ---
 
@@ -221,9 +226,10 @@ S3 삭제 실패 시 스케줄러가 재시도한다.
 | 2 | `referenceImageKeys` 상한 없음 → 서버가 5장 제한 | 문서 |
 | 3 | `profile_analysis` JSON Schema가 문서에 없다 → ERD §5.3에서 역산 | 문서 |
 | 4 | 금지어가 API.md 3개 / ARCHITECTURE 4개 → 넓은 쪽 채택 | 문서 |
-| 5 | **`ProfileResponse.analysisSummary` null 키 소실** | **코드 (§6-1)** |
+| ~~5~~ | ~~`ProfileResponse.analysisSummary` null 키 소실~~ | **2026-08-15 해소** |
 | 6 | 결과 `overview.keywords`가 선택분인지 전체 후보인지 모호 → 예시대로 선택분만 | **FE 협의** |
 | 8 | ERD §6의 V1 전문에 `profiles.updated_at` 누락 | 문서 |
+| ~~9~~ | ~~`.env.example` 한글 주석 깨짐 (mojibake)~~ | **2026-08-16 해소** |
 | 10 | 사진 없는 프로필로 분석 시도할 전용 에러 코드 없음 → `PROFILE_REQUIRED` 대체 | 문서 |
 | 12 | 목표 생성 **201 동기 vs 202 비동기** 문서 충돌 → API.md 따라 201 | 문서 |
 | 13 | `GET /routines` 응답 미정의 → `RoutineSummary` 재사용 | 문서 |
@@ -233,9 +239,9 @@ S3 삭제 실패 시 스케줄러가 재시도한다.
 | 17 | `*계정, 목표 정보는 삭제되지 않아요` 문구가 `DELETE /routines/{id}`에 붙어 있다 | 문서 |
 | 18 | `ScanConfidence` 값 미정의 → 판독 개수로 HIGH/MEDIUM/LOW | 문서 |
 | 19 | 알림 응답만 공통 봉투 없이 예시됨 → §1 봉투 적용 | 문서 |
-| 20 | **인바디 서류 사진 스토리지 잔존** | **운영 (§6-2)** |
+| ~~20~~ | ~~인바디 서류 사진 스토리지 잔존~~ | **2026-08-16 해소** |
 
-**해소된 것** — #7(`comparison_image_key` 1개 vs URL 2장), #9(`.env.example` UTF-8 복구), #11(구독 만료 에러 코드), G-2 문구.
+**해소된 것** — #7(`comparison_image_key` 1개 vs URL 2장), #11(구독 만료 에러 코드), G-2 문구.
 
 **PRD 미결도 그대로** — **O-1**(수치 대시보드 ↔ G-1 충돌, 최우선) · **O-2**(동의 화면·생년월일, 법적) · O-4 · O-5.
 
@@ -253,8 +259,10 @@ PRD §12·AGENTS.md §2는 **React · TypeScript · Vite (모바일 웹)**, 실�
 | 원격 | https://github.com/Ohhaeseo/Gojeom_AAC |
 | 기본 브랜치 | `codex/readme` (⚠️ `main`이 아니다) |
 | 작업 브랜치 | `backend` — **백엔드 + 프론트가 합쳐진 최신 브랜치** |
-| 마이그레이션 | V1 → V5 |
+| 마이그레이션 | V1 → **V7** |
 
 - `backend` 브랜치가 `origin/codex/readme`(프론트)를 머지한 상태다. 여기서 이어가면 된다.
 - 커밋·푸시는 **사용자가 요청할 때만** 한다.
-- ⚠️ **현재 커밋되지 않은 변경이 있다.** 이번 세션의 프론트 어댑터·이미지 생성·문서 수정.
+- ⚠️ **현재 커밋되지 않은 변경이 있다.** 2순위 4건(백엔드 1 · 프론트 3)과 문서 수정.
+- ⚠️ **`origin/backend`를 먼저 확인하고 시작한다.** 2026-08-15 작업이 이미 푸시된 `f7e7a20`과
+  같은 일을 중복으로 했다. `git status -sb`에 `[behind N]`이 찍히면 받고 시작한다.
