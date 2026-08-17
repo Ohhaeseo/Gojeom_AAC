@@ -55,10 +55,14 @@ type AppStateValue = {
 
   nickname: string;
   setNickname: (value: string) => Promise<void>;
+  /** 가입 경로·가입일 등 계정 정보. 서버 모드에서만 채워진다. */
+  me?: backend.Me;
   photoUri?: string;
   setPhotoUri: (value?: string) => void;
   priorities: Category[];
   setPriorities: (value: Category[]) => void;
+  /** 우선순위만 서버에 저장한다. 배열 순서가 곧 1·2·3순위다. (AGENTS.md 규칙 3) */
+  savePriorities: (value: Category[]) => Promise<ActionResult>;
   profile?: Profile;
   /** 사진 업로드 → 프로필 등록까지 한 번에 처리한다. */
   saveProfile: (draft: ProfileDraft) => Promise<ActionResult>;
@@ -73,11 +77,14 @@ type AppStateValue = {
   hasAnalysis: boolean;
   saved: boolean;
   saveToDrawer: () => Promise<ActionResult>;
+  /** 분석과 결과를 전부 지운다. **목표는 남는다.** (V4 · 시안 11 문구) */
+  deleteAllAnalyses: () => Promise<ActionResult>;
 
   // ---- 서랍
   loadDrawer: () => Promise<DrawerSections>;
   /** 서랍 항목을 결과 화면에 올린다. `viewState`가 `SAVED`로 온다. (API.md §6.5) */
   openSavedResult: (savedResultId: string) => Promise<ActionResult>;
+  deleteSavedResult: (savedResultId: string) => Promise<ActionResult>;
 
   // ---- 알림 설정
   notificationSettings: NotificationSettings;
@@ -200,6 +207,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [photoUri, setPhotoUri] = useState<string>();
   const [priorities, setPriorities] = useState<Category[]>([]);
   const [profile, setProfileState] = useState<Profile>();
+  const [me, setMe] = useState<backend.Me>();
   const [result, setResult] = useState<AnalysisResult>();
   const [saved, setSaved] = useState(false);
   const [tasks, setTasks] = useState<RoutineTask[]>([]);
@@ -222,6 +230,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           if (!session) return;
           setCurrentAccountId(session.userId);
           setNicknameState(session.nickname);
+          // 가입 경로·가입일은 세션에 없다. 프로필 화면이 쓰므로 함께 읽어둔다.
+          await backend.getMe().then(setMe).catch(() => undefined);
           // 프로필이 없을 수 있다. 없으면 등록 화면으로 가야 하므로 조용히 넘긴다.
           await backend.getProfile()
             .then((loaded) => { setProfileState(loaded); setPriorities(loaded.priorities); setPhotoUri(loaded.photoUrl ?? undefined); })
@@ -259,7 +269,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   const resetServerState = useCallback(() => {
     setNicknameState('새로운 회원'); setPhotoUri(undefined); setPriorities([]);
-    setProfileState(undefined); setResult(undefined); setSaved(false); setTasks([]);
+    setProfileState(undefined); setMe(undefined); setResult(undefined); setSaved(false); setTasks([]);
     setAnalysisKeywords([]); setAnalysisStatusText('');
     setNotificationSettings({ enabled: false, defaultTime: '21:00' });
     setRoutines([]);
@@ -305,6 +315,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       resetServerState();
       setCurrentAccountId(session.userId);
       setNicknameState(session.nickname);
+      await backend.getMe().then(setMe).catch(() => undefined);
       const loaded = await backend.getProfile().catch(() => undefined);
       if (loaded) { setProfileState(loaded); setPriorities(loaded.priorities); setPhotoUri(loaded.photoUrl ?? undefined); }
       return { ok: true };
@@ -383,6 +394,25 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: false, message: messageOf(error, '프로필을 저장하지 못했어요.') };
     }
   }, [mode, photoUri, updateAccount]);
+
+  /**
+   * 우선순위만 바꾼다. 사진·신체 정보는 건드리지 않는다.
+   *
+   * **배열 순서가 곧 1·2·3순위다.** 정렬을 바꾸지 않는다. (AGENTS.md 규칙 3)
+   */
+  const savePriorities = useCallback(async (next: Category[]): Promise<ActionResult> => {
+    if (next.length !== 3) return { ok: false, message: '우선순위 3개를 모두 골라주세요.' };
+
+    if (mode === 'mock') { updateAccount((current) => ({ ...current, priorities: next })); return { ok: true }; }
+    try {
+      const updated = await backend.updatePriorities(next);
+      setProfileState(updated);
+      setPriorities(updated.priorities);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '우선순위를 저장하지 못했어요.') };
+    }
+  }, [mode, updateAccount]);
 
   /**
    * 인바디 서류 사진 → OCR 판독값.
@@ -495,6 +525,29 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, updateAccount]);
 
+  /**
+   * 분석·결과·서랍 항목을 전부 지운다.
+   *
+   * **목표는 남는다.** 사용자가 몇 주에 걸쳐 쌓은 완료 기록을 분석 삭제의 부수 효과로
+   * 잃게 두지 않는다는 결정이다. 시안 11의 "*계정, 목표 정보는 삭제되지 않아요"가
+   * 이 약속이고, 스키마도 V4에서 그렇게 바뀌었다.
+   */
+  const deleteAllAnalyses = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') {
+      updateAccount((current) => ({ ...current, hasAnalysis: false, saved: false }));
+      return { ok: true };
+    }
+    try {
+      await backend.deleteAllAnalyses();
+      setResult(undefined);
+      setSaved(false);
+      analysisId.current = undefined;
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '분석 정보를 삭제하지 못했어요.') };
+    }
+  }, [mode, updateAccount]);
+
   // ---------------------------------------------------------------- 서랍
 
   const loadDrawer = useCallback(async (): Promise<DrawerSections> => {
@@ -519,6 +572,16 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: false, message: messageOf(error, '저장한 결과를 불러오지 못했어요.') };
     }
   }, [mode]);
+
+  const deleteSavedResult = useCallback(async (savedResultId: string): Promise<ActionResult> => {
+    if (mode === 'mock') { updateAccount((current) => ({ ...current, saved: false })); return { ok: true }; }
+    try {
+      await backend.deleteSavedResult(savedResultId);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '서랍에서 지우지 못했어요.') };
+    }
+  }, [mode, updateAccount]);
 
   // ---------------------------------------------------------------- 알림 설정
 
@@ -657,10 +720,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     register, login, logout, deleteAccount,
     nickname: serverMode ? nickname : account.nickname,
     setNickname,
+    me,
     photoUri: serverMode ? photoUri : account.photoUri,
     setPhotoUri,
     priorities: serverMode ? priorities : account.priorities,
     setPriorities,
+    savePriorities,
     profile: serverMode ? profile : account.profile,
     saveProfile,
     scanInbody,
@@ -672,8 +737,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     hasAnalysis: serverMode ? Boolean(result) : account.hasAnalysis,
     saved: serverMode ? saved : account.saved,
     saveToDrawer,
+    deleteAllAnalyses,
     loadDrawer,
     openSavedResult,
+    deleteSavedResult,
     notificationSettings,
     loadNotificationSettings,
     updateNotificationSettings,
@@ -687,10 +754,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     deleteRoutine,
   }), [
     account, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
-    deleteAccount, deleteRoutine, ensureRoutine, loadDrawer, loadNotificationSettings, loadRoutines,
-    login, logout, mode, nickname, notificationSettings, openRoutine, openSavedResult, photoUri,
-    priorities, profile, ready, register, result, routines, saveProfile, saveToDrawer, saved,
-    scanInbody, serverMode, setNickname, startAnalysis, tasks, toggleTask, updateNotificationSettings,
+    deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
+    loadNotificationSettings, loadRoutines, login, logout, me, mode, nickname, notificationSettings,
+    openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, result, routines,
+    saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
+    startAnalysis, tasks, toggleTask, updateNotificationSettings,
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
