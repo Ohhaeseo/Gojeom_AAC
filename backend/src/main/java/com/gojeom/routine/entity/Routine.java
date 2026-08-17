@@ -81,6 +81,19 @@ public class Routine extends BaseCreatedEntity {
     @Column(name = "sort_order")
     private Integer sortOrder;
 
+    /**
+     * 식사 방향. <b>일반 가이드만 담는다.</b> (V11)
+     *
+     * <p>식사와 관련이 옅은 목표에는 null이다. 억지로 채우면 빈 말이 남는다.
+     */
+    @Column(name = "diet_guide", length = 160)
+    private String dietGuide;
+
+    /** 식사 방향은 AI가 만든 뒤에 붙인다. 생성자 인자를 더 늘리지 않는다. */
+    public void applyDietGuide(String dietGuide) {
+        this.dietGuide = dietGuide == null || dietGuide.isBlank() ? null : dietGuide.trim();
+    }
+
     private Routine(UUID userId, RoutineSourceType sourceType, UUID analysisResultId,
                     Category category, Short durationWeeks, String title,
                     LocalDate startDate, LocalDate endDate,

@@ -106,7 +106,7 @@ public class RoutineService {
                 p -> requireTasks(p.tasks().size())));
 
         RoutineSummary summary = routineTx.persistFromAnalysis(userId, context.analysisResultId(),
-                plan.title(), plan.tasks(), request.startDate());
+                plan.title(), plan.dietGuide(), plan.tasks(), request.startDate());
 
         return new RoutineCreateResponse(List.of(summary));
     }
@@ -374,7 +374,7 @@ public class RoutineService {
     private RoutineSummary toSummary(Routine routine, long[] progress) {
         return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
                 routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(), routine.getEndDate(),
-                progress[1], routine.getGoalText(), routine.getTargetWeightKg());
+                progress[1], routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide());
     }
 
     private Routine findOwned(UUID userId, UUID routineId) {

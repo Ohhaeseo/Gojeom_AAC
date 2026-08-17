@@ -70,11 +70,11 @@ public final class AiPayloads {
 
     /** 경로 A — 여러 카테고리에 걸친 목표 1개. */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record RoutinePlan(String title, List<PlannedTask> tasks) {
+    public record RoutinePlan(String title, String dietGuide, List<PlannedTask> tasks) {
 
         @JsonIgnore
         public String userFacingText() {
-            return title + '\n' + PlannedTask.joinText(tasks);
+            return title + '\n' + (dietGuide == null ? "" : dietGuide + '\n') + PlannedTask.joinText(tasks);
         }
     }
 
@@ -92,7 +92,14 @@ public final class AiPayloads {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record PlannedRoutine(Category category, String title, List<PlannedTask> tasks) {
+    /**
+     * 목표 1개.
+     *
+     * <p>{@code dietGuide}는 <b>일반적인 식사 방향</b>이다. 없을 수 있다 — 식사와
+     * 관련이 옅은 목표에 억지로 붙이지 않는다.
+     */
+    public record PlannedRoutine(Category category, String title, String dietGuide,
+                                 List<PlannedTask> tasks) {
     }
 
     /**

@@ -312,6 +312,8 @@ export type RoutineSummary = {
   goalText: string | null;
   /** 체형 목표에서만 값을 갖는다. (V10) */
   targetWeightKg: number | null;
+  /** 식사 방향. **일반 가이드다.** 관련이 옅은 목표는 null이다. (V11) */
+  dietGuide: string | null;
 };
 
 export type RoutineDetail = {

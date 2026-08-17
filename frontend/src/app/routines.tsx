@@ -76,6 +76,16 @@ function RoutineCard({ item, selected, progress, dragging, controls, onSelect, o
           {item.targetWeightKg != null ? ` · 목표 ${item.targetWeightKg}kg` : ''}
         </Text>
         {progress != null ? <View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View> : null}
+        {/*
+          식사 방향은 **펼친 카드에만** 보여준다. 목록에서 모든 카드가 두세 줄씩
+          늘어나면 목표를 훑어보기 어려워진다. 일반 가이드라는 것을 라벨로 밝힌다.
+        */}
+        {selected && item.dietGuide ? (
+          <View style={styles.diet}>
+            <Text style={styles.dietLabel}>식사 방향</Text>
+            <Text style={styles.dietText}>{item.dietGuide}</Text>
+          </View>
+        ) : null}
       </Pressable>
       {/*
         순서 조작은 카드 Pressable **밖**이다. 안에 넣으면 끌거나 누를 때 이벤트가
@@ -331,6 +341,9 @@ const styles = StyleSheet.create({
   groupTitle: { ...typography.label, color: colors.textTertiary, marginTop: 4 },
   groupCount: { color: colors.primary, fontWeight: '700' },
   goalText: { ...typography.caption, color: colors.textTertiary, fontStyle: 'italic' },
+  diet: { gap: 3, marginTop: 6, padding: 10, borderRadius: radius.md, backgroundColor: colors.surfaceSunken },
+  dietLabel: { ...typography.caption, color: colors.primaryPressed, fontWeight: '700' },
+  dietText: { ...typography.caption, color: colors.textTertiary, lineHeight: 18 },
   groupHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   groupHint: { ...typography.caption, color: colors.textMuted },
   handleSlot: { paddingRight: 8 },

@@ -140,9 +140,10 @@ public class JsonSchemas {
               "strict": true,
               "schema": {
                 "type": "object", "additionalProperties": false,
-                "required": ["title", "tasks"],
+                "required": ["title", "dietGuide", "tasks"],
                 "properties": {
                   "title": { "type": "string", "maxLength": 60 },
+                  "dietGuide": { "type": ["string", "null"], "maxLength": 160 },
                   "tasks": {
                     "type": "array", "minItems": 4, "maxItems": 6,
                     "items": {
@@ -180,10 +181,11 @@ public class JsonSchemas {
                     "type": "array", "minItems": 1, "maxItems": 3,
                     "items": {
                       "type": "object", "additionalProperties": false,
-                      "required": ["category", "title", "tasks"],
+                      "required": ["category", "title", "dietGuide", "tasks"],
                       "properties": {
-                        "category": { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
-                        "title":    { "type": "string", "maxLength": 60 },
+                        "category":  { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
+                        "title":     { "type": "string", "maxLength": 60 },
+                        "dietGuide": { "type": ["string", "null"], "maxLength": 160 },
                         "tasks": {
                           "type": "array", "minItems": 4, "maxItems": 6,
                           "items": {

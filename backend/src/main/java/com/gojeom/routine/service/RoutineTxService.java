@@ -122,9 +122,11 @@ public class RoutineTxService {
      */
     @Transactional
     public RoutineSummary persistFromAnalysis(UUID userId, UUID analysisResultId, String title,
-                                              List<PlannedTask> tasks, LocalDate startDate) {
+                                              String dietGuide, List<PlannedTask> tasks,
+                                              LocalDate startDate) {
         Routine routine = routineRepository.save(
                 Routine.fromAnalysis(userId, analysisResultId, title, startDate));
+        routine.applyDietGuide(dietGuide);
 
         // 시점이 여러 개인 태스크는 시점마다 하나씩으로 나눈다. 완료 체크가 태스크
         // 단위라, "아침, 저녁"이 한 줄이면 아침만 한 상태를 표현할 수 없다.
@@ -161,6 +163,7 @@ public class RoutineTxService {
             Routine routine = routineRepository.save(Routine.standalone(
                     userId, plan.category(), weeks, plan.title(), startDate,
                     item.goalText(), item.targetWeightKg()));
+            routine.applyDietGuide(plan.dietGuide());
 
             // 주 단위로 복제하기 **전에** 나눈다. 복제 후에 나누면 같은 일을
             // durationWeeks번 반복해서 하게 된다.
@@ -184,7 +187,7 @@ public class RoutineTxService {
     private RoutineSummary summary(Routine routine, long taskCount) {
         return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
                 routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(),
-                routine.getEndDate(), taskCount, routine.getGoalText(), routine.getTargetWeightKg());
+                routine.getEndDate(), taskCount, routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide());
     }
 
 }

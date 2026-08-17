@@ -141,7 +141,9 @@ public final class RoutineDtos {
             /** 사용자가 적은 목표. 경로 A는 null이다. (V10) */
             String goalText,
             /** 체형 목표에서만 값을 갖는다. (V10) */
-            BigDecimal targetWeightKg) {
+            BigDecimal targetWeightKg,
+            /** 식사 방향. <b>일반 가이드다.</b> 관련이 옅은 목표는 null이다. (V11) */
+            String dietGuide) {
     }
 
     /**
