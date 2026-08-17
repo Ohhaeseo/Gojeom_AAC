@@ -56,6 +56,22 @@ export async function login(email: string, password: string): Promise<Session> {
   return saveSession(toSession(token));
 }
 
+/**
+ * Google 로그인. 응답이 `/auth/login`과 동일한 `TokenResponse`라 화면이 분기하지 않는다.
+ * (API.md §6.1)
+ *
+ * `idToken`은 Google이 준 ID 토큰 원문이다. 검증은 서버가 한다 — 프론트가
+ * 열어보고 판단하지 않는다.
+ */
+export async function googleLogin(idToken: string): Promise<Session> {
+  const token = await request<TokenResponse>('/auth/oauth/google', {
+    method: 'POST',
+    body: { idToken },
+    auth: false,
+  });
+  return saveSession(toSession(token));
+}
+
 export async function logout(): Promise<void> {
   // 서버가 무상태라 실패해도 로컬 세션만 지우면 로그아웃은 성립한다.
   await request<void>('/auth/logout', { method: 'POST' }).catch(() => undefined);

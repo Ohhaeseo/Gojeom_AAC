@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { ApiError, isMockMode } from '@/services/api';
 import * as backend from '@/services/backend';
-import { clearSession, currentSession, restoreSession } from '@/services/session';
+import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
 import type { AnalysisResult, Category, Inbody, Profile, RoutineTask } from '@/types/api';
 
 export type { DrawerItem, InbodyScan } from '@/services/backend';
@@ -50,6 +50,8 @@ type AppStateValue = {
 
   register: (id: string, password: string) => Promise<ActionResult>;
   login: (id: string, password: string) => Promise<ActionResult>;
+  /** Google ID 토큰으로 로그인. 서버 모드에서만 동작한다. */
+  loginWithGoogle: (idToken: string) => Promise<ActionResult>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<ActionResult>;
 
@@ -300,6 +302,16 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [accounts, mode, resetServerState]);
 
+  // 로그인 방식(아이디·Google)이 달라도 세션을 받은 뒤 할 일은 같다.
+  const adoptSession = useCallback(async (session: Session) => {
+    resetServerState();
+    setCurrentAccountId(session.userId);
+    setNicknameState(session.nickname);
+    await backend.getMe().then(setMe).catch(() => undefined);
+    const loaded = await backend.getProfile().catch(() => undefined);
+    if (loaded) { setProfileState(loaded); setPriorities(loaded.priorities); setPhotoUri(loaded.photoUrl ?? undefined); }
+  }, [resetServerState]);
+
   const login = useCallback(async (rawId: string, password: string): Promise<ActionResult> => {
     const id = rawId.trim().toLowerCase();
 
@@ -311,20 +323,25 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: true };
     }
     try {
-      const session = await backend.login(id, password);
-      resetServerState();
-      setCurrentAccountId(session.userId);
-      setNicknameState(session.nickname);
-      await backend.getMe().then(setMe).catch(() => undefined);
-      const loaded = await backend.getProfile().catch(() => undefined);
-      if (loaded) { setProfileState(loaded); setPriorities(loaded.priorities); setPhotoUri(loaded.photoUrl ?? undefined); }
+      await adoptSession(await backend.login(id, password));
       return { ok: true };
     } catch (error) {
       // 서버는 "없는 계정"과 "비밀번호 틀림"을 구분해 알려주지 않는다.
       // 계정 존재 여부가 새어나가지 않게 하려는 의도다. (API.md §4)
       return { ok: false, message: messageOf(error, '로그인에 실패했어요.') };
     }
-  }, [accounts, mode, resetServerState]);
+  }, [accounts, adoptSession, mode]);
+
+  const loginWithGoogle = useCallback(async (idToken: string): Promise<ActionResult> => {
+    // mock 모드에는 검증할 서버가 없다. 성공한 척하면 가짜 세션이 생긴다.
+    if (mode === 'mock') return { ok: false, message: '백엔드에 연결되어 있지 않아 Google 로그인을 쓸 수 없어요.' };
+    try {
+      await adoptSession(await backend.googleLogin(idToken));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, 'Google 로그인에 실패했어요.') };
+    }
+  }, [adoptSession, mode]);
 
   const logout = useCallback(async () => {
     if (mode === 'server') { await backend.logout().catch(() => clearSession()); resetServerState(); }
@@ -717,7 +734,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     ready,
     mode,
     currentAccountId,
-    register, login, logout, deleteAccount,
+    register, login, loginWithGoogle, logout, deleteAccount,
     nickname: serverMode ? nickname : account.nickname,
     setNickname,
     me,
@@ -755,7 +772,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   }), [
     account, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
-    loadNotificationSettings, loadRoutines, login, logout, me, mode, nickname, notificationSettings,
+    loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
     openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, result, routines,
     saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
     startAnalysis, tasks, toggleTask, updateNotificationSettings,
