@@ -37,10 +37,10 @@ function currentWeek(tasks: RoutineTask[]): { date?: string; items: RoutineTask[
 
 export default function RoutinesScreen() {
   const {
-    routines, loadRoutines, openRoutine, tasks, toggleTask, loadDrawer,
+    routines, loadRoutines, openRoutine, tasks, toggleTask, loadDrawer, activeRoutineId,
     notificationSettings, loadNotificationSettings, updateNotificationSettings,
   } = useAppState();
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedId, setSelectedId] = useState<string | undefined>(activeRoutineId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // 서랍에 저장한 결과가 있는지는 **서버에 물어본다.** 메모리의 result·saved는
@@ -64,11 +64,15 @@ export default function RoutinesScreen() {
     if (!outcome.ok) setError(outcome.message ?? '목표를 불러오지 못했어요.');
   }, [openRoutine]);
 
-  // 목록이 오면 첫 목표를 자동으로 펼친다. 한 번 더 누르게 하지 않는다.
+  // 목록이 오면 하나를 자동으로 펼친다. 한 번 더 누르게 하지 않는다.
+  // **마지막에 보던 목표가 있으면 그것을 먼저 쓴다.** 목표가 둘 이상일 때
+  // 매번 첫 번째로 튕기면 홈이 가리키는 목표와 어긋난다.
   const first = routines[0];
   useEffect(() => {
-    if (first && !routines.some((item) => item.routineId === selectedId)) void select(first.routineId);
-  }, [first, routines, select, selectedId]);
+    if (routines.some((item) => item.routineId === selectedId)) return;
+    const restore = routines.find((item) => item.routineId === activeRoutineId) ?? first;
+    if (restore) void select(restore.routineId);
+  }, [activeRoutineId, first, routines, select, selectedId]);
 
   if (loading && !routines.length) {
     return <AppScreen navigation contentStyle={styles.content}><ActivityIndicator color={colors.primary} style={styles.loading} /></AppScreen>;

@@ -1,7 +1,7 @@
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
@@ -15,10 +15,22 @@ import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 type Overlay = 'none' | 'loading' | 'done';
 
 export default function GoalScreen() {
-  const { result, ensureRoutine } = useAppState();
+  const { result, ensureRoutine, loadDrawer } = useAppState();
   const [overlay, setOverlay] = useState<Overlay>('none');
   const [error, setError] = useState('');
   const insets = useSafeAreaInsets();
+  // 결과가 메모리에 없다고 해서 "분석이 없다"는 뜻은 아니다. 새로고침하면
+  // `result`가 비므로 저장된 것이 있는지는 **서버에 물어본다.** (오답 노트 N-12)
+  const [savedCount, setSavedCount] = useState<number>();
+
+  useEffect(() => {
+    if (result) return;
+    let alive = true;
+    loadDrawer()
+      .then((sections) => { if (alive) setSavedCount(sections.all.length); })
+      .catch(() => { if (alive) setSavedCount(0); });
+    return () => { alive = false; };
+  }, [loadDrawer, result]);
 
   // 목표 생성은 AI 호출이라 몇 초 걸린다. 오버레이를 띄운 채 실제 응답을 기다린다.
   const createRoutine = async () => {
@@ -39,13 +51,7 @@ export default function GoalScreen() {
     router.replace('/routines');
   };
 
-  if (!result) return (
-    <AppScreen navigation contentStyle={styles.content}>
-      <Text style={styles.title}>아직 분석 결과가 없어요</Text>
-      <Text style={styles.description}>고점 분석을 먼저 완료하면 목표를 만들 수 있어요.</Text>
-      <AppButton label="고점 분석하기" onPress={() => router.replace('/analysis-new')} />
-    </AppScreen>
-  );
+  if (!result) return <NoResult savedCount={savedCount} />;
 
   return (
     <AppScreen navigation contentStyle={styles.content}>
@@ -88,9 +94,54 @@ export default function GoalScreen() {
   );
 }
 
+/**
+ * 분석 결과 없이 들어왔을 때. **막다른 길을 만들지 않는다.**
+ *
+ * 예전에는 `고점 분석하기` 버튼 하나뿐이었다. 이제 진단 없이도 목표를 만들 수
+ * 있으므로(경로 B) 두 갈래를 준다. 서랍에 저장한 분석이 있으면 세 번째 갈래를
+ * 덧붙인다 — 새로고침으로 메모리만 비었을 뿐 실제로는 결과가 있는 경우다. (N-12)
+ */
+function NoResult({ savedCount }: { savedCount?: number }) {
+  const hasSaved = (savedCount ?? 0) > 0;
+  return (
+    <AppScreen navigation contentStyle={styles.content}>
+      <View style={styles.emptyHead}>
+        <Text style={styles.title}>아직 분석 결과가 없어요</Text>
+        <Text style={styles.description}>편한 쪽으로 시작해보세요.</Text>
+      </View>
+
+      <Pressable accessibilityRole="button" onPress={() => router.replace('/analysis-new')} style={[styles.pathCard, styles.pathCardPrimary]}>
+        <View style={styles.pathHead}><Text style={[styles.pathTitle, styles.pathTitleOn]}>고점 분석하기</Text><Text style={[styles.pathArrow, styles.pathTitleOn]}>›</Text></View>
+        <Text style={[styles.pathText, styles.pathTextOn]}>사진과 우선순위로 지금 상태를 분석하고, 그 결과로 목표를 만들어요.</Text>
+      </Pressable>
+
+      <Pressable accessibilityRole="button" onPress={() => router.push('/routine-new')} style={styles.pathCard}>
+        <View style={styles.pathHead}><Text style={styles.pathTitle}>진단 없이 목표 만들기</Text><Text style={styles.pathArrow}>›</Text></View>
+        <Text style={styles.pathText}>카테고리와 기간만 골라 바로 시작해요.</Text>
+      </Pressable>
+
+      {hasSaved ? (
+        <Pressable accessibilityRole="button" onPress={() => router.push('/drawer')} style={styles.pathCard}>
+          <View style={styles.pathHead}><Text style={styles.pathTitle}>서랍에서 분석 가져오기</Text><Text style={styles.pathArrow}>›</Text></View>
+          <Text style={styles.pathText}>저장한 분석 {savedCount}개가 있어요. 불러와서 목표를 만들 수 있어요.</Text>
+        </Pressable>
+      ) : null}
+    </AppScreen>
+  );
+}
+
 const styles = StyleSheet.create({
   errorText: { ...typography.caption, color: colors.danger },
   content: { gap: spacing.md },
+  emptyHead: { gap: 6, marginTop: spacing.lg, marginBottom: spacing.sm },
+  pathCard: { gap: 8, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow },
+  pathCardPrimary: { backgroundColor: colors.text },
+  pathHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pathTitle: { ...typography.title, color: colors.text },
+  pathTitleOn: { color: colors.white },
+  pathArrow: { fontSize: 24, color: colors.textMuted },
+  pathText: { ...typography.caption, color: colors.textMuted },
+  pathTextOn: { color: colors.primaryLight },
   title: { ...typography.h1, color: colors.text },
   sectionTitle: { ...typography.h1, color: colors.text, marginTop: spacing.sm },
   description: { ...typography.body, color: colors.textMuted },

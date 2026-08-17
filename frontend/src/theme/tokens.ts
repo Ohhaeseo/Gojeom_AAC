@@ -38,6 +38,16 @@ export const spacing = {
   xxl: 48,
 } as const;
 
+export const layout = {
+  /**
+   * 시안 기준 폭. 데스크톱 브라우저에서 화면이 전체 폭으로 늘어나지 않게 막는다.
+   *
+   * `AppScreen`이 헤더·내용·하단 네비를 통째로 이 폭에 묶는다. 내용만 묶으면
+   * 헤더와 네비가 따로 늘어나 어긋난다.
+   */
+  maxWidth: 458,
+} as const;
+
 export const radius = {
   sm: 8,
   md: 14,

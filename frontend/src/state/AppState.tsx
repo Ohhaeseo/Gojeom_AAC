@@ -106,6 +106,11 @@ type AppStateValue = {
   loadRoutines: () => Promise<void>;
   /** 목록에서 고른 목표의 태스크를 화면에 올린다. */
   openRoutine: (routineId: string) => Promise<ActionResult>;
+  /**
+   * 지금 보고 있는 목표의 id. 홈과 루틴 화면이 이 값을 함께 본다.
+   * 저장돼 있어 새로고침해도 유지된다.
+   */
+  activeRoutineId?: string;
   /** 분석 없이 카테고리+기간만으로 목표를 만든다. (경로 B) */
   createRoutines: (items: RoutinePlanItem[]) => Promise<ActionResult>;
   deleteRoutine: (routineId: string) => Promise<ActionResult>;
@@ -185,6 +190,13 @@ function mockDrawer(account: AccountData): DrawerSections {
 
 const AppStateContext = createContext<AppStateValue | null>(null);
 const ACCOUNTS_STORAGE_KEY = '@go/mock-accounts-v1';
+/**
+ * 지금 보고 있는 목표. **새로고침을 넘겨야 한다.**
+ *
+ * 목표가 둘 이상이면(경로 A로 하나, 경로 B로 하나) 홈·루틴 화면이 **같은 목표를**
+ * 가리켜야 한다. 메모리에만 두면 새로고침 후 둘이 어긋난다. (오답 노트 N-12)
+ */
+const ACTIVE_ROUTINE_STORAGE_KEY = '@go/active-routine-v1';
 
 const createAccountData = (password: string): AccountData => ({
   password, nickname: '새로운 회원', priorities: [], hasAnalysis: false, saved: false, tasks: [],
@@ -218,8 +230,25 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
   const [routines, setRoutines] = useState<backend.RoutineSummary[]>([]);
+  // ref가 아니라 state다. 화면이 "지금 어느 목표를 보고 있는지" 알아야 한다.
+  const [activeRoutineId, setActiveRoutineIdState] = useState<string>();
   const analysisId = useRef<string | undefined>(undefined);
   const routineId = useRef<string | undefined>(undefined);
+
+  const setActiveRoutineId = useCallback((id: string | undefined) => {
+    setActiveRoutineIdState(id);
+    routineId.current = id;
+    void (id
+      ? AsyncStorage.setItem(ACTIVE_ROUTINE_STORAGE_KEY, id)
+      : AsyncStorage.removeItem(ACTIVE_ROUTINE_STORAGE_KEY)).catch(() => undefined);
+  }, []);
+
+  // 새로고침 후 마지막에 보던 목표를 되살린다.
+  useEffect(() => {
+    AsyncStorage.getItem(ACTIVE_ROUTINE_STORAGE_KEY)
+      .then((stored) => { if (stored) { setActiveRoutineIdState(stored); routineId.current = stored; } })
+      .catch(() => undefined);
+  }, []);
 
   const account = currentAccountId ? accounts[currentAccountId] ?? signedOutData : signedOutData;
 
@@ -275,8 +304,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setAnalysisKeywords([]); setAnalysisStatusText('');
     setNotificationSettings({ enabled: false, defaultTime: '21:00' });
     setRoutines([]);
-    analysisId.current = undefined; routineId.current = undefined;
-  }, []);
+    analysisId.current = undefined;
+    setActiveRoutineId(undefined);
+  }, [setActiveRoutineId]);
 
   // ---------------------------------------------------------------- 계정
 
@@ -582,13 +612,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       setSaved(true);
       analysisId.current = loaded.analysisId;
       // 다른 결과로 갈아탔으므로 앞 결과의 목표를 재사용하면 안 된다.
-      routineId.current = undefined;
+      setActiveRoutineId(undefined);
       setTasks([]);
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '저장한 결과를 불러오지 못했어요.') };
     }
-  }, [mode]);
+  }, [mode, setActiveRoutineId]);
 
   const deleteSavedResult = useCallback(async (savedResultId: string): Promise<ActionResult> => {
     if (mode === 'mock') { updateAccount((current) => ({ ...current, saved: false })); return { ok: true }; }
@@ -633,7 +663,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const created = await backend.createRoutineFromAnalysis(result.resultId);
       const routine = created.routines[0];
       if (!routine) return { ok: false, message: '목표를 만들지 못했어요.' };
-      routineId.current = routine.routineId;
+      setActiveRoutineId(routine.routineId);
       setRoutines((current) => [routine, ...current.filter((item) => item.routineId !== routine.routineId)]);
 
       const detail = await backend.getRoutine(routine.routineId);
@@ -642,7 +672,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     } catch (error) {
       return { ok: false, message: messageOf(error, '목표를 만들지 못했어요.') };
     }
-  }, [mode, result]);
+  }, [mode, result, setActiveRoutineId]);
 
   const loadRoutines = useCallback(async () => {
     if (mode === 'mock') { setRoutines([]); return; }
@@ -654,13 +684,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     if (mode === 'mock') return { ok: true };
     try {
       const detail = await backend.getRoutine(id);
-      routineId.current = id;
+      setActiveRoutineId(id);
       setTasks(detail.tasks);
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '목표를 불러오지 못했어요.') };
     }
-  }, [mode]);
+  }, [mode, setActiveRoutineId]);
 
   /**
    * 경로 B — 분석 없이 카테고리와 기간만으로 목표를 만든다.
@@ -694,12 +724,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     try {
       await backend.deleteRoutine(id);
       setRoutines((current) => current.filter((item) => item.routineId !== id));
-      if (routineId.current === id) { routineId.current = undefined; setTasks([]); }
+      if (routineId.current === id) { setActiveRoutineId(undefined); setTasks([]); }
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '목표를 삭제하지 못했어요.') };
     }
-  }, [mode]);
+  }, [mode, setActiveRoutineId]);
 
   const toggleTask = useCallback((taskId: string) => {
     if (mode === 'mock') {
@@ -767,10 +797,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     routines,
     loadRoutines,
     openRoutine,
+    activeRoutineId,
     createRoutines,
     deleteRoutine,
   }), [
-    account, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
+    account, activeRoutineId, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
     loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
     openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, result, routines,
