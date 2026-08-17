@@ -86,7 +86,11 @@ type AppStateValue = {
   loadDrawer: () => Promise<DrawerSections>;
   /** 서랍 항목을 결과 화면에 올린다. `viewState`가 `SAVED`로 온다. (API.md §6.5) */
   openSavedResult: (savedResultId: string) => Promise<ActionResult>;
-  deleteSavedResult: (savedResultId: string) => Promise<ActionResult>;
+  /**
+   * 서랍에서 지운다. `resultId`를 같이 주면 화면에 올라와 있던 결과일 때
+   * 메모리에서도 함께 내린다 — 홈이 지운 결과를 계속 그리지 않게 한다.
+   */
+  deleteSavedResult: (savedResultId: string, resultId?: string) => Promise<ActionResult>;
 
   // ---- 알림 설정
   notificationSettings: NotificationSettings;
@@ -620,15 +624,18 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, setActiveRoutineId]);
 
-  const deleteSavedResult = useCallback(async (savedResultId: string): Promise<ActionResult> => {
+  const deleteSavedResult = useCallback(async (savedResultId: string, resultId?: string): Promise<ActionResult> => {
     if (mode === 'mock') { updateAccount((current) => ({ ...current, saved: false })); return { ok: true }; }
     try {
       await backend.deleteSavedResult(savedResultId);
+      // 서버에서만 지우면 **메모리의 result가 남아** 홈의 `최근 분석 결과`가
+      // 지운 것을 계속 그린다. 화면에 올라와 있던 결과였다면 함께 내린다.
+      if (resultId && result?.resultId === resultId) { setResult(undefined); setSaved(false); }
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '서랍에서 지우지 못했어요.') };
     }
-  }, [mode, updateAccount]);
+  }, [mode, result, updateAccount]);
 
   // ---------------------------------------------------------------- 알림 설정
 

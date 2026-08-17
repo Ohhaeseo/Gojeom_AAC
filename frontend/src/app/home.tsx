@@ -101,8 +101,10 @@ export default function HomeScreen() {
               {routines.map((item) => {
                 const on = item.routineId === activeRoutine?.routineId;
                 return (
+                  // 라벨은 **루틴 이름**이다. 카테고리를 쓰면 같은 카테고리 목표가
+                  // 둘일 때 `체형`이 두 개 나와 무엇을 고르는지 알 수 없다.
                   <Pressable key={item.routineId} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => void openRoutine(item.routineId)} style={[styles.routineTab, on && styles.routineTabOn]}>
-                    <Text style={[styles.routineTabText, on && styles.routineTabTextOn]} numberOfLines={1}>{item.category ? label[item.category] : '진단 기반'}</Text>
+                    <Text style={[styles.routineTabText, on && styles.routineTabTextOn]} numberOfLines={1}>{item.title}</Text>
                   </Pressable>
                 );
               })}

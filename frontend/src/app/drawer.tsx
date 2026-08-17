@@ -41,7 +41,7 @@ export default function DrawerScreen() {
   const remove = async () => {
     if (!target) return;
     setPending(true);
-    const outcome = await deleteSavedResult(target.savedResultId);
+    const outcome = await deleteSavedResult(target.savedResultId, target.resultId);
     setPending(false);
     setTarget(undefined);
     if (!outcome.ok) return setError(outcome.message ?? '서랍에서 지우지 못했어요.');
