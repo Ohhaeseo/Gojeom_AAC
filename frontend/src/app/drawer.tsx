@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 
 import { AppScreen } from '@/components/layout/AppScreen';
 import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
+import { formatAnalyzedDate } from '@/lib/date';
 import { useAppState, type DrawerItem, type DrawerSections } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
@@ -60,7 +61,7 @@ function ResultCard({ item, onPress }: { item: DrawerItem; onPress: () => void }
       {/* 이미지가 없는 결과(SKIPPED·FAILED)는 브랜드 로고를 세운다. (API.md §6.5) */}
       {item.thumbnailUrl ? <Image source={{ uri: item.thumbnailUrl }} style={styles.image} accessibilityLabel={`${item.title} 비교 이미지`} /> : <OfficialFaceLogo size={104} />}
       <View style={styles.copy}>
-        <Text style={styles.date}>{new Date(item.analyzedAt).toLocaleDateString('ko-KR')} 분석</Text>
+        <Text style={styles.date}>{formatAnalyzedDate(item.analyzedAt)} 분석</Text>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
         {/* 목표가 없으면 진행률 자체가 없다. 0%로 그리면 "시작했는데 안 했다"로 읽힌다. */}
         {item.progressRate == null ? <Text style={styles.date}>목표를 만들면 진행률이 표시돼요</Text> : <><Text style={styles.date}>고점 달성 진행률 {Math.round(item.progressRate)}%</Text><View style={styles.track}><View style={[styles.fill, { width: `${Math.min(100, Math.max(0, item.progressRate))}%` }]} /></View></>}

@@ -8,6 +8,7 @@ import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
 import { ComparisonImage } from '@/components/analysis/ComparisonImage';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
+import { formatAnalyzedDate } from '@/lib/date';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
@@ -49,7 +50,7 @@ export default function GoalScreen() {
   return (
     <AppScreen navigation contentStyle={styles.content}>
       <Text style={styles.title}>{result.title}</Text>
-      <Text style={styles.description}>2026.08.12</Text>
+      <Text style={styles.description}>{formatAnalyzedDate(result.analyzedAt)}</Text>
       <ComparisonImage image={result.comparisonImage} aspectRatio={1.08} />
 
       <Text style={styles.sectionTitle}>한눈에 보는 고점 요약</Text>

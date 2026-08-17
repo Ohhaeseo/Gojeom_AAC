@@ -1,13 +1,14 @@
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { VectorWordmark } from '@/components/brand/VectorWordmark';
 import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
+import { formatAnalyzedDate } from '@/lib/date';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { Category } from '@/types/api';
@@ -21,7 +22,7 @@ const metricsByCategory: Record<Category, { name: string; value: number }[]> = {
 const metrics = metricsByCategory.SKIN;
 
 export default function HomeScreen() {
-  const { nickname, profile, priorities, photoUri, saved, tasks, hasAnalysis } = useAppState();
+  const { nickname, profile, priorities, photoUri, saved, tasks, result } = useAppState();
   const [selectedCategory, setSelectedCategory] = useState<Category>(priorities[0] ?? 'SKIN');
   useEffect(() => { const first = priorities[0]; if (first && !priorities.includes(selectedCategory)) setSelectedCategory(first); }, [priorities, selectedCategory]);
   const hasProfile = Boolean(profile);
@@ -50,9 +51,10 @@ export default function HomeScreen() {
             <Text style={styles.mockNote}>설정한 고점 기준 대비 참고용 프론트 시연 데이터입니다.</Text>
           </View>
           <Text style={styles.sectionTitle}>설정한 목표 진행도 〉</Text>
-          {hasAnalysis ? <Pressable onPress={() => router.push('/routines')} style={styles.progressCard}><GoalProgressRing completed={done} total={tasks.length} /><Text style={styles.progressText}>{tasks.slice(0, 3).map((task) => `${task.status === 'DONE' ? '✓ ' : ''}${task.title}`).join('\n')}</Text></Pressable> : <View style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 설정한 목표가 없어요.</Text><Text style={styles.emptyText}>진단을 완료하면 맞춤 목표와 루틴이 표시돼요.</Text></View>}
+          {/* 목표가 아직 없으면 "0/0 달성" 링이 그려진다. 분석만 끝난 상태와 목표를 만든 상태는 다르다. */}
+          {tasks.length ? <Pressable onPress={() => router.push('/routines')} style={styles.progressCard}><GoalProgressRing completed={done} total={tasks.length} /><Text style={styles.progressText}>{tasks.slice(0, 3).map((task) => `${task.status === 'DONE' ? '✓ ' : ''}${task.title}`).join('\n')}</Text></Pressable> : <View style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 설정한 목표가 없어요.</Text><Text style={styles.emptyText}>진단을 완료하면 맞춤 목표와 루틴이 표시돼요.</Text></View>}
           <Text style={styles.sectionTitle}>최근 분석 결과 〉</Text>
-          {hasAnalysis ? <Pressable onPress={() => router.push('/analysis-result')} style={styles.resultCard}><OfficialFaceLogo size={112} /><View style={styles.resultCopy}><Text style={styles.date}>최근 분석</Text><Text style={styles.resultTitle}>맑고 청순한 인상</Text><View style={styles.track}><View style={[styles.fill, { width: '76%' }]} /></View></View></Pressable> : <View style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 분석 결과가 없어요.</Text><Text style={styles.emptyText}>새로 진단을 완료하면 이곳에 결과가 표시돼요.</Text></View>}
+          {result ? <Pressable onPress={() => router.push('/analysis-result')} style={styles.resultCard}>{result.comparisonImage.peakUrl ? <Image source={{ uri: result.comparisonImage.peakUrl }} style={styles.thumb} accessibilityLabel={`${result.title} 비교 이미지`} /> : <OfficialFaceLogo size={112} />}<View style={styles.resultCopy}><Text style={styles.date}>{formatAnalyzedDate(result.analyzedAt)} 분석</Text><Text style={styles.resultTitle} numberOfLines={1}>{result.title}</Text>{tasks.length ? <View style={styles.track}><View style={[styles.fill, { width: `${Math.round((done / tasks.length) * 100)}%` }]} /></View> : null}</View></Pressable> : <View style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 분석 결과가 없어요.</Text><Text style={styles.emptyText}>새로 진단을 완료하면 이곳에 결과가 표시돼요.</Text></View>}
         </>
       ) : (
         <View style={[styles.lockedArea, { borderRadius: radius.xl, overflow: 'hidden' }]}>

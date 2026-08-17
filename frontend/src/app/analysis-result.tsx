@@ -6,6 +6,7 @@ import { ComparisonImage } from '@/components/analysis/ComparisonImage';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { GoModal } from '@/components/ui/GoModal';
+import { formatAnalyzedDate } from '@/lib/date';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
@@ -29,7 +30,7 @@ export default function AnalysisResultScreen() {
   };
   return (
     <AppScreen navigation contentStyle={styles.content}>
-      <Text style={styles.eyebrow}>나만의 고점 분석</Text><Text style={styles.title}>{result.title}</Text><Text style={styles.date}>{new Date(result.analyzedAt).toLocaleDateString('ko-KR')} 분석</Text>
+      <Text style={styles.eyebrow}>나만의 고점 분석</Text><Text style={styles.title}>{result.title}</Text><Text style={styles.date}>{formatAnalyzedDate(result.analyzedAt)} 분석</Text>
       <ComparisonImage image={result.comparisonImage} />
       <View style={styles.card}><Text style={styles.cardTitle}>고점 요약</Text><Text style={styles.body}>{result.overview.summary}</Text><View style={styles.chips}>{result.overview.keywords.map((keyword) => <View key={keyword.id} style={styles.chip}><Text style={styles.chipText}>{keyword.label}</Text></View>)}</View></View>
       <View style={styles.twoColumns}><View style={styles.smallCard}><Text style={styles.cardTitle}>유지할 점</Text>{result.overview.keepPoints.map((item) => <Text key={item} style={styles.body}>• {item}</Text>)}</View><View style={styles.smallCard}><Text style={styles.cardTitle}>강조할 점</Text>{result.overview.emphasizePoints.map((item) => <Text key={item} style={styles.body}>• {item}</Text>)}</View></View>
