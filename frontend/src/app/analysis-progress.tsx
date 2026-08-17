@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 
 import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
+import { ProgressGauge } from '@/components/analysis/ProgressGauge';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { useAppState } from '@/state/AppState';
@@ -17,7 +18,7 @@ type Phase = 'extracting' | 'keywords' | 'generating' | 'done' | 'failed';
 
 export default function AnalysisProgressScreen() {
   const params = useLocalSearchParams<{ input?: string; images?: string }>();
-  const { startAnalysis, confirmKeywords, analysisKeywords, analysisStatusText, mode } = useAppState();
+  const { startAnalysis, confirmKeywords, analysisKeywords, analysisStatusText, analysisPercent, mode } = useAppState();
 
   const [phase, setPhase] = useState<Phase>('extracting');
   const [selected, setSelected] = useState<string[]>([]);
@@ -76,6 +77,8 @@ export default function AnalysisProgressScreen() {
           <AnalysisLogo completed={completed} />
           <Text style={styles.title}>{statusTitle}</Text>
           <Text style={styles.description}>{statusDescription}</Text>
+          {/* 끝났거나 실패한 뒤에는 게이지를 치운다. 남겨두면 아직 도는 것처럼 보인다. */}
+          {!completed && !failed ? <ProgressGauge percent={analysisPercent} label={statusTitle.replace('...', '')} /> : null}
           {completed ? <AppButton label="바로 결과 확인하기" variant="secondary" onPress={() => router.replace('/analysis-result')} /> : null}
           {failed ? <AppButton label="다시 시도하기" variant="secondary" onPress={() => router.replace('/analysis-new')} /> : null}
         </View>

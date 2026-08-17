@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
 import { ComparisonImage } from '@/components/analysis/ComparisonImage';
+import { ProgressGauge } from '@/components/analysis/ProgressGauge';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { formatAnalyzedDate } from '@/lib/date';
@@ -84,8 +85,14 @@ export default function GoalScreen() {
           <View style={styles.dim} />
           <View style={styles.overlayCenter}>
             <AnalysisLogo completed={overlay === 'done'} />
-            <Text style={styles.overlayTitle}>{overlay === 'done' ? '목표 설계 완료!✓' : '목표 설계 중...86%'}</Text>
+            <Text style={styles.overlayTitle}>{overlay === 'done' ? '목표 설계 완료!✓' : '목표 설계 중...'}</Text>
             <Text style={styles.overlayDescription}>{overlay === 'done' ? '맞춤 루틴을 만들었어요.\n5초 후 루틴 화면으로 넘어가요.' : '분석 결과를 바탕으로\n맞춤 루틴을 만들고 있어요.'}</Text>
+            {/*
+              목표 생성은 폴링이 없는 동기 호출이라 **서버가 진행률을 주지 않는다.**
+              예전에는 `86%`가 박혀 있었는데, 늘 86%에 멈춘 게이지는 아무것도
+              알려주지 않으면서 알려주는 척한다. 퍼센트 없이 진행 중임만 보인다.
+            */}
+            {overlay === 'done' ? null : <ProgressGauge label="맞춤 루틴 만드는 중" />}
           </View>
           {overlay === 'done' ? <View style={styles.overlayButton}><AppButton label="바로 루틴 확인하기" variant="secondary" onPress={openRoutines} /></View> : null}
         </View>

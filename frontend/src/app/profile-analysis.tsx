@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
+import { ProgressGauge } from '@/components/analysis/ProgressGauge';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { colors, spacing, typography } from '@/theme/tokens';
@@ -34,8 +35,10 @@ export default function ProfileAnalysisScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.title}>분석 중...86%</Text>
+            <Text style={styles.title}>분석 중...</Text>
             <Text style={styles.description}>입력하신 정보를 토대로 프로필을{`\n`}생성중이에요.</Text>
+            {/* 프로필 생성은 서버가 진행률을 주지 않는다. 숫자를 지어내지 않는다. */}
+            <ProgressGauge label="프로필 만드는 중" />
           </>
         )}
       </View></AnalysisPanel>

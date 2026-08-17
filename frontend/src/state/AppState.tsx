@@ -84,6 +84,13 @@ type AppStateValue = {
 
   // ---- 고점 분석
   analysisStatusText: string;
+  /**
+   * 분석 진행률 0~100. **서버가 주는 실제 값이다.**
+   *
+   * 서버가 아직 아무것도 알려주지 않았으면 `undefined`다. 그때는 숫자를
+   * 지어내지 말고 진행 중이라는 것만 보여야 한다.
+   */
+  analysisPercent?: number;
   analysisKeywords: KeywordChoice[];
   startAnalysis: (inputText: string, imageUris: string[]) => Promise<ActionResult>;
   confirmKeywords: (keywordIds: string[]) => Promise<ActionResult>;
@@ -258,6 +265,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [tasks, setTasks] = useState<RoutineTask[]>([]);
   const [analysisKeywords, setAnalysisKeywords] = useState<KeywordChoice[]>([]);
   const [analysisStatusText, setAnalysisStatusText] = useState('');
+  const [analysisPercent, setAnalysisPercent] = useState<number>();
   // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
   const [routines, setRoutines] = useState<backend.RoutineSummary[]>([]);
@@ -332,7 +340,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const resetServerState = useCallback(() => {
     setNicknameState('새로운 회원'); setPhotoUri(undefined); setPriorities([]);
     setProfileState(undefined); setMe(undefined); setResult(undefined); setSaved(false); setTasks([]);
-    setAnalysisKeywords([]); setAnalysisStatusText('');
+    setAnalysisKeywords([]); setAnalysisStatusText(''); setAnalysisPercent(undefined);
     setNotificationSettings({ enabled: false, defaultTime: '21:00' });
     setRoutines([]);
     analysisId.current = undefined;
@@ -533,7 +541,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       await backend.pollAnalysis(
         accepted.analysisId,
         (progress) => progress.status === 'KEYWORDS_READY',
-        (progress) => setAnalysisStatusText(progress.message),
+        (progress) => { setAnalysisStatusText(progress.message); setAnalysisPercent(progress.progress); },
       );
 
       const keywords = await backend.getKeywords(accepted.analysisId);
@@ -579,7 +587,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       await backend.pollAnalysis(
         id,
         (progress) => progress.status === 'DONE',
-        (progress) => setAnalysisStatusText(progress.message),
+        (progress) => { setAnalysisStatusText(progress.message); setAnalysisPercent(progress.progress); },
       );
       const loaded = await backend.getResult(id);
       setResult(loaded);
@@ -856,6 +864,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     saveProfile,
     scanInbody,
     analysisStatusText,
+    analysisPercent,
     analysisKeywords,
     startAnalysis,
     confirmKeywords,
@@ -885,7 +894,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     reorderRoutines: reorderRoutinesFn,
     deleteRoutine,
   }), [
-    account, activeRoutineId, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
+    account, activeRoutineId, analysisKeywords, analysisPercent, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
     loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
     openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
