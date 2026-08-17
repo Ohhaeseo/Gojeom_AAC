@@ -1,12 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import DraggableFlatList from 'react-native-draggable-flatlist';
+
 
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { FormField } from '@/components/ui/FormField';
+import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
 import { formatAnalyzedDate, toIsoDate } from '@/lib/date';
 import type { RoutineSummary } from '@/services/backend';
@@ -44,8 +45,8 @@ type CardProps = {
   progress?: number;
   /** 지금 끌고 있는 카드인지. 들어올린 느낌을 준다. */
   dragging?: boolean;
-  /** 길게 누르면 드래그가 시작된다. */
-  onDrag?: () => void;
+  /** 순서 조작 UI(끌기 손잡이 + 위·아래). 목표가 하나뿐이면 없다. */
+  controls?: ReactNode;
   onSelect: () => void;
   onRename: () => void;
   onRemove: () => void;
@@ -57,10 +58,10 @@ type CardProps = {
  * **카드를 누르면 펼쳐지고, 이름 변경·삭제는 형제로 뺐다.** 카드 안에 넣으면
  * 누를 때 이벤트가 카드로 올라가 함께 발동한다. (오답 노트 N-11)
  */
-function RoutineCard({ item, selected, progress, dragging, onDrag, onSelect, onRename, onRemove }: CardProps) {
+function RoutineCard({ item, selected, progress, dragging, controls, onSelect, onRename, onRemove }: CardProps) {
   return (
     <View style={[styles.card, selected && styles.cardOn, dragging && styles.cardDragging]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 선택`} onPress={onSelect} onLongPress={onDrag} delayLongPress={220} style={styles.cardBody}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 선택`} onPress={onSelect} style={styles.cardBody}>
         <View style={styles.cardHead}>
           <View style={styles.chip}><Text style={styles.chipText}>{item.category ? categoryLabel[item.category] : '진단 기반'}</Text></View>
           {/* 개월 환산은 WEEKS_PER_MONTH 하나로 맞춘다. 백엔드 RoutinePolicy와 같은 값이다. */}
@@ -75,6 +76,10 @@ function RoutineCard({ item, selected, progress, dragging, onDrag, onSelect, onR
         </Text>
         {progress != null ? <View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View> : null}
       </Pressable>
+      {/*
+        순서 조작은 카드 Pressable **밖**이다. 안에 넣으면 끌거나 누를 때 이벤트가
+        카드로 올라가 카드가 함께 눌린다. (오답 노트 N-11)
+      */}
       <View style={styles.cardActions}>
         <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 이름 바꾸기`} onPress={onRename} style={styles.cardAction}>
           <Text style={styles.cardActionText}>이름 바꾸기</Text>
@@ -82,6 +87,7 @@ function RoutineCard({ item, selected, progress, dragging, onDrag, onSelect, onR
         <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 삭제`} onPress={onRemove} style={styles.cardAction}>
           <Text style={[styles.cardActionText, styles.cardActionDanger]}>삭제</Text>
         </Pressable>
+        {controls}
       </View>
     </View>
   );
@@ -221,6 +227,8 @@ export default function RoutinesScreen() {
   const today = todayTasks(tasks);
 
   return (
+    // `DragList`는 가상 목록이 아니라 그냥 View라 AppScreen의 ScrollView 안에
+    // 그대로 넣어도 된다. 중첩 리스트 경고도 나지 않는다.
     <AppScreen navigation contentStyle={styles.content}>
       <View style={styles.titleRow}>
         <Text style={styles.title}>내 루틴</Text>
@@ -242,26 +250,24 @@ export default function RoutinesScreen() {
           <View key={group.key ?? 'ANALYSIS'} style={styles.group}>
             <View style={styles.groupHead}>
               <Text style={styles.groupTitle}>{group.label}<Text style={styles.groupCount}> {items.length}</Text></Text>
-              {items.length > 1 ? <Text style={styles.groupHint}>길게 눌러 순서 변경</Text> : null}
+              {items.length > 1 ? <Text style={styles.groupHint}>끌거나 ▲▼로 순서 변경</Text> : null}
             </View>
             {/*
               **묶음 안에서만 순서를 바꾼다.** 카테고리를 넘나들면 목표의 카테고리가
               바뀐 것처럼 보이는데, 카테고리는 만들 때 정해지고 나중에 바뀌지 않는다.
               서버에는 전체 순서를 보내야 하므로 바뀐 묶음만 갈아끼워 합친다.
             */}
-            <DraggableFlatList
+            <DragList
               data={items}
-              keyExtractor={(item) => item.routineId}
-              activationDistance={12}
-              containerStyle={styles.dragList}
-              onDragEnd={({ data }) => void commitOrder(group.key, data)}
-              renderItem={({ item, drag, isActive }) => (
+              keyOf={(item) => item.routineId}
+              onReorder={(next) => void commitOrder(group.key, next)}
+              renderItem={(item, dragging, controls) => (
                 <RoutineCard
                   item={item}
                   selected={item.routineId === current?.routineId}
                   progress={item.routineId === current?.routineId && tasks.length ? Math.round((done / tasks.length) * 100) : undefined}
-                  dragging={isActive}
-                  onDrag={drag}
+                  dragging={dragging}
+                  controls={items.length > 1 ? controls : null}
                   onSelect={() => select(item.routineId)}
                   onRename={() => { setRenaming(item); setNameDraft(item.title); }}
                   onRemove={() => setRemoving(item)}
@@ -291,7 +297,6 @@ export default function RoutinesScreen() {
         <View><Text style={styles.taskTitle}>루틴 알림</Text><Text style={styles.meta}>매일 {notificationSettings.defaultTime}</Text></View>
         <AnimatedSwitch accessibilityLabel="루틴 알림" value={notificationSettings.enabled} onValueChange={(enabled) => void updateNotificationSettings({ enabled })} />
       </View>
-
       <GoModal
         visible={Boolean(renaming)}
         title="목표 이름을 바꿀까요?"
@@ -360,7 +365,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.lg, borderWidth: 1, borderColor: 'transparent', backgroundColor: colors.surface, overflow: 'hidden', ...shadow },
   cardOn: { borderColor: colors.primary },
   cardBody: { gap: 8, padding: spacing.md },
-  cardActions: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.divider },
+  cardActions: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.divider },
   cardAction: { flex: 1, alignItems: 'center', paddingVertical: 11 },
   cardActionText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
   cardActionDanger: { color: colors.danger },
@@ -371,7 +376,7 @@ const styles = StyleSheet.create({
   goalText: { ...typography.caption, color: colors.textTertiary, fontStyle: 'italic' },
   groupHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   groupHint: { ...typography.caption, color: colors.textMuted },
-  dragList: { gap: 0 },
+  handleSlot: { paddingRight: 8 },
   cardDragging: { opacity: 0.92, transform: [{ scale: 1.02 }] },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: colors.primary },
