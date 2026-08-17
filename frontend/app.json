@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "추구미 생산기",
-    "slug": "chugumi-producer",
+    "name": "고점 생산기",
+    "slug": "gojeom-producer",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "chugumi",
+    "scheme": "gojeom",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.chugumi.producer"
+      "bundleIdentifier": "com.gojeom.producer"
     },
     "android": {
-      "package": "com.chugumi.producer",
+      "package": "com.gojeom.producer",
       "predictiveBackGestureEnabled": false
     },
     "web": {

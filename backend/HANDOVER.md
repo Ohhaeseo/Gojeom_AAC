@@ -263,7 +263,7 @@ POST   /notifications/device-tokens
 ### 프론트 스택이 문서와 다르다
 
 PRD §12·AGENTS.md §2는 **React · TypeScript · Vite (모바일 웹)**, 실제는 **Expo React Native**(`expo-router`, RN 0.81, `react-native-web`)다. 폴더 구조도 다르다. **문서 수정이 필요하다.**
-패키지 이름도 `chugumi-producer`인데, AGENTS.md 규칙 1이 "추구미를 쓰지 않는다"고 정하고 있다.
+패키지 이름은 `gojeom-producer`로 바꿨다(2026-08-17). 앱 식별자도 `com.gojeom.producer`다.
 
 ---
 

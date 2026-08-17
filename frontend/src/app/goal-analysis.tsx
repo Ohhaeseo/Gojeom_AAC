@@ -33,11 +33,11 @@ export default function GoalAnalysisScreen() {
         {completed ? (
           <>
             <Text style={styles.title}>나만의 목표를 정리했어요</Text>
-            <Text style={styles.description}>선택한 우선순위와 추구미를 바탕으로 변화 방향을 준비했어요.</Text>
+            <Text style={styles.description}>선택한 우선순위와 고점을 바탕으로 변화 방향을 준비했어요.</Text>
           </>
         ) : (
           <>
-            <Text style={styles.title}>추구미에 가까워지는 길을 설계하고 있어요</Text>
+            <Text style={styles.title}>고점에 가까워지는 길을 설계하고 있어요</Text>
             <Text style={styles.description}>선택한 키워드와 우선순위를 조합해 나에게 맞는 방향을 찾고 있어요.</Text>
             <ActivityIndicator color={colors.primary} size="small" style={styles.spinner} />
           </>

@@ -61,7 +61,7 @@ export default function GoalScreen() {
       </View>
 
       <Text style={styles.sectionTitle}>이렇게 바꾸면 가까워져요</Text>
-      <Text style={styles.description}>현재 모습과 추구미 사이에서 우선순위가 높은 변화예요.</Text>
+      <Text style={styles.description}>현재 모습과 고점 사이에서 우선순위가 높은 변화예요.</Text>
       <View style={styles.card}>{result.categoryChanges.map((item) => <View key={item.category} style={styles.change}><View style={styles.chip}><Text style={styles.chipText}>{{ SKIN: '피부', BODY: '체형', HEALTH: '건강' }[item.category]}</Text></View><Text style={styles.body}>{item.description}</Text></View>)}</View>
 
       <Text style={styles.sectionTitle}>오늘 당장 해볼 수 있는 관리</Text>

@@ -4,7 +4,7 @@
 
 - Expo React Native 57 + TypeScript + Expo Router 초기화
 - `src/app`, `components`, `theme`, `services`, `types`, `mocks` 구조
-- 온보딩 → 사진 선택 → 추구미 선택 기본 이동
+- 온보딩 → 사진 선택 → 고점 선택 기본 이동
 - 갤러리 권한 거부, 설정 이동, 사진 미리보기 상태
 - 공개 API 주소 환경변수와 mock 분석 데이터
 - 타입 검사와 lint 명령
@@ -12,7 +12,7 @@
 ## 가정
 
 - 디자인 원본이 없어 현재 색상, 글꼴 크기, 간격은 임시 토큰이다.
-- 앱 식별자 `com.chugumi.producer`는 임시값이며 배포 계정 확정 후 변경한다.
+- 앱 식별자는 `com.gojeom.producer`로 확정했다(2026-08-17). 스토어 출시 후에는 변경할 수 없으므로 Google OAuth Android·iOS 클라이언트도 이 값으로 등록한다.
 - 사진은 현재 기기 URI로만 다음 단계에 전달할 예정이며 저장·업로드하지 않는다.
 
 ## 다음 작업
