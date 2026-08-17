@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.gojeom.common.enums.Category;
 import com.gojeom.common.enums.RoutineSourceType;
 import com.gojeom.common.enums.TaskStatus;
+import com.gojeom.routine.RoutinePolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -55,6 +56,23 @@ public final class RoutineDtos {
         public boolean isStandaloneSourceValid() {
             return sourceType != RoutineSourceType.STANDALONE || (items != null && !items.isEmpty());
         }
+
+        /**
+         * 카테고리별 최소 기간. (RoutinePolicy)
+         *
+         * <p>화면에서도 최소 미만은 고를 수 없게 막지만, 그것만 믿지 않는다.
+         * 하한을 두는 이유가 "너무 짧으면 변화가 안 보인다"는 제품 판단이라
+         * 클라이언트를 우회한 요청까지 막아야 의미가 있다.
+         */
+        @AssertTrue(message = "카테고리마다 정해진 최소 기간이 있어요.")
+        public boolean isDurationAboveMinimum() {
+            if (sourceType != RoutineSourceType.STANDALONE || items == null) {
+                return true;
+            }
+            return items.stream().allMatch(item ->
+                    item == null || item.category() == null || item.durationWeeks() == null
+                            || item.durationWeeks() >= RoutinePolicy.minWeeks(item.category()));
+        }
     }
 
     public record RoutineItem(
@@ -63,7 +81,7 @@ public final class RoutineDtos {
 
             @NotNull(message = "기간을 선택해주세요.")
             @Min(value = 1, message = "1주 이상으로 정해주세요.")
-            @Max(value = 12, message = "12주 이하로 정해주세요.")
+            @Max(value = RoutinePolicy.MAX_WEEKS, message = "52주(12개월) 이하로 정해주세요.")
             Integer durationWeeks) {
     }
 
