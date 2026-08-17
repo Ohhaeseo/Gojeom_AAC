@@ -172,8 +172,28 @@
 
 ```json
 // Request
-{ "email": "user@example.com", "password": "Passw0rd!", "nickname": "멋쟁이 사자" }
+{
+  "email": "user@example.com",
+  "password": "Passw0rd!",
+  "nickname": "멋쟁이 사자",
+  "birthDate": "2000-01-31",
+  "agreedConsents": ["TERMS", "PRIVACY", "BIOMETRIC", "MARKETING"]
+}
 ```
+
+**`birthDate`와 `agreedConsents`는 필수다.** 만 14세 **미만**은 가입할 수 없고
+(`PROFILE_UNDERAGE`), 필수 동의가 빠지면 거절된다(`CONSENT_REQUIRED`).
+
+| 동의 코드 | 필수 | 내용 |
+| --- | --- | --- |
+| `TERMS` | ✔ | 서비스 이용약관 |
+| `PRIVACY` | ✔ | 개인정보 수집·이용 |
+| `BIOMETRIC` | ✔ | 얼굴 사진·건강 정보(**민감정보**) |
+| `MARKETING` | — | 마케팅 정보 수신. 거부해도 가입된다 |
+
+> 만 14세 **당일은 가입할 수 있다.** 법이 제한하는 것은 만 14세 미만이다.
+> 서버는 `agreedConsents`에 없는 항목을 **거부로 기록한다.** "물어봤는데 거부"와
+> "아직 안 물어봄"을 구분하기 위해서다.
 
 ```json
 // 201
@@ -203,8 +223,15 @@
 프론트가 Google에서 받은 **ID 토큰**을 그대로 보낸다. 서버가 서명·발급자·audience·만료를 검증한다.
 
 ```json
-// Request
+// Request — 기존 계정 로그인
 { "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6..." }
+
+// Request — 최초 로그인(= 회원가입)
+{
+  "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6...",
+  "birthDate": "2000-01-31",
+  "agreedConsents": ["TERMS", "PRIVACY", "BIOMETRIC"]
+}
 ```
 
 응답은 `POST /auth/login`과 **동일한 형식**이다. 프론트는 로그인 방식에 따라 분기하지 않는다.
@@ -216,6 +243,11 @@
 | 1 | `(provider=GOOGLE, providerUserId=sub)` | 기존 Google 계정으로 로그인 |
 | 2 | `email` | **같은 이메일의 기존 계정으로 로그인** |
 | 3 | 없음 | 신규 생성 (`provider=GOOGLE`, `passwordHash=null`) |
+
+> **3번은 회원가입이다.** 그래서 `POST /auth/signup`과 똑같이 나이·동의가 필요하다.
+> 기존 계정(1·2번)이면 `birthDate`·`agreedConsents`는 무시된다. 신규인데 비어 있으면
+> `CONSENT_REQUIRED`로 거절하므로, 프론트는 이 코드를 받으면 가입 화면에서 받아
+> 다시 호출한다. 이 검사가 없으면 **동의 없이 계정이 만들어진다.**
 
 > **이메일 기준 1계정이다.** 이메일로 가입한 뒤 같은 이메일로 Google 로그인하면 새 계정이 생기지 않고 기존 계정에 로그인된다. 반대로 Google로 먼저 가입하면 `passwordHash`가 `null`이라 이메일 로그인은 불가하다. 비밀번호 설정 기능은 현재 범위 밖이다.
 

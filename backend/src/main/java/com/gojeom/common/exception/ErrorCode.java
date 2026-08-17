@@ -24,7 +24,10 @@ public enum ErrorCode {
     AUTH_EMAIL_DUPLICATED(HttpStatus.CONFLICT, "이미 가입된 이메일이에요."),
     FORBIDDEN_RESOURCE(HttpStatus.FORBIDDEN, "접근할 수 없는 항목이에요."),
 
-    // --- 프로필 ---
+    // --- 가입 동의 · 프로필 ---
+    // 두 코드는 **회원가입에서 쓴다.** 프로필 화면에서 받을 계획으로 이름이
+    // 지어졌으나(PRD O-2 초안), 나이 확인은 어떤 개인정보든 수집하기 전에 끝나야
+    // 하는 법적 요구사항이라 가입 시점으로 옮겼다. (V9)
     CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "필수 항목에 동의해주세요."),
     PROFILE_UNDERAGE(HttpStatus.FORBIDDEN, "만 14세 이상만 이용할 수 있어요."),
     PROFILE_REQUIRED(HttpStatus.CONFLICT, "프로필을 먼저 등록해주세요."),

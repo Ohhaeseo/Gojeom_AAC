@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
+import type { ConsentCode } from '@/lib/consent';
 import { ApiError, isMockMode } from '@/services/api';
 import * as backend from '@/services/backend';
 import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
@@ -48,10 +49,11 @@ type AppStateValue = {
   mode: 'server' | 'mock';
   currentAccountId?: string;
 
-  register: (id: string, password: string) => Promise<ActionResult>;
+  /** 회원가입. `birthDate`는 `YYYY-MM-DD`. 만 14세 미만은 서버가 막는다. */
+  register: (id: string, password: string, birthDate: string, agreedConsents: ConsentCode[]) => Promise<ActionResult>;
   login: (id: string, password: string) => Promise<ActionResult>;
   /** Google ID 토큰으로 로그인. 서버 모드에서만 동작한다. */
-  loginWithGoogle: (idToken: string) => Promise<ActionResult>;
+  loginWithGoogle: (idToken: string, birthDate?: string, agreedConsents?: ConsentCode[]) => Promise<ActionResult>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<ActionResult>;
 
@@ -314,7 +316,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   // ---------------------------------------------------------------- 계정
 
-  const register = useCallback(async (rawId: string, password: string): Promise<ActionResult> => {
+  const register = useCallback(async (
+    rawId: string, password: string, birthDate: string, agreedConsents: ConsentCode[],
+  ): Promise<ActionResult> => {
     const id = rawId.trim().toLowerCase();
     if (!id) return { ok: false, message: '아이디를 입력해주세요.' };
 
@@ -326,7 +330,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
     try {
       // 닉네임은 다음 화면(이름 설정)에서 받는다. 여기서는 기본값으로 만들어둔다.
-      const session = await backend.signup(id, password, '새로운 회원');
+      const session = await backend.signup(id, password, '새로운 회원', birthDate, agreedConsents);
       resetServerState();
       setCurrentAccountId(session.userId);
       setNicknameState(session.nickname);
@@ -366,11 +370,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [accounts, adoptSession, mode]);
 
-  const loginWithGoogle = useCallback(async (idToken: string): Promise<ActionResult> => {
+  const loginWithGoogle = useCallback(async (
+    idToken: string, birthDate?: string, agreedConsents?: ConsentCode[],
+  ): Promise<ActionResult> => {
     // mock 모드에는 검증할 서버가 없다. 성공한 척하면 가짜 세션이 생긴다.
     if (mode === 'mock') return { ok: false, message: '백엔드에 연결되어 있지 않아 Google 로그인을 쓸 수 없어요.' };
     try {
-      await adoptSession(await backend.googleLogin(idToken));
+      await adoptSession(await backend.googleLogin(idToken, birthDate, agreedConsents));
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, 'Google 로그인에 실패했어요.') };

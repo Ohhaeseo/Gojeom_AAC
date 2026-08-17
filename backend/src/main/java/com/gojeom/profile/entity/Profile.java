@@ -50,9 +50,8 @@ public class Profile extends BaseTimeEntity {
     @Column(name = "priorities", nullable = false)
     private List<Category> priorities;
 
-    /** 입력 화면 미설계로 현재 null이다. (PRD O-2) */
-    @Column(name = "birth_date")
-    private LocalDate birthDate;
+    // 생년월일은 users로 옮겼다. (V9) 나이 확인은 계정 단위 법적 요구사항이라
+    // 프로필이 만들어지기 전에 끝나야 한다.
 
     @Column(name = "gender", length = 20)
     private String gender;

@@ -12,10 +12,13 @@ import com.gojeom.auth.jwt.JwtProvider;
 import com.gojeom.auth.oauth.GoogleTokenVerifier;
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.consent.ConsentPolicy;
+import com.gojeom.consent.repository.ConsentRepository;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
 import com.gojeom.user.entity.User;
 import com.gojeom.user.repository.UserRepository;
+import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +32,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 class AuthServiceConcurrencyTest {
 
     @Mock private UserRepository userRepository;
+    @Mock private ConsentRepository consentRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtProvider jwtProvider;
@@ -39,7 +43,8 @@ class AuthServiceConcurrencyTest {
     @Test
     @DisplayName("동시 회원가입의 이메일 유니크 충돌은 409 오류로 변환한다")
     void 동시_회원가입_중복_변환() {
-        SignupRequest request = new SignupRequest("same@example.com", "password1", "고점");
+        SignupRequest request = new SignupRequest(
+                "same@example.com", "password1", "고점", LocalDate.of(2000, 1, 1), ConsentPolicy.requiredCodes());
         when(userRepository.existsByEmailAndDeletedAtIsNull("same@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password1")).thenReturn("encoded");
         when(userRepository.saveAndFlush(any(User.class)))

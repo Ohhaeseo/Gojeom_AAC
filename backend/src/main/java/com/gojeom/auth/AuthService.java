@@ -10,12 +10,19 @@ import com.gojeom.auth.oauth.GoogleTokenVerifier;
 import com.gojeom.common.enums.AuthProvider;
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.consent.ConsentCode;
+import com.gojeom.consent.ConsentPolicy;
+import com.gojeom.consent.entity.Consent;
+import com.gojeom.consent.repository.ConsentRepository;
 import com.gojeom.subscription.entity.Subscription;
 import com.gojeom.subscription.repository.SubscriptionRepository;
 import com.gojeom.user.entity.User;
 import com.gojeom.user.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,6 +37,7 @@ public class AuthService {
     private static final int NICKNAME_MAX = 20;
 
     private final UserRepository userRepository;
+    private final ConsentRepository consentRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
@@ -49,6 +57,12 @@ public class AuthService {
             throw new BusinessException(ErrorCode.AUTH_EMAIL_DUPLICATED);
         }
 
+        // 계정을 만들기 전에 막는다. 만든 뒤에 검사하면 만 14세 미만의 계정이
+        // 잠깐이라도 존재하게 되고, 롤백이 실패하면 그대로 남는다.
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        ConsentPolicy.validateAge(request.birthDate(), now.toLocalDate());
+        ConsentPolicy.validateConsents(request.agreedConsents());
+
         User user;
         try {
             // exists 검사는 빠른 실패용일 뿐 동시 요청을 직렬화하지 못한다.
@@ -56,13 +70,15 @@ public class AuthService {
             user = userRepository.saveAndFlush(User.ofLocal(
                     email,
                     passwordEncoder.encode(request.password()),
-                    request.nickname().trim()));
+                    request.nickname().trim(),
+                    request.birthDate()));
         } catch (DataIntegrityViolationException exception) {
             throw new BusinessException(ErrorCode.AUTH_EMAIL_DUPLICATED);
         }
 
-        subscriptionRepository.save(
-                Subscription.startTrial(user.getId(), OffsetDateTime.now(ZoneOffset.UTC)));
+        persistConsents(user.getId(), request.agreedConsents(), now);
+
+        subscriptionRepository.save(Subscription.startTrial(user.getId(), now));
 
         return issueTokens(user);
     }
@@ -116,19 +132,45 @@ public class AuthService {
         User user = userRepository
                 .findByProviderAndProviderUserIdAndDeletedAtIsNull(AuthProvider.GOOGLE, account.subject())
                 .or(() -> userRepository.findByEmailAndDeletedAtIsNull(email))
-                .orElseGet(() -> createGoogleUser(email, account));
+                .orElseGet(() -> createGoogleUser(email, account, request));
 
         return issueTokens(user);
     }
 
-    /** 신규 Google 계정. 이메일 가입과 마찬가지로 무료 체험을 함께 발급한다. */
-    private User createGoogleUser(String email, GoogleTokenVerifier.GoogleAccount account) {
-        User user = userRepository.save(
-                User.ofGoogle(email, account.subject(), nicknameFrom(account, email)));
+    /**
+     * 신규 Google 계정. 이메일 가입과 마찬가지로 무료 체험을 함께 발급한다.
+     *
+     * <p><b>Google 로그인도 최초 1회는 회원가입이다.</b> 그래서 나이·동의를 똑같이
+     * 받아야 한다. 로그인 화면에서 온 요청에는 이 값이 없으므로
+     * {@code CONSENT_REQUIRED}로 돌려보내고, 프론트가 가입 화면에서 받아
+     * 다시 부른다. 여기서 그냥 만들면 동의 없이 계정이 생긴다.
+     */
+    private User createGoogleUser(String email, GoogleTokenVerifier.GoogleAccount account,
+                                  GoogleLoginRequest request) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        ConsentPolicy.validateAge(request.birthDate(), now.toLocalDate());
+        ConsentPolicy.validateConsents(request.agreedConsents());
 
-        subscriptionRepository.save(
-                Subscription.startTrial(user.getId(), OffsetDateTime.now(ZoneOffset.UTC)));
+        User user = userRepository.save(
+                User.ofGoogle(email, account.subject(), nicknameFrom(account, email), request.birthDate()));
+
+        persistConsents(user.getId(), request.agreedConsents(), now);
+
+        subscriptionRepository.save(Subscription.startTrial(user.getId(), now));
         return user;
+    }
+
+    /**
+     * 동의 이력을 남긴다. <b>거부한 항목도 행을 만든다.</b>
+     *
+     * <p>"물어봤는데 거부했다"와 "아직 안 물어봤다"는 다르다. 마케팅처럼 선택인
+     * 항목에서 이 구분이 없으면 나중에 다시 물어봐야 하는지 알 수 없다.
+     */
+    private void persistConsents(UUID userId, Set<ConsentCode> agreed, OffsetDateTime at) {
+        Set<ConsentCode> given = agreed == null ? Set.of() : agreed;
+        consentRepository.saveAll(Arrays.stream(ConsentCode.values())
+                .map(code -> Consent.of(userId, code, ConsentPolicy.CURRENT_VERSION, given.contains(code), at))
+                .toList());
     }
 
     /**

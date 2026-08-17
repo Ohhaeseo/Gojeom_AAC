@@ -1,3 +1,4 @@
+import type { ConsentCode } from '@/lib/consent';
 import { ApiError, request } from '@/services/api';
 import { clearSession, patchSession, saveSession, type Session } from '@/services/session';
 import type {
@@ -38,10 +39,19 @@ const toSession = (token: TokenResponse): Session => ({
   provider: token.user.provider,
 });
 
-export async function signup(email: string, password: string, nickname: string): Promise<Session> {
+/**
+ * 이메일 회원가입.
+ *
+ * `birthDate`는 `YYYY-MM-DD`, `agreedConsents`는 동의한 항목만 담는다.
+ * **나이·동의 판정은 서버가 한다** — 화면 검사는 편의일 뿐 우회될 수 있다.
+ */
+export async function signup(
+  email: string, password: string, nickname: string,
+  birthDate: string, agreedConsents: ConsentCode[],
+): Promise<Session> {
   const token = await request<TokenResponse>('/auth/signup', {
     method: 'POST',
-    body: { email, password, nickname },
+    body: { email, password, nickname, birthDate, agreedConsents },
     auth: false,
   });
   return saveSession(toSession(token));
@@ -63,10 +73,14 @@ export async function login(email: string, password: string): Promise<Session> {
  * `idToken`은 Google이 준 ID 토큰 원문이다. 검증은 서버가 한다 — 프론트가
  * 열어보고 판단하지 않는다.
  */
-export async function googleLogin(idToken: string): Promise<Session> {
+export async function googleLogin(
+  idToken: string, birthDate?: string, agreedConsents?: ConsentCode[],
+): Promise<Session> {
+  // 기존 계정이면 서버가 뒤의 둘을 무시한다. **최초 로그인은 회원가입이라**
+  // 나이·동의가 필요하고, 없으면 서버가 SIGNUP_CONSENT_REQUIRED로 돌려보낸다.
   const token = await request<TokenResponse>('/auth/oauth/google', {
     method: 'POST',
-    body: { idToken },
+    body: { idToken, birthDate, agreedConsents },
     auth: false,
   });
   return saveSession(toSession(token));
