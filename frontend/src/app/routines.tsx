@@ -3,10 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen } from '@/components/layout/AppScreen';
-import { AppButton } from '@/components/ui/AppButton';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { formatAnalyzedDate, toIsoDate } from '@/lib/date';
-import { useAppState } from '@/state/AppState';
+import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { RoutineTask } from '@/types/api';
 
@@ -38,22 +37,26 @@ function currentWeek(tasks: RoutineTask[]): { date?: string; items: RoutineTask[
 
 export default function RoutinesScreen() {
   const {
-    routines, loadRoutines, openRoutine, tasks, toggleTask, result, saved,
+    routines, loadRoutines, openRoutine, tasks, toggleTask, loadDrawer,
     notificationSettings, loadNotificationSettings, updateNotificationSettings,
   } = useAppState();
   const [selectedId, setSelectedId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // 서랍에 저장한 결과가 있는지는 **서버에 물어본다.** 메모리의 result·saved는
+  // 새로고침하면 비어서, 결과가 있는데도 "없어요"라고 말하게 된다.
+  const [savedCount, setSavedCount] = useState<number>();
 
   // 목표를 만들고 돌아오면 목록이 달라져 있다. 화면에 들어올 때마다 다시 읽는다.
   useFocusEffect(useCallback(() => {
     let alive = true;
     void loadNotificationSettings();
+    loadDrawer().then((d) => { if (alive) setSavedCount(d.all.length); }).catch(() => { if (alive) setSavedCount(0); });
     loadRoutines()
       .catch(() => { if (alive) setError('목표를 불러오지 못했어요.'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [loadRoutines, loadNotificationSettings]));
+  }, [loadRoutines, loadNotificationSettings, loadDrawer]));
 
   const select = useCallback(async (routineId: string) => {
     setSelectedId(routineId); setError('');
@@ -71,7 +74,7 @@ export default function RoutinesScreen() {
     return <AppScreen navigation contentStyle={styles.content}><ActivityIndicator color={colors.primary} style={styles.loading} /></AppScreen>;
   }
 
-  if (!routines.length) return <EmptyRoutines hasResult={Boolean(result)} hasSaved={saved} error={error} />;
+  if (!routines.length) return <EmptyRoutines savedCount={savedCount} error={error} />;
 
   const current = routines.find((item) => item.routineId === selectedId) ?? first;
   const done = tasks.filter((task) => task.status === 'DONE').length;
@@ -91,7 +94,8 @@ export default function RoutinesScreen() {
           <Pressable key={item.routineId} onPress={() => select(item.routineId)} style={[styles.card, on && styles.cardOn]}>
             <View style={styles.cardHead}>
               <View style={styles.chip}><Text style={styles.chipText}>{item.category ? categoryLabel[item.category] : '진단 기반'}</Text></View>
-              <Text style={styles.cardMeta}>{item.durationWeeks ? `${Math.round(item.durationWeeks / 4)}개월` : '기간 없음'}</Text>
+              {/* 개월 환산은 WEEKS_PER_MONTH 하나로 맞춘다. 백엔드 RoutinePolicy와 같은 값이다. */}
+              <Text style={styles.cardMeta}>{item.durationWeeks ? `${Math.round(item.durationWeeks / WEEKS_PER_MONTH)}개월` : '기간 없음'}</Text>
             </View>
             <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
             <Text style={styles.cardMeta}>{period(item.startDate)}{item.endDate ? ` — ${period(item.endDate)}` : ''} · 태스크 {item.taskCount}개</Text>
@@ -122,9 +126,14 @@ export default function RoutinesScreen() {
   );
 }
 
-/** 목표가 하나도 없을 때. **두 갈래를 나란히 보여준다.** */
-function EmptyRoutines({ hasResult, hasSaved, error }: { hasResult: boolean; hasSaved: boolean; error: string }) {
-  const canUseAnalysis = hasResult || hasSaved;
+/**
+ * 목표가 하나도 없을 때. **두 갈래만 보여준다.**
+ *
+ * 분석을 안 한 사람에게 목록·진행도 같은 것을 띄우지 않는다. 고를 것이 두 개뿐이면
+ * 화면도 두 개만 있어야 한다.
+ */
+function EmptyRoutines({ savedCount, error }: { savedCount?: number; error: string }) {
+  const hasSaved = (savedCount ?? 0) > 0;
   return (
     <AppScreen navigation contentStyle={styles.content}>
       <View style={styles.emptyHead}>
@@ -133,17 +142,15 @@ function EmptyRoutines({ hasResult, hasSaved, error }: { hasResult: boolean; has
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <Pressable onPress={() => router.push(hasResult ? '/goal' : '/drawer')} style={[styles.pathCard, !canUseAnalysis && styles.pathCardOff]}>
-        <View style={styles.pathHead}><Text style={styles.pathTitle}>진단 결과로 만들기</Text><Text style={styles.pathArrow}>›</Text></View>
-        <Text style={styles.pathText}>{canUseAnalysis ? '저장한 고점 분석을 바탕으로 나에게 맞춘 목표를 만들어요.' : '아직 저장한 분석 결과가 없어요. 진단을 먼저 완료하면 열려요.'}</Text>
-      </Pressable>
-
-      <Pressable onPress={() => router.push('/routine-new')} style={[styles.pathCard, styles.pathCardPrimary]}>
-        <View style={styles.pathHead}><Text style={[styles.pathTitle, styles.pathTitleOn]}>루틴만 만들기</Text><Text style={[styles.pathArrow, styles.pathTitleOn]}>›</Text></View>
+      <Pressable accessibilityRole="button" onPress={() => router.push('/routine-new')} style={[styles.pathCard, styles.pathCardPrimary]}>
+        <View style={styles.pathHead}><Text style={[styles.pathTitle, styles.pathTitleOn]}>새 목표 만들기</Text><Text style={[styles.pathArrow, styles.pathTitleOn]}>›</Text></View>
         <Text style={[styles.pathText, styles.pathTextOn]}>진단 없이 카테고리와 기간만 골라 바로 시작해요.</Text>
       </Pressable>
 
-      {canUseAnalysis ? null : <AppButton label="고점 분석하기" variant="secondary" onPress={() => router.push('/analysis-new')} />}
+      <Pressable accessibilityRole="button" onPress={() => router.push('/drawer')} style={[styles.pathCard, !hasSaved && styles.pathCardOff]}>
+        <View style={styles.pathHead}><Text style={styles.pathTitle}>서랍에서 분석 가져오기</Text><Text style={styles.pathArrow}>›</Text></View>
+        <Text style={styles.pathText}>{hasSaved ? `저장한 분석 ${savedCount}개로 나에게 맞춘 목표를 만들어요.` : '아직 서랍에 저장한 분석이 없어요.'}</Text>
+      </Pressable>
     </AppScreen>
   );
 }
