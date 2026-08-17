@@ -15,6 +15,18 @@ export type DrawerSections = { inProgress: backend.DrawerItem[]; recent: backend
 
 export type NotificationSettings = { enabled: boolean; defaultTime: string };
 
+/**
+ * 경로 B의 카테고리별 최소 기간. 백엔드 `RoutinePolicy`와 **같은 값이어야 한다.**
+ *
+ * 화면은 개월로 고르게 하고 서버에는 주로 보낸다(1개월 = 4주). 여기서 막지 않으면
+ * 사용자가 고른 뒤에야 400을 보게 된다.
+ */
+export const WEEKS_PER_MONTH = 4;
+export const MIN_MONTHS: Record<Category, number> = { SKIN: 6, BODY: 1, HEALTH: 1 };
+export const MAX_MONTHS = 12;
+
+export type RoutinePlanItem = { category: Category; months: number };
+
 /** 인바디 스캔 결과. 실패해도 화면은 직접 입력으로 계속 갈 수 있어야 한다. */
 export type InbodyScanResult = ActionResult & { scan?: backend.InbodyScan };
 
@@ -79,6 +91,15 @@ type AppStateValue = {
   toggleTask: (taskId: string) => void;
   /** 결과에서 목표를 만든다. 없으면 만들고, 있으면 그대로 둔다. */
   ensureRoutine: () => Promise<ActionResult>;
+
+  // ---- 목표 목록 (경로 A·B 공통)
+  routines: backend.RoutineSummary[];
+  loadRoutines: () => Promise<void>;
+  /** 목록에서 고른 목표의 태스크를 화면에 올린다. */
+  openRoutine: (routineId: string) => Promise<ActionResult>;
+  /** 분석 없이 카테고리+기간만으로 목표를 만든다. (경로 B) */
+  createRoutines: (items: RoutinePlanItem[]) => Promise<ActionResult>;
+  deleteRoutine: (routineId: string) => Promise<ActionResult>;
 };
 
 // ---------------------------------------------------------------- mock 데이터
@@ -186,6 +207,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [analysisStatusText, setAnalysisStatusText] = useState('');
   // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
+  const [routines, setRoutines] = useState<backend.RoutineSummary[]>([]);
   const analysisId = useRef<string | undefined>(undefined);
   const routineId = useRef<string | undefined>(undefined);
 
@@ -240,6 +262,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setProfileState(undefined); setResult(undefined); setSaved(false); setTasks([]);
     setAnalysisKeywords([]); setAnalysisStatusText('');
     setNotificationSettings({ enabled: false, defaultTime: '21:00' });
+    setRoutines([]);
     analysisId.current = undefined; routineId.current = undefined;
   }, []);
 
@@ -531,6 +554,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const routine = created.routines[0];
       if (!routine) return { ok: false, message: '목표를 만들지 못했어요.' };
       routineId.current = routine.routineId;
+      setRoutines((current) => [routine, ...current.filter((item) => item.routineId !== routine.routineId)]);
 
       const detail = await backend.getRoutine(routine.routineId);
       setTasks(detail.tasks);
@@ -539,6 +563,63 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: false, message: messageOf(error, '목표를 만들지 못했어요.') };
     }
   }, [mode, result]);
+
+  const loadRoutines = useCallback(async () => {
+    if (mode === 'mock') { setRoutines([]); return; }
+    const loaded = await backend.listRoutines().catch(() => undefined);
+    if (loaded) setRoutines(loaded.items);
+  }, [mode]);
+
+  const openRoutine = useCallback(async (id: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      const detail = await backend.getRoutine(id);
+      routineId.current = id;
+      setTasks(detail.tasks);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 불러오지 못했어요.') };
+    }
+  }, [mode]);
+
+  /**
+   * 경로 B — 분석 없이 카테고리와 기간만으로 목표를 만든다.
+   *
+   * 카테고리마다 목표가 1개씩 생기므로 응답은 배열이다. (API.md §6.6)
+   * 최소 기간은 화면에서 이미 막지만 서버도 같은 규칙을 갖고 있다.
+   */
+  const createRoutines = useCallback(async (items: RoutinePlanItem[]): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: false, message: '목표 생성은 서버에 연결했을 때만 쓸 수 있어요.' };
+    if (!items.length) return { ok: false, message: '카테고리를 1개 이상 골라주세요.' };
+
+    const invalid = items.find((item) => item.months < MIN_MONTHS[item.category]);
+    if (invalid) return { ok: false, message: `${invalid.category} 카테고리는 최소 ${MIN_MONTHS[invalid.category]}개월부터 시작해요.` };
+
+    try {
+      const created = await backend.createStandaloneRoutine(
+        items.map((item) => ({ category: item.category, durationWeeks: item.months * WEEKS_PER_MONTH })),
+      );
+      setRoutines((current) => [...created.routines, ...current]);
+      // 방금 만든 것 중 첫 번째를 바로 펼쳐 보여준다. 빈 화면으로 돌려보내지 않는다.
+      const first = created.routines[0];
+      if (first) await openRoutine(first.routineId);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 만들지 못했어요.') };
+    }
+  }, [mode, openRoutine]);
+
+  const deleteRoutine = useCallback(async (id: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      await backend.deleteRoutine(id);
+      setRoutines((current) => current.filter((item) => item.routineId !== id));
+      if (routineId.current === id) { routineId.current = undefined; setTasks([]); }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 삭제하지 못했어요.') };
+    }
+  }, [mode]);
 
   const toggleTask = useCallback((taskId: string) => {
     if (mode === 'mock') {
@@ -599,12 +680,17 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     tasks: serverMode ? tasks : account.tasks,
     toggleTask,
     ensureRoutine,
+    routines,
+    loadRoutines,
+    openRoutine,
+    createRoutines,
+    deleteRoutine,
   }), [
-    account, analysisKeywords, analysisStatusText, confirmKeywords, currentAccountId, deleteAccount,
-    ensureRoutine, loadDrawer, loadNotificationSettings, login, logout, mode, nickname,
-    notificationSettings, openSavedResult, photoUri, priorities, profile, ready, register, result,
-    saveProfile, saveToDrawer, saved, scanInbody, serverMode, setNickname, startAnalysis, tasks,
-    toggleTask, updateNotificationSettings,
+    account, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
+    deleteAccount, deleteRoutine, ensureRoutine, loadDrawer, loadNotificationSettings, loadRoutines,
+    login, logout, mode, nickname, notificationSettings, openRoutine, openSavedResult, photoUri,
+    priorities, profile, ready, register, result, routines, saveProfile, saveToDrawer, saved,
+    scanInbody, serverMode, setNickname, startAnalysis, tasks, toggleTask, updateNotificationSettings,
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
