@@ -32,9 +32,8 @@ const animate = () => LayoutAnimation.configureNext({
 });
 
 export default function RoutineNewScreen() {
-  const { createRoutines, profile } = useAppState();
+  const { profile, setRoutineDraft } = useAppState();
   const [months, setMonths] = useState<Partial<Record<Category, number>>>({});
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
   const selected = CATEGORIES.filter((item) => months[item.key] != null);
@@ -60,13 +59,16 @@ export default function RoutineNewScreen() {
     });
   };
 
-  const submit = async () => {
+  /**
+   * 여기서 만들지 않는다. 카테고리마다 <b>무엇을 바꾸고 싶은지</b>를 한 장씩
+   * 더 받은 뒤에 만든다. 그 문장이 없으면 AI가 쓸 근거가 신체 정보와
+   * 우선순위뿐이라 카테고리만 같으면 다들 비슷한 루틴을 받게 된다.
+   */
+  const goNext = () => {
     const items: RoutinePlanItem[] = selected.map((item) => ({ category: item.key, months: months[item.key]! }));
-    setPending(true); setError('');
-    const outcome = await createRoutines(items);
-    setPending(false);
-    if (!outcome.ok) return setError(outcome.message ?? '목표를 만들지 못했어요.');
-    router.replace('/routines');
+    setError('');
+    setRoutineDraft(items);
+    router.push({ pathname: '/routine-goal', params: { step: '0' } });
   };
 
   // 분석은 없어도 되지만 **프로필은 있어야 한다.** AI가 근거로 쓸 것이 신체 정보와
@@ -124,10 +126,10 @@ export default function RoutineNewScreen() {
         );
       })}
 
-      {selected.length ? <Text style={styles.summary}>목표 {selected.length}개가 만들어져요 · {selected.map((item) => `${item.label} ${months[item.key]}개월`).join(' · ')}</Text> : <Text style={styles.summaryMuted}>카테고리를 1개 이상 골라주세요.</Text>}
+      {selected.length ? <Text style={styles.summary}>다음 화면에서 {selected.length}개 각각의 목표를 적어요 · {selected.map((item) => `${item.label} ${months[item.key]}개월`).join(' · ')}</Text> : <Text style={styles.summaryMuted}>카테고리를 1개 이상 골라주세요.</Text>}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <AppButton label={pending ? '목표를 만들고 있어요...' : '루틴 만들기'} disabled={!selected.length || pending} onPress={submit} />
+      <AppButton label="다음" disabled={!selected.length} onPress={goNext} />
     </AppScreen>
   );
 }

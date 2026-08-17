@@ -308,6 +308,10 @@ export type RoutineSummary = {
   startDate: string;
   endDate: string | null;
   taskCount: number;
+  /** 사용자가 적은 목표. 경로 A는 null이다. (V10) */
+  goalText: string | null;
+  /** 체형 목표에서만 값을 갖는다. (V10) */
+  targetWeightKg: number | null;
 };
 
 export type RoutineDetail = {
@@ -336,14 +340,29 @@ export const createRoutineFromAnalysis = (sourceAnalysisResultId: string, startD
     body: { sourceType: 'FROM_ANALYSIS', sourceAnalysisResultId, startDate },
   });
 
-export const createStandaloneRoutine = (
-  items: { category: Category; durationWeeks: number }[],
-  startDate = today(),
-) =>
+export type StandaloneItem = {
+  category: Category;
+  durationWeeks: number;
+  /** 무엇을 바꾸고 싶은지. AI가 루틴을 고르는 근거가 된다. */
+  goalText?: string;
+  /** 체형에서만 쓴다. 다른 카테고리에 보내면 서버가 버린다. */
+  targetWeightKg?: number;
+};
+
+export const createStandaloneRoutine = (items: StandaloneItem[], startDate = today()) =>
   request<{ routines: RoutineSummary[] }>('/routines', {
     method: 'POST',
     body: { sourceType: 'STANDALONE', items, startDate },
   });
+
+/**
+ * 목록 순서 변경. **전체 순서를 통째로 보낸다.**
+ *
+ * 상대 지시("3번을 위로")는 중간에 목표가 지워지면 어긋난다. 화면이 보고 있는
+ * 순서를 그대로 보내는 편이 항상 맞는다.
+ */
+export const reorderRoutines = (routineIds: string[]) =>
+  request<{ items: RoutineSummary[] }>('/routines/order', { method: 'PATCH', body: { routineIds } });
 
 export const listRoutines = () => request<{ items: RoutineSummary[] }>('/routines');
 

@@ -2,6 +2,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import DraggableFlatList from 'react-native-draggable-flatlist';
+
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { FormField } from '@/components/ui/FormField';
@@ -10,7 +12,7 @@ import { formatAnalyzedDate, toIsoDate } from '@/lib/date';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
-import type { RoutineTask } from '@/types/api';
+import type { Category, RoutineTask } from '@/types/api';
 
 /**
  * 루틴 화면 — 경로 A·B로 만든 목표를 함께 다룬다. (API.md §6.6)
@@ -20,6 +22,70 @@ import type { RoutineTask } from '@/types/api';
  */
 const categoryLabel = { SKIN: '피부', BODY: '체형', HEALTH: '건강' } as const;
 const period = (value: string | null) => (value ?? '').replaceAll('-', '.');
+
+/**
+ * 목록을 카테고리로 묶는다. 목표가 여러 개면 피부·체형·건강이 뒤섞여
+ * 무엇이 무엇인지 알기 어렵다.
+ *
+ * **진단 기반 목표는 카테고리가 없어(`null`) 맨 뒤에 따로 모은다.**
+ * 여러 카테고리에 걸쳐 있어서 어느 묶음에도 넣을 수 없다.
+ */
+const GROUPS: { key: Category | null; label: string }[] = [
+  { key: 'SKIN', label: '피부' },
+  { key: 'BODY', label: '체형' },
+  { key: 'HEALTH', label: '건강' },
+  { key: null, label: '진단 기반' },
+];
+
+type CardProps = {
+  item: RoutineSummary;
+  selected: boolean;
+  /** 펼쳐진 카드에만 진행률 바를 그린다. */
+  progress?: number;
+  /** 지금 끌고 있는 카드인지. 들어올린 느낌을 준다. */
+  dragging?: boolean;
+  /** 길게 누르면 드래그가 시작된다. */
+  onDrag?: () => void;
+  onSelect: () => void;
+  onRename: () => void;
+  onRemove: () => void;
+};
+
+/**
+ * 목표 카드.
+ *
+ * **카드를 누르면 펼쳐지고, 이름 변경·삭제는 형제로 뺐다.** 카드 안에 넣으면
+ * 누를 때 이벤트가 카드로 올라가 함께 발동한다. (오답 노트 N-11)
+ */
+function RoutineCard({ item, selected, progress, dragging, onDrag, onSelect, onRename, onRemove }: CardProps) {
+  return (
+    <View style={[styles.card, selected && styles.cardOn, dragging && styles.cardDragging]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 선택`} onPress={onSelect} onLongPress={onDrag} delayLongPress={220} style={styles.cardBody}>
+        <View style={styles.cardHead}>
+          <View style={styles.chip}><Text style={styles.chipText}>{item.category ? categoryLabel[item.category] : '진단 기반'}</Text></View>
+          {/* 개월 환산은 WEEKS_PER_MONTH 하나로 맞춘다. 백엔드 RoutinePolicy와 같은 값이다. */}
+          <Text style={styles.cardMeta}>{item.durationWeeks ? `${Math.round(item.durationWeeks / WEEKS_PER_MONTH)}개월` : '기간 없음'}</Text>
+        </View>
+        <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+        {/* 사용자가 적은 목표를 다시 보여준다. 만들 때만 쓰고 감추면 "내가 뭘 목표로 했더라"를 알 수 없다. */}
+        {item.goalText ? <Text style={styles.goalText} numberOfLines={2}>“{item.goalText}”</Text> : null}
+        <Text style={styles.cardMeta}>
+          {period(item.startDate)}{item.endDate ? ` — ${period(item.endDate)}` : ''} · 태스크 {item.taskCount}개
+          {item.targetWeightKg != null ? ` · 목표 ${item.targetWeightKg}kg` : ''}
+        </Text>
+        {progress != null ? <View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View> : null}
+      </Pressable>
+      <View style={styles.cardActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 이름 바꾸기`} onPress={onRename} style={styles.cardAction}>
+          <Text style={styles.cardActionText}>이름 바꾸기</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 삭제`} onPress={onRemove} style={styles.cardAction}>
+          <Text style={[styles.cardActionText, styles.cardActionDanger]}>삭제</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 /**
  * 시점 순서. 아침에 할 일이 저녁에 할 일보다 위에 와야 한다.
@@ -68,7 +134,7 @@ function todayTasks(tasks: RoutineTask[]): { date?: string; items: RoutineTask[]
 export default function RoutinesScreen() {
   const {
     routines, loadRoutines, openRoutine, tasks, toggleTask, loadDrawer, activeRoutineId,
-    renameRoutine, deleteRoutine,
+    renameRoutine, deleteRoutine, reorderRoutines,
     notificationSettings, loadNotificationSettings, updateNotificationSettings,
   } = useAppState();
   const [selectedId, setSelectedId] = useState<string | undefined>(activeRoutineId);
@@ -85,6 +151,23 @@ export default function RoutinesScreen() {
     const outcome = await renameRoutine(renaming.routineId, nameDraft);
     setBusy(false); setRenaming(undefined);
     if (!outcome.ok) setError(outcome.message ?? '목표 이름을 바꾸지 못했어요.');
+  };
+
+  /**
+   * 한 묶음의 순서가 바뀌면 전체 순서를 다시 만들어 보낸다.
+   *
+   * 서버는 전체를 받는다. 바뀐 묶음의 새 순서를 그 자리에 끼우고 나머지는
+   * 원래 순서를 유지한다.
+   */
+  const commitOrder = async (group: Category | null, ordered: RoutineSummary[]) => {
+    const ids: string[] = [];
+    let cursor = 0;
+    for (const item of routines) {
+      if (item.category === group) ids.push(ordered[cursor++]!.routineId);
+      else ids.push(item.routineId);
+    }
+    const outcome = await reorderRoutines(ids);
+    if (!outcome.ok) setError(outcome.message ?? '순서를 저장하지 못했어요.');
   };
 
   const commitDelete = async () => {
@@ -145,33 +228,46 @@ export default function RoutinesScreen() {
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      {routines.map((item) => {
-        const on = item.routineId === current?.routineId;
+      {/*
+        카테고리로 묶어 보여준다. 목표가 여러 개면 피부·체형·건강이 뒤섞여
+        무엇이 무엇인지 알기 어렵다. **묶음 안의 순서는 사용자가 정한 순서**를
+        그대로 따른다(서버가 sort_order로 정렬해 준다).
+
+        진단 기반 목표는 카테고리가 없어 맨 뒤에 따로 모은다.
+      */}
+      {GROUPS.map((group) => {
+        const items = routines.filter((item) => item.category === group.key);
+        if (!items.length) return null;
         return (
-          <View key={item.routineId} style={[styles.card, on && styles.cardOn]}>
-            {/*
-              카드를 누르면 펼쳐지고, 이름 변경·삭제는 **형제로 뺐다.**
-              카드 안에 넣으면 누를 때 이벤트가 카드로 올라가 함께 발동한다.
-              (오답 노트 N-11)
-            */}
-            <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 선택`} onPress={() => select(item.routineId)} style={styles.cardBody}>
-              <View style={styles.cardHead}>
-                <View style={styles.chip}><Text style={styles.chipText}>{item.category ? categoryLabel[item.category] : '진단 기반'}</Text></View>
-                {/* 개월 환산은 WEEKS_PER_MONTH 하나로 맞춘다. 백엔드 RoutinePolicy와 같은 값이다. */}
-                <Text style={styles.cardMeta}>{item.durationWeeks ? `${Math.round(item.durationWeeks / WEEKS_PER_MONTH)}개월` : '기간 없음'}</Text>
-              </View>
-              <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.cardMeta}>{period(item.startDate)}{item.endDate ? ` — ${period(item.endDate)}` : ''} · 태스크 {item.taskCount}개</Text>
-              {on && tasks.length ? <View style={styles.track}><View style={[styles.fill, { width: `${Math.round((done / tasks.length) * 100)}%` }]} /></View> : null}
-            </Pressable>
-            <View style={styles.cardActions}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 이름 바꾸기`} onPress={() => { setRenaming(item); setNameDraft(item.title); }} style={styles.cardAction}>
-                <Text style={styles.cardActionText}>이름 바꾸기</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 삭제`} onPress={() => setRemoving(item)} style={styles.cardAction}>
-                <Text style={[styles.cardActionText, styles.cardActionDanger]}>삭제</Text>
-              </Pressable>
+          <View key={group.key ?? 'ANALYSIS'} style={styles.group}>
+            <View style={styles.groupHead}>
+              <Text style={styles.groupTitle}>{group.label}<Text style={styles.groupCount}> {items.length}</Text></Text>
+              {items.length > 1 ? <Text style={styles.groupHint}>길게 눌러 순서 변경</Text> : null}
             </View>
+            {/*
+              **묶음 안에서만 순서를 바꾼다.** 카테고리를 넘나들면 목표의 카테고리가
+              바뀐 것처럼 보이는데, 카테고리는 만들 때 정해지고 나중에 바뀌지 않는다.
+              서버에는 전체 순서를 보내야 하므로 바뀐 묶음만 갈아끼워 합친다.
+            */}
+            <DraggableFlatList
+              data={items}
+              keyExtractor={(item) => item.routineId}
+              activationDistance={12}
+              containerStyle={styles.dragList}
+              onDragEnd={({ data }) => void commitOrder(group.key, data)}
+              renderItem={({ item, drag, isActive }) => (
+                <RoutineCard
+                  item={item}
+                  selected={item.routineId === current?.routineId}
+                  progress={item.routineId === current?.routineId && tasks.length ? Math.round((done / tasks.length) * 100) : undefined}
+                  dragging={isActive}
+                  onDrag={drag}
+                  onSelect={() => select(item.routineId)}
+                  onRename={() => { setRenaming(item); setNameDraft(item.title); }}
+                  onRemove={() => setRemoving(item)}
+                />
+              )}
+            />
           </View>
         );
       })}
@@ -269,6 +365,14 @@ const styles = StyleSheet.create({
   cardActionText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
   cardActionDanger: { color: colors.danger },
   counter: { ...typography.caption, color: colors.textMuted, textAlign: 'right' },
+  group: { gap: spacing.sm },
+  groupTitle: { ...typography.label, color: colors.textTertiary, marginTop: 4 },
+  groupCount: { color: colors.primary, fontWeight: '700' },
+  goalText: { ...typography.caption, color: colors.textTertiary, fontStyle: 'italic' },
+  groupHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  groupHint: { ...typography.caption, color: colors.textMuted },
+  dragList: { gap: 0 },
+  cardDragging: { opacity: 0.92, transform: [{ scale: 1.02 }] },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: colors.primary },
   chipText: { ...typography.caption, color: colors.white, fontWeight: '700' },

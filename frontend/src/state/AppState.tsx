@@ -26,7 +26,18 @@ export const WEEKS_PER_MONTH = 4;
 export const MIN_MONTHS: Record<Category, number> = { SKIN: 6, BODY: 1, HEALTH: 1 };
 export const MAX_MONTHS = 12;
 
-export type RoutinePlanItem = { category: Category; months: number };
+/**
+ * 목표 하나의 계획. 카테고리·기간에 더해 **사용자가 적은 목표**를 담는다.
+ *
+ * 같은 "체형 4주"라도 "근력을 키우고 싶다"와 "몸무게만 줄이고 싶다"는 다른
+ * 루틴이 나와야 한다. `targetWeightKg`는 체형에서만 의미가 있다.
+ */
+export type RoutinePlanItem = {
+  category: Category;
+  months: number;
+  goalText?: string;
+  targetWeightKg?: number;
+};
 
 /** 인바디 스캔 결과. 실패해도 화면은 직접 입력으로 계속 갈 수 있어야 한다. */
 export type InbodyScanResult = ActionResult & { scan?: backend.InbodyScan };
@@ -119,6 +130,18 @@ type AppStateValue = {
   activeRoutineId?: string;
   /** 분석 없이 카테고리+기간만으로 목표를 만든다. (경로 B) */
   createRoutines: (items: RoutinePlanItem[]) => Promise<ActionResult>;
+  /**
+   * 작성 중인 목표 계획. **화면 여러 장에 걸쳐 있어 여기 둔다.**
+   *
+   * `/routine-new`에서 카테고리와 기간을 고르고, 카테고리마다 한 장씩
+   * `/routine-goal`에서 목표를 적는다. 라우터 파라미터로 3단계를 넘기면
+   * 뒤로 가기와 새로고침에서 금방 어긋난다.
+   */
+  routineDraft: RoutinePlanItem[];
+  setRoutineDraft: (items: RoutinePlanItem[]) => void;
+  updateRoutineDraft: (category: Category, patch: Partial<RoutinePlanItem>) => void;
+  /** 목표 목록 순서를 통째로 바꾼다. */
+  reorderRoutines: (routineIds: string[]) => Promise<ActionResult>;
   /** 목표 이름 변경. 목표가 둘 이상이면 이름이 곧 구분 수단이라 바꿀 수 있어야 한다. */
   renameRoutine: (routineId: string, title: string) => Promise<ActionResult>;
   deleteRoutine: (routineId: string) => Promise<ActionResult>;
@@ -722,7 +745,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
     try {
       const created = await backend.createStandaloneRoutine(
-        items.map((item) => ({ category: item.category, durationWeeks: item.months * WEEKS_PER_MONTH })),
+        items.map((item) => ({
+          category: item.category,
+          durationWeeks: item.months * WEEKS_PER_MONTH,
+          goalText: item.goalText?.trim() || undefined,
+          // 체형이 아니면 보내지 않는다. 서버도 버리지만 여기서 거르는 편이 명확하다.
+          targetWeightKg: item.category === 'BODY' ? item.targetWeightKg : undefined,
+        })),
       );
       setRoutines((current) => [...created.routines, ...current]);
       // 방금 만든 것 중 첫 번째를 바로 펼쳐 보여준다. 빈 화면으로 돌려보내지 않는다.
@@ -733,6 +762,27 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: false, message: messageOf(error, '목표를 만들지 못했어요.') };
     }
   }, [mode, openRoutine]);
+
+  const [routineDraft, setRoutineDraft] = useState<RoutinePlanItem[]>([]);
+
+  const updateRoutineDraft = useCallback((category: Category, patch: Partial<RoutinePlanItem>) => {
+    setRoutineDraft((current) => current.map((item) => (item.category === category ? { ...item, ...patch } : item)));
+  }, []);
+
+  const reorderRoutinesFn = useCallback(async (routineIds: string[]): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    // 화면은 이미 새 순서로 그려져 있다. 서버가 거절하면 목록을 되돌린다.
+    const before = routines;
+    setRoutines((current) => routineIds.map((id) => current.find((item) => item.routineId === id)!).filter(Boolean));
+    try {
+      const updated = await backend.reorderRoutines(routineIds);
+      setRoutines(updated.items);
+      return { ok: true };
+    } catch (error) {
+      setRoutines(before);
+      return { ok: false, message: messageOf(error, '순서를 저장하지 못했어요.') };
+    }
+  }, [mode, routines]);
 
   const renameRoutine = useCallback(async (id: string, title: string): Promise<ActionResult> => {
     const trimmed = title.trim();
@@ -829,12 +879,17 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     activeRoutineId,
     createRoutines,
     renameRoutine,
+    routineDraft,
+    setRoutineDraft,
+    updateRoutineDraft,
+    reorderRoutines: reorderRoutinesFn,
     deleteRoutine,
   }), [
     account, activeRoutineId, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
     loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
-    openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, renameRoutine, result, routines,
+    openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
+    result, routineDraft, routines, updateRoutineDraft,
     saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
     startAnalysis, tasks, toggleTask, updateNotificationSettings,
   ]);
