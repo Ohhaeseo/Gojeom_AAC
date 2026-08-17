@@ -95,6 +95,8 @@ const CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', webp: 'image/webp',
 };
 
+const SUPPORTED_CONTENT_TYPES = new Set(Object.values(CONTENT_TYPES));
+
 /** 확장자에서 Content-Type을 고른다. presign 요청과 실제 PUT의 값이 같아야 서명이 맞는다. */
 function contentTypeOf(uri: string): string {
   const extension = (uri.split('?')[0] ?? uri).split('.').pop()?.toLowerCase() ?? '';
@@ -108,9 +110,15 @@ function contentTypeOf(uri: string): string {
  * 스토리지로 직접 PUT한다. (ARCHITECTURE.md A-1)
  */
 export async function uploadImage(purpose: UploadPurpose, uri: string): Promise<string> {
-  const contentType = contentTypeOf(uri);
-
   const blob = await (await fetch(uri)).blob();
+
+  // **Blob 자신의 type이 정본이다.** 웹 picker가 주는 `blob:` URI에는 확장자가 없어
+  // URI만 보면 무엇을 골랐든 image/jpeg로 단정하게 된다. 그러면 PNG·HEIC를 고른
+  // 사용자가 S3 업로드까지 성공한 뒤 프로필 등록에서 거부당한다 — 서버가 실제
+  // 바이트와 신고한 형식을 대조하기 때문이다. (ImageContentInspector)
+  // 네이티브는 `file:///...jpg`라 확장자가 있어 이 문제가 드러나지 않았다.
+  const contentType = SUPPORTED_CONTENT_TYPES.has(blob.type) ? blob.type : contentTypeOf(uri);
+
   const presigned = await request<{ uploadUrl: string; objectKey: string; expiresIn: number }>(
     '/uploads/presigned',
     { method: 'POST', body: { purpose, contentType, contentLength: blob.size } },
