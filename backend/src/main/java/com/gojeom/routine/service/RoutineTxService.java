@@ -14,6 +14,7 @@ import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
+import com.gojeom.routine.TaskTimingSplitter;
 import com.gojeom.routine.dto.RoutineDtos.RoutineItem;
 import com.gojeom.routine.dto.RoutineDtos.RoutineSummary;
 import com.gojeom.routine.entity.Routine;
@@ -125,11 +126,15 @@ public class RoutineTxService {
         Routine routine = routineRepository.save(
                 Routine.fromAnalysis(userId, analysisResultId, title, startDate));
 
-        for (PlannedTask task : tasks) {
+        // 시점이 여러 개인 태스크는 시점마다 하나씩으로 나눈다. 완료 체크가 태스크
+        // 단위라, "아침, 저녁"이 한 줄이면 아침만 한 상태를 표현할 수 없다.
+        List<PlannedTask> expanded = TaskTimingSplitter.expand(tasks);
+
+        for (PlannedTask task : expanded) {
             routineTaskRepository.save(RoutineTask.of(routine.getId(), task.category(),
                     task.title(), task.timing(), task.durationLabel(), task.amountLabel(), startDate));
         }
-        return summary(routine, tasks.size());
+        return summary(routine, expanded.size());
     }
 
     /**
@@ -157,10 +162,14 @@ public class RoutineTxService {
                     userId, plan.category(), weeks, plan.title(), startDate,
                     item.goalText(), item.targetWeightKg()));
 
+            // 주 단위로 복제하기 **전에** 나눈다. 복제 후에 나누면 같은 일을
+            // durationWeeks번 반복해서 하게 된다.
+            List<PlannedTask> expanded = TaskTimingSplitter.expand(plan.tasks());
+
             long count = 0;
             for (int week = 0; week < weeks; week++) {
                 LocalDate scheduled = startDate.plusWeeks(week);
-                for (PlannedTask task : plan.tasks()) {
+                for (PlannedTask task : expanded) {
                     routineTaskRepository.save(RoutineTask.of(routine.getId(), plan.category(),
                             task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
                             scheduled));
