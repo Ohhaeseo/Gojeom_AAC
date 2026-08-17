@@ -10,6 +10,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -68,9 +69,22 @@ public class Routine extends BaseCreatedEntity {
     @Column(name = "end_date")
     private LocalDate endDate;
 
+    /** 사용자가 적은 "무엇을 바꾸고 싶은지". 경로 B에서만 받는다. (V10) */
+    @Column(name = "goal_text", columnDefinition = "text")
+    private String goalText;
+
+    /** 목표 몸무게. <b>체형에서만 쓴다.</b> (V10) */
+    @Column(name = "target_weight_kg")
+    private BigDecimal targetWeightKg;
+
+    /** 사용자가 정한 순서. NULL이면 아직 정하지 않은 것이고 목록 뒤로 간다. (V10) */
+    @Column(name = "sort_order")
+    private Integer sortOrder;
+
     private Routine(UUID userId, RoutineSourceType sourceType, UUID analysisResultId,
                     Category category, Short durationWeeks, String title,
-                    LocalDate startDate, LocalDate endDate) {
+                    LocalDate startDate, LocalDate endDate,
+                    String goalText, BigDecimal targetWeightKg) {
         this.userId = userId;
         this.sourceType = sourceType;
         this.analysisResultId = analysisResultId;
@@ -80,25 +94,37 @@ public class Routine extends BaseCreatedEntity {
         this.status = RoutineStatus.ACTIVE;
         this.startDate = startDate;
         this.endDate = endDate;
+        this.goalText = goalText;
+        this.targetWeightKg = targetWeightKg;
     }
 
     /** 경로 A — 여러 카테고리에 걸친 목표 1개. {@code category}·{@code durationWeeks}는 NULL이다. */
     public static Routine fromAnalysis(UUID userId, UUID analysisResultId, String title,
                                        LocalDate startDate) {
         return new Routine(userId, RoutineSourceType.FROM_ANALYSIS, analysisResultId,
-                null, null, title, startDate, null);
+                null, null, title, startDate, null, null, null);
     }
 
     /**
      * 경로 B — 카테고리당 목표 1개. {@code analysisResultId}는 NULL이다.
      *
      * <p>{@code end_date = start_date + duration_weeks * 7 - 1} (ERD.md §3.9)
+     *
+     * <p>{@code targetWeightKg}는 체형이 아니면 버린다. 다른 카테고리에 몸무게가
+     * 남아 있으면 나중에 읽는 쪽이 그것을 의미 있는 값으로 오해한다.
      */
     public static Routine standalone(UUID userId, Category category, int durationWeeks,
-                                     String title, LocalDate startDate) {
+                                     String title, LocalDate startDate,
+                                     String goalText, BigDecimal targetWeightKg) {
         return new Routine(userId, RoutineSourceType.STANDALONE, null,
                 category, (short) durationWeeks, title, startDate,
-                startDate.plusDays((long) durationWeeks * 7 - 1));
+                startDate.plusDays((long) durationWeeks * 7 - 1),
+                goalText, category == Category.BODY ? targetWeightKg : null);
+    }
+
+    /** 목록에서 사용자가 끌어 옮긴 순서. */
+    public void changeSortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
     }
 
     public boolean isOwnedBy(UUID candidate) {
@@ -114,6 +140,11 @@ public class Routine extends BaseCreatedEntity {
      *
      * <p>사용자가 취소한 목표({@code CANCELED})는 건드리지 않는다.
      */
+    /** 목표 이름 변경. 태스크와 기간은 건드리지 않는다. */
+    public void changeTitle(String title) {
+        this.title = title;
+    }
+
     public void syncStatus(long doneCount, long totalCount) {
         if (status == RoutineStatus.CANCELED) {
             return;

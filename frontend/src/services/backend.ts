@@ -349,6 +349,10 @@ export const listRoutines = () => request<{ items: RoutineSummary[] }>('/routine
 
 export const getRoutine = (routineId: string) => request<RoutineDetail>(`/routines/${routineId}`);
 
+/** 목표 이름 변경. 갱신된 요약이 돌아온다. */
+export const renameRoutine = (routineId: string, title: string) =>
+  request<RoutineSummary>(`/routines/${routineId}`, { method: 'PATCH', body: { title } });
+
 export const deleteRoutine = (routineId: string) => request<void>(`/routines/${routineId}`, { method: 'DELETE' });
 
 export const updateTaskStatus = (taskId: string, status: TaskStatus) =>

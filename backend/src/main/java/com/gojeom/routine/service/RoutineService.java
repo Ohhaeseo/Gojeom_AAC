@@ -25,7 +25,9 @@ import com.gojeom.routine.dto.RoutineDtos.RoutineCreateResponse;
 import com.gojeom.routine.dto.RoutineDtos.RoutineDetailResponse;
 import com.gojeom.routine.dto.RoutineDtos.RoutineItem;
 import com.gojeom.routine.dto.RoutineDtos.RoutineListResponse;
+import com.gojeom.routine.dto.RoutineDtos.RoutineOrderRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineOverview;
+import com.gojeom.routine.dto.RoutineDtos.RoutineRenameRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineSummary;
 import com.gojeom.routine.dto.RoutineDtos.TaskUpdateRequest;
 import com.gojeom.routine.dto.RoutineDtos.TaskUpdateResponse;
@@ -37,11 +39,12 @@ import com.gojeom.routine.repository.RoutineTaskRepository;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.EnumSet;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -110,20 +113,18 @@ public class RoutineService {
 
     /** 경로 B — 카테고리당 목표 1개. 한 번의 AI 호출로 최대 3개를 함께 만든다. */
     private RoutineCreateResponse createStandalone(UUID userId, RoutineCreateRequest request) {
-        Map<Category, Integer> weeks = requireDistinctCategories(request.items());
+        Map<Category, RoutineItem> items = requireDistinctCategories(request.items());
         RoutineCreationContext context = routineTx.loadStandalone(userId);
 
-        List<String> itemLines = weeks.entrySet().stream()
-                .map(e -> "- %s · %d주".formatted(e.getKey().label(), e.getValue()))
-                .toList();
+        List<String> itemLines = items.values().stream().map(this::promptLine).toList();
 
         StandalonePlan plan = generate(() -> aiTextService.generate(
                 prompt.forStandalone(context.profileFacts(), itemLines, context.priorities()),
                 StandalonePlan::userFacingText,
-                p -> requireExactCategories(p, weeks.keySet())));
+                p -> requireExactCategories(p, items.keySet())));
 
         List<RoutineSummary> summaries =
-                routineTx.persistStandalone(userId, plan.routines(), weeks, request.startDate());
+                routineTx.persistStandalone(userId, plan.routines(), items, request.startDate());
 
         return new RoutineCreateResponse(summaries);
     }
@@ -154,15 +155,38 @@ public class RoutineService {
         }
     }
 
-    /** API.md §6.6 — {@code items}의 {@code category} 중복 불가. */
-    private Map<Category, Integer> requireDistinctCategories(List<RoutineItem> items) {
-        Set<Category> seen = new LinkedHashSet<>();
-        items.forEach(item -> seen.add(item.category()));
-        if (seen.size() != items.size()) {
+    /**
+     * 프롬프트 한 줄. 사용자가 적은 목표를 <b>그대로 붙인다.</b>
+     *
+     * <p>같은 "체형 4주"라도 "근력을 키우고 싶다"와 "몸무게만 줄이고 싶다"는 완전히
+     * 다른 루틴이 나와야 한다. 목표 몸무게는 <b>차이까지 계산해</b> 넘긴다 —
+     * 모델에게 뺄셈을 시키면 틀린다.
+     */
+    private String promptLine(RoutineItem item) {
+        StringBuilder line = new StringBuilder("- %s · %d주".formatted(item.category().label(), item.durationWeeks()));
+        if (item.goalText() != null && !item.goalText().isBlank()) {
+            line.append(" · 사용자가 적은 목표: \"").append(item.goalText().trim()).append('"');
+        }
+        if (item.category() == Category.BODY && item.targetWeightKg() != null) {
+            line.append(" · 목표 몸무게 ").append(item.targetWeightKg().stripTrailingZeros().toPlainString()).append("kg");
+        }
+        return line.toString();
+    }
+
+    /**
+     * API.md §6.6 — {@code items}의 {@code category} 중복 불가.
+     *
+     * <p>기간뿐 아니라 <b>항목 전체</b>를 담아 돌려준다. 목표 문장과 목표 몸무게가
+     * 프롬프트와 저장 양쪽에 필요해서, 기간만 뽑으면 원본을 다시 찾아야 한다.
+     */
+    private Map<Category, RoutineItem> requireDistinctCategories(List<RoutineItem> items) {
+        Map<Category, RoutineItem> byCategory = new LinkedHashMap<>();
+        items.forEach(item -> byCategory.put(item.category(), item));
+        if (byCategory.size() != items.size()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     Map.of("items", "같은 카테고리를 두 번 고를 수 없어요."));
         }
-        return RoutineTxService.weeksByCategory(items);
+        return byCategory;
     }
 
     /**
@@ -195,16 +219,14 @@ public class RoutineService {
 
     @Transactional(readOnly = true)
     public RoutineListResponse list(UUID userId) {
-        List<Routine> routines = routineRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        List<Routine> routines = routineRepository.findByUserIdOrderBySortOrderAscCreatedAtDesc(userId);
         if (routines.isEmpty()) {
             return new RoutineListResponse(List.of());
         }
         Map<UUID, long[]> progress = progressByRoutineId(routines.stream().map(Routine::getId).toList());
 
         return new RoutineListResponse(routines.stream()
-                .map(r -> new RoutineSummary(r.getId(), r.getSourceType(), r.getCategory(),
-                        r.getTitle(), r.getDurationWeeks(), r.getStartDate(), r.getEndDate(),
-                        progress.getOrDefault(r.getId(), new long[2])[1]))
+                .map(r -> toSummary(r, progress.getOrDefault(r.getId(), new long[2])))
                 .toList());
     }
 
@@ -300,7 +322,60 @@ public class RoutineService {
         routineRepository.delete(findOwned(userId, routineId));
     }
 
+    /**
+     * 목록 순서 변경.
+     *
+     * <p><b>보내온 id가 내 것인지 전부 확인한다.</b> 남의 목표 id를 섞어 보내면
+     * 그 목표의 순서를 바꿀 수 있게 되므로, 개수와 소유자를 함께 대조한다.
+     *
+     * <p>목록에 없는 목표(요청에서 빠진 것)는 건드리지 않는다. 화면이 일부만
+     * 보고 있을 수 있다.
+     */
+    @Transactional
+    public RoutineListResponse reorder(UUID userId, RoutineOrderRequest request) {
+        List<Routine> mine = routineRepository.findByUserIdOrderBySortOrderAscCreatedAtDesc(userId);
+        Map<UUID, Routine> byId = mine.stream().collect(Collectors.toMap(Routine::getId, r -> r));
+
+        for (UUID id : request.routineIds()) {
+            if (!byId.containsKey(id)) {
+                throw new BusinessException(ErrorCode.FORBIDDEN_RESOURCE);
+            }
+        }
+
+        int order = 0;
+        for (UUID id : request.routineIds()) {
+            byId.get(id).changeSortOrder(order++);
+        }
+        return list(userId);
+    }
+
+    /**
+     * 목표 이름 변경.
+     *
+     * <p>AI가 지은 이름이 마음에 들지 않거나, 같은 카테고리로 여러 개를 만들었을 때
+     * 구분하기 위해 필요하다. 목표가 둘 이상이면 홈과 루틴 화면이 <b>이름으로</b>
+     * 구분하므로 이름이 곧 식별 수단이다.
+     *
+     * <p>이름만 바꾼다. 태스크와 기간은 그대로다.
+     */
+    @Transactional
+    public RoutineSummary rename(UUID userId, UUID routineId, RoutineRenameRequest request) {
+        Routine routine = findOwned(userId, routineId);
+        routine.changeTitle(request.title().trim());
+
+        long[] progress = progressByRoutineId(List.of(routineId))
+                .getOrDefault(routineId, new long[] { 0L, 0L });
+        return toSummary(routine, progress);
+    }
+
     // ------------------------------------------------------------ 공통
+
+    /** {@code progress}는 {@code [완료 수, 전체 수]}. 목록과 이름 변경이 같은 모양을 돌려준다. */
+    private RoutineSummary toSummary(Routine routine, long[] progress) {
+        return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
+                routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(), routine.getEndDate(),
+                progress[1], routine.getGoalText(), routine.getTargetWeightKg());
+    }
 
     private Routine findOwned(UUID userId, UUID routineId) {
         Routine routine = routineRepository.findById(routineId)

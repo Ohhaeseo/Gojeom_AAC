@@ -31,7 +31,7 @@ class RoutinePolicyValidationTest {
 
     private static RoutineCreateRequest standalone(Category category, int weeks) {
         return new RoutineCreateRequest(RoutineSourceType.STANDALONE, null,
-                List.of(new RoutineItem(category, weeks)), LocalDate.now());
+                List.of(new RoutineItem(category, weeks, null, null)), LocalDate.now());
     }
 
     private boolean valid(RoutineCreateRequest request) {

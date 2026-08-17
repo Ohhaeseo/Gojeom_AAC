@@ -144,14 +144,18 @@ public class RoutineTxService {
      */
     @Transactional
     public List<RoutineSummary> persistStandalone(UUID userId, List<PlannedRoutine> plans,
-                                                  Map<Category, Integer> weeksByCategory,
+                                                  Map<Category, RoutineItem> itemsByCategory,
                                                   LocalDate startDate) {
         List<RoutineSummary> summaries = new ArrayList<>();
 
         for (PlannedRoutine plan : plans) {
-            int weeks = weeksByCategory.get(plan.category());
-            Routine routine = routineRepository.save(
-                    Routine.standalone(userId, plan.category(), weeks, plan.title(), startDate));
+            RoutineItem item = itemsByCategory.get(plan.category());
+            int weeks = item.durationWeeks();
+            // 사용자가 적은 목표를 함께 저장한다. AI 입력으로만 쓰고 버리면 만든 뒤에
+            // "내가 뭘 목표로 했더라"를 다시 볼 수 없다.
+            Routine routine = routineRepository.save(Routine.standalone(
+                    userId, plan.category(), weeks, plan.title(), startDate,
+                    item.goalText(), item.targetWeightKg()));
 
             long count = 0;
             for (int week = 0; week < weeks; week++) {
@@ -171,13 +175,7 @@ public class RoutineTxService {
     private RoutineSummary summary(Routine routine, long taskCount) {
         return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
                 routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(),
-                routine.getEndDate(), taskCount);
+                routine.getEndDate(), taskCount, routine.getGoalText(), routine.getTargetWeightKg());
     }
 
-    /** 요청 순서를 유지한 채 카테고리 → 기간 맵으로 바꾼다. 중복은 호출부가 이미 걸렀다. */
-    static Map<Category, Integer> weeksByCategory(List<RoutineItem> items) {
-        Map<Category, Integer> map = new LinkedHashMap<>();
-        items.forEach(item -> map.put(item.category(), item.durationWeeks()));
-        return map;
-    }
 }

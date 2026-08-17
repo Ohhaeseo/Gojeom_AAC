@@ -47,7 +47,7 @@ class RoutineDtosSerializationTest {
     @DisplayName("경로 A 목표의 null 필드가 응답에서 사라지지 않는다")
     void 목표_요약의_null_키가_남는다() throws Exception {
         RoutineSummary summary = new RoutineSummary(UUID.randomUUID(),
-                RoutineSourceType.FROM_ANALYSIS, null, "제목", null, LocalDate.now(), null, 5);
+                RoutineSourceType.FROM_ANALYSIS, null, "제목", null, LocalDate.now(), null, 5, null, null);
 
         String json = mapper.writeValueAsString(summary);
 

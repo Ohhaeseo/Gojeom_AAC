@@ -119,6 +119,8 @@ type AppStateValue = {
   activeRoutineId?: string;
   /** 분석 없이 카테고리+기간만으로 목표를 만든다. (경로 B) */
   createRoutines: (items: RoutinePlanItem[]) => Promise<ActionResult>;
+  /** 목표 이름 변경. 목표가 둘 이상이면 이름이 곧 구분 수단이라 바꿀 수 있어야 한다. */
+  renameRoutine: (routineId: string, title: string) => Promise<ActionResult>;
   deleteRoutine: (routineId: string) => Promise<ActionResult>;
 };
 
@@ -732,6 +734,20 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, openRoutine]);
 
+  const renameRoutine = useCallback(async (id: string, title: string): Promise<ActionResult> => {
+    const trimmed = title.trim();
+    if (!trimmed) return { ok: false, message: '목표 이름을 입력해주세요.' };
+    if (mode === 'mock') return { ok: true };
+    try {
+      const updated = await backend.renameRoutine(id, trimmed);
+      // 서버가 준 요약으로 갈아끼운다. 목록을 다시 부르지 않아도 화면이 맞는다.
+      setRoutines((current) => current.map((item) => (item.routineId === id ? updated : item)));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표 이름을 바꾸지 못했어요.') };
+    }
+  }, [mode]);
+
   const deleteRoutine = useCallback(async (id: string): Promise<ActionResult> => {
     if (mode === 'mock') return { ok: true };
     try {
@@ -812,12 +828,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     openRoutine,
     activeRoutineId,
     createRoutines,
+    renameRoutine,
     deleteRoutine,
   }), [
     account, activeRoutineId, analysisKeywords, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
     loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
-    openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, result, routines,
+    openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, renameRoutine, result, routines,
     saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
     startAnalysis, tasks, toggleTask, updateNotificationSettings,
   ]);

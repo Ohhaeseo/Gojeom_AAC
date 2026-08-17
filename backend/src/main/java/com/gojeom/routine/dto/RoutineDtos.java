@@ -8,10 +8,14 @@ import com.gojeom.common.enums.TaskStatus;
 import com.gojeom.routine.RoutinePolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -82,11 +86,45 @@ public final class RoutineDtos {
             @NotNull(message = "기간을 선택해주세요.")
             @Min(value = 1, message = "1주 이상으로 정해주세요.")
             @Max(value = RoutinePolicy.MAX_WEEKS, message = "52주(12개월) 이하로 정해주세요.")
-            Integer durationWeeks) {
+            Integer durationWeeks,
+
+            /**
+             * 무엇을 바꾸고 싶은지. 자유 문장이다.
+             *
+             * <p>예) 피부 "모공을 줄이고 싶어요" · 건강 "허리가 안 좋아요"
+             * · 체형 "근력을 키우고 싶어요"
+             *
+             * <p><b>AI가 루틴을 고르는 근거가 된다.</b> 같은 체형 목표라도 "근력을
+             * 키우고 싶다"와 "몸무게만 줄이고 싶다"는 다른 루틴이 나와야 한다.
+             * 없어도 만들 수는 있다 — 그때는 신체 정보와 우선순위만 쓴다.
+             */
+            @Size(max = 300, message = "300자 이내로 입력해주세요.")
+            String goalText,
+
+            /**
+             * 목표 몸무게(kg). <b>체형에서만 쓴다.</b>
+             *
+             * <p>현재 몸무게는 프로필에 있으므로 서버가 차이를 계산해 AI에 넘긴다.
+             * 다른 카테고리에 들어오면 무시한다.
+             */
+            @DecimalMin(value = "30.0", message = "30kg 이상으로 입력해주세요.")
+            @DecimalMax(value = "200.0", message = "200kg 이하로 입력해주세요.")
+            BigDecimal targetWeightKg) {
     }
 
     /** {@code 201}. <b>항상 배열이다.</b> 경로 B는 최대 3개가 한 번에 생성된다. (API.md C-15) */
     public record RoutineCreateResponse(List<RoutineSummary> routines) {
+    }
+
+    /**
+     * 목표 이름 변경. ({@code PATCH /routines/{id}})
+     *
+     * <p>{@code routines.title}이 {@code VARCHAR(60)}이라 길이를 맞춘다.
+     */
+    public record RoutineRenameRequest(
+            @NotBlank(message = "목표 이름을 입력해주세요.")
+            @Size(max = 60, message = "목표 이름은 60자 이내로 입력해주세요.")
+            String title) {
     }
 
     /** 경로 A는 {@code category}·{@code durationWeeks}·{@code endDate}가 null이다. */
@@ -99,7 +137,24 @@ public final class RoutineDtos {
             Short durationWeeks,
             LocalDate startDate,
             LocalDate endDate,
-            long taskCount) {
+            long taskCount,
+            /** 사용자가 적은 목표. 경로 A는 null이다. (V10) */
+            String goalText,
+            /** 체형 목표에서만 값을 갖는다. (V10) */
+            BigDecimal targetWeightKg) {
+    }
+
+    /**
+     * 목록 순서 변경. ({@code PATCH /routines/order})
+     *
+     * <p><b>전체 순서를 통째로 보낸다.</b> "3번을 1번 앞으로" 같은 상대 지시는
+     * 중간에 목표가 지워지면 어긋난다. 화면이 보고 있는 순서를 그대로 보내는 편이
+     * 항상 맞는다.
+     */
+    public record RoutineOrderRequest(
+            @NotNull(message = "순서를 보내주세요.")
+            @Size(min = 1, message = "순서를 보내주세요.")
+            List<UUID> routineIds) {
     }
 
     // ------------------------------------------------------------ GET /routines

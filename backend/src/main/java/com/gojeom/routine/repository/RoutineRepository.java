@@ -10,7 +10,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RoutineRepository extends JpaRepository<Routine, UUID> {
 
-    List<Routine> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    /**
+     * 목록 순서. <b>사용자가 정한 순서가 우선이고, 없으면 최신순이다.</b>
+     *
+     * <p>Spring Data가 만드는 SQL은 PostgreSQL 기본값을 따라 {@code NULLS LAST}로
+     * 나가므로, 아직 순서를 정하지 않은 목표(V10 이후에 만들어진 것)가 뒤로 간다.
+     * (V10이 기존 목표에는 현재 순서를 굳혀 넣었다)
+     */
+    List<Routine> findByUserIdOrderBySortOrderAscCreatedAtDesc(UUID userId);
 
     /**
      * 서랍의 "현재 진행중인 목표" 판정용. (ERD.md §3.8)
