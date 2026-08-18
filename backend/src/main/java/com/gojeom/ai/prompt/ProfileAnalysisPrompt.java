@@ -3,6 +3,7 @@ package com.gojeom.ai.prompt;
 import com.gojeom.ai.AiStage;
 import com.gojeom.ai.OpenAiRequest;
 import com.gojeom.ai.dto.AiPayloads.ProfileAnalysisPayload;
+import com.gojeom.ai.dto.ChatDtos.ImageDetail;
 import com.gojeom.ai.schema.JsonSchemas;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,11 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>점수·등급을 만들지 않는다.</b> 스키마에 해당 필드가 없고 프롬프트로도 막는다.
  * (PRD G-1 · F-04)
+ *
+ * <p>사용자 사진만 {@link ImageDetail#HIGH}로 보낸다. <b>이 단계의 요약이 뒤따르는
+ * 모든 단계의 상한</b>이라 여기서 잃은 정보는 뒤에서 되찾을 수 없어, 판독 해상도를
+ * 제공자 기본값에 맡기지 않는다. (지금 모델에서는 auto와 결과가 같다 — {@link ImageDetail})
+
  */
 @Component
 @RequiredArgsConstructor
@@ -52,7 +58,7 @@ public class ProfileAnalysisPrompt {
                 .system(SystemPrompts.base() + INSTRUCTION)
                 .text(profileFacts)
                 .text("\n[사용자 사진]")
-                .image(photoUrl)
+                .image(photoUrl, ImageDetail.HIGH)
                 .build();
     }
 }

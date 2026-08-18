@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * OpenAI {@code /v1/chat/completions} 요청·응답 매핑. (API.md §7.1)
@@ -51,12 +52,40 @@ public final class ChatDtos {
     public record ImagePart(String type, @JsonProperty("image_url") ImageUrl imageUrl) {
 
         /** presigned GET URL을 그대로 넘긴다. 이미지 바이트는 이 서버를 통과하지 않는다. */
-        public static ImagePart of(String url) {
-            return new ImagePart("image_url", new ImageUrl(url));
+        public static ImagePart of(String url, ImageDetail detail) {
+            return new ImagePart("image_url", new ImageUrl(url, detail.wireValue()));
         }
     }
 
-    public record ImageUrl(String url) {
+    /**
+     * {@code detail}은 {@link ImageDetail#AUTO}일 때 null이고, 전역
+     * {@code non_null} 설정이 키째 뺀다. 보내지 않는 것과 같다.
+     */
+    public record ImageUrl(String url, String detail) {
+    }
+
+    /**
+     * 이미지 판독 해상도. (OpenAI {@code image_url.detail})
+     *
+     * <p>세부가 결과를 가르는 단계 — 사람 얼굴의 피부 결, 서류의 숫자 — 에만
+     * {@link #HIGH}를 쓴다. 분위기만 읽는 참고 사진에는 값어치가 없다.
+     *
+     * <p><b>실측(2026-08-18 · gpt-5.4) — 256~1024px 전 구간에서 {@code auto}와
+     * {@code high}의 입력 토큰이 같았다.</b> 즉 지금 핀에서는 판독 결과가 달라지지
+     * 않는다. 그럼에도 명시하는 이유는 <b>판독 해상도를 제공자 휴리스틱에 맡기지
+     * 않기 위해서다</b> — {@code auto}가 무엇을 고를지는 이미지 크기와 모델 세대에
+     * 따라 달라지고, 클라이언트가 사진을 더 작게 올리도록 바뀌면 조용히 낮아진다.
+     */
+    public enum ImageDetail {
+
+        /** 제공자 기본값에 맡긴다. 요청에 {@code detail} 키를 넣지 않는다. */
+        AUTO,
+        LOW,
+        HIGH;
+
+        String wireValue() {
+            return this == AUTO ? null : name().toLowerCase(Locale.ROOT);
+        }
     }
 
     public record ResponseFormat(String type, @JsonProperty("json_schema") JsonNode jsonSchema) {

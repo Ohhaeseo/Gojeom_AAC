@@ -67,6 +67,8 @@ openai:
   base-url: https://api.openai.com/v1
   model:
     text: ${OPENAI_MODEL_TEXT}
+    # 미설정이면 text로 떨어진다 — 지금과 같은 동작이다.
+    vision: ${OPENAI_MODEL_VISION:${OPENAI_MODEL_TEXT}}
     image: ${OPENAI_MODEL_IMAGE}
   timeout:
     connect-seconds: 5

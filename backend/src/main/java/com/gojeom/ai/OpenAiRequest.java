@@ -1,6 +1,7 @@
 package com.gojeom.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.gojeom.ai.dto.ChatDtos.ImageDetail;
 import com.gojeom.ai.dto.ChatDtos.ImagePart;
 import com.gojeom.ai.dto.ChatDtos.TextPart;
 import java.util.ArrayList;
@@ -70,8 +71,15 @@ public record OpenAiRequest<T>(
 
         /** presigned GET URL. null·blank는 조용히 건너뛴다 (사진이 없는 경우). */
         public Builder<T> image(String presignedUrl) {
+            return image(presignedUrl, ImageDetail.AUTO);
+        }
+
+        /**
+         * 판독 해상도를 정해 이미지를 붙인다. 자세한 것은 {@link ImageDetail}.
+         */
+        public Builder<T> image(String presignedUrl, ImageDetail detail) {
             if (presignedUrl != null && !presignedUrl.isBlank()) {
-                parts.add(ImagePart.of(presignedUrl));
+                parts.add(ImagePart.of(presignedUrl, detail));
             }
             return this;
         }

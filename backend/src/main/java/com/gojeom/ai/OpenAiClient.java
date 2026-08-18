@@ -72,7 +72,7 @@ public class OpenAiClient {
      */
     public <T> T complete(OpenAiRequest<T> request) {
         ChatRequest body = new ChatRequest(
-                properties.model().text(),
+                modelFor(request.stage()),
                 List.of(Message.system(request.system()), Message.user(request.userParts())),
                 ResponseFormat.jsonSchema(request.schema()));
 
@@ -127,7 +127,7 @@ public class OpenAiClient {
             throw failed(request, elapsed, ErrorCode.AI_PROVIDER_ERROR, true, "응답 봉투 파싱 실패", e);
         }
 
-        String model = parsed.model() != null ? parsed.model() : properties.model().text();
+        String model = parsed.model() != null ? parsed.model() : body.model();
         Choice choice = parsed.firstChoice();
 
         if (choice == null || choice.message() == null) {
@@ -185,8 +185,13 @@ public class OpenAiClient {
     private AiException failed(OpenAiRequest<?> request, int elapsed, ErrorCode code,
                                boolean retryable, String detail, Throwable cause) {
         recorder.recordFailed(request.analysisId(), request.stage(),
-                properties.model().text(), elapsed, code.name());
+                modelFor(request.stage()), elapsed, code.name());
         return new AiException(code, retryable, detail, cause);
+    }
+
+    /** 단계에 맞는 모델 ID. 어느 단계가 상위 모델을 쓰는지는 {@link AiStage}가 정한다. */
+    private String modelFor(AiStage stage) {
+        return properties.model().resolve(stage.usesVisionModel());
     }
 
     private int elapsedMs(long startedNanos) {

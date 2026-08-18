@@ -3,6 +3,7 @@ package com.gojeom.ai.prompt;
 import com.gojeom.ai.AiStage;
 import com.gojeom.ai.OpenAiRequest;
 import com.gojeom.ai.dto.AiPayloads.InbodyOcrPayload;
+import com.gojeom.ai.dto.ChatDtos.ImageDetail;
 import com.gojeom.ai.schema.JsonSchemas;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -49,7 +50,7 @@ public class InbodyOcrPrompt {
                 .schema(schemas.inbodyOcr())
                 .system(SystemPrompts.ROLE + '\n' + SystemPrompts.GUARDRAILS + INSTRUCTION)
                 .text("[인바디 결과지 사진]")
-                .image(documentUrl)
+                .image(documentUrl, ImageDetail.HIGH)
                 .build();
     }
 }

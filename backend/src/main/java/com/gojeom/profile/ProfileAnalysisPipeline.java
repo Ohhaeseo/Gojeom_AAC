@@ -79,7 +79,8 @@ public class ProfileAnalysisPipeline {
                     payload.faceImpression(),
                     payload.bodyRange(),
                     payload.healthNotes(),
-                    openAiProperties.model().text(),
+                    // 이 단계는 상위 모델을 쓸 수 있다. text()로 적으면 기록이 실제와 어긋난다. (②)
+                    openAiProperties.model().resolve(AiStage.PROFILE_ANALYSIS.usesVisionModel()),
                     DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(OffsetDateTime.now(ZoneOffset.UTC))));
 
             log.info("프로필 분석 완료");
