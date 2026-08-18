@@ -402,3 +402,7 @@ export const getNotificationSettings = () =>
 
 export const updateNotificationSettings = (patch: { enabled?: boolean; defaultTime?: string }) =>
   request<{ enabled: boolean; defaultTime: string }>('/notifications/settings', { method: 'PATCH', body: patch });
+
+/** Expo 푸시 토큰 등록. 같은 토큰을 다시 보내면 서버가 지금 사용자에게 옮겨 붙인다. */
+export const registerDeviceToken = (token: string, platform: 'WEB' | 'IOS' | 'ANDROID') =>
+  request<void>('/notifications/device-tokens', { method: 'POST', body: { token, platform } });

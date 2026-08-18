@@ -35,7 +35,10 @@ export default function SettingsScreen() {
   const apply = async (patch: { enabled?: boolean; defaultTime?: string }) => {
     setError('');
     const outcome = await updateNotificationSettings(patch);
-    if (!outcome.ok) setError(outcome.message ?? '알림 설정을 저장하지 못했어요.');
+    // 설정은 저장됐지만 **이 기기로는 못 받는** 경우가 있다(웹·권한 거절 등).
+    // 저장 실패와 구분해서 알려주지 않으면 "켰는데 왜 안 오지"가 된다.
+    if (!outcome.ok) return setError(outcome.message ?? '알림 설정을 저장하지 못했어요.');
+    setError(outcome.message ?? '');
   };
 
   return (

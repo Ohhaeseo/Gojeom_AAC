@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ConsentCode } from '@/lib/consent';
 import { ApiError, isMockMode } from '@/services/api';
 import * as backend from '@/services/backend';
+import { pushMessage, registerForPush } from '@/services/push';
 import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
 import type { AnalysisResult, Category, Inbody, Profile, RoutineTask } from '@/types/api';
 
@@ -747,11 +748,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     if (mode === 'mock') return { ok: true };
     try {
       setNotificationSettings(await backend.updateNotificationSettings(patch));
-      return { ok: true };
     } catch (error) {
       setNotificationSettings(previous);
       return { ok: false, message: messageOf(error, '알림 설정을 저장하지 못했어요.') };
     }
+
+    /*
+      **켤 때 기기를 등록한다.** 토큰이 없으면 서버가 보낼 곳이 없어 설정만
+      켜진 채 알림이 오지 않는다. 권한을 묻는 것도 이 순간이 맞다 — 앱을 열자마자
+      물으면 무엇에 쓰는지 모르는 상태에서 거절당하고, 거절한 권한은 기기 설정에
+      들어가야 되돌릴 수 있다.
+
+      **등록에 실패해도 설정은 켜 둔다.** 웹에서 켜고 휴대폰에서 받는 것이
+      정상적인 흐름이라, 지금 이 기기가 못 받는다고 설정 자체를 되돌리면
+      사용자가 켤 방법이 없어진다. 대신 왜 이 기기로는 안 오는지 알려준다.
+    */
+    if (patch.enabled) {
+      const push = await registerForPush();
+      if (!push.ok) return { ok: true, message: pushMessage(push), code: push.reason };
+    }
+    return { ok: true };
   }, [mode]);
 
   // ---------------------------------------------------------------- 목표

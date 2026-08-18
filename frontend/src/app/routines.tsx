@@ -230,6 +230,12 @@ export default function RoutinesScreen() {
 
   const current = routines.find((item) => item.routineId === selectedId) ?? first;
   const done = tasks.filter((task) => task.status === 'DONE').length;
+  /** 켜는 데는 성공했지만 이 기기로는 못 받을 수 있다. 그 사유를 그대로 띄운다. */
+  const applyNotify = async (enabled: boolean) => {
+    const outcome = await updateNotificationSettings({ enabled });
+    setError(outcome.ok ? (outcome.message ?? '') : (outcome.message ?? '알림 설정을 저장하지 못했어요.'));
+  };
+
   const timeCheck = checkTime(timeDraft);
   const today = todayTasks(tasks);
 
@@ -305,7 +311,7 @@ export default function RoutinesScreen() {
       <Text style={styles.description}>설정한 시간에 루틴 알림을 받을게요.</Text>
       <View style={styles.alarm}>
         <View><Text style={styles.taskTitle}>루틴 알림</Text><Text style={styles.meta}>매일 {notificationSettings.defaultTime}</Text></View>
-        <AnimatedSwitch accessibilityLabel="루틴 알림" value={notificationSettings.enabled} onValueChange={(enabled) => void updateNotificationSettings({ enabled })} />
+        <AnimatedSwitch accessibilityLabel="루틴 알림" value={notificationSettings.enabled} onValueChange={(enabled) => void applyNotify(enabled)} />
       </View>
       <GoModal
         visible={Boolean(renaming)}
