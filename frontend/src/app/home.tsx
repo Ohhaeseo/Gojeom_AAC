@@ -7,6 +7,8 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { VectorWordmark } from '@/components/brand/VectorWordmark';
 import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
 import { AppScreen } from '@/components/layout/AppScreen';
+import { ProductRecommendation } from '@/components/product/ProductRecommendation';
+import { ProductShelf } from '@/components/product/ProductShelf';
 import { AppButton } from '@/components/ui/AppButton';
 import { formatAnalyzedDate } from '@/lib/date';
 import { groupByTiming, todayTasks } from '@/lib/tasks';
@@ -99,6 +101,15 @@ export default function HomeScreen() {
   const activeChange = changes?.find((item) => item.category === selectedCategory);
   // 루틴 화면과 **같은 함수**로 고르고 정렬한다. 각자 하면 순서가 갈린다.
   const today = todayTasks(tasks).items;
+  /*
+    추천의 근거. 피부 카테고리의 변화 방향 문장과 **사용자가 고른 키워드**를 잇는다.
+    분석을 하지 않았으면 빈 문자열이고, 그때 추천 블록은 그려지지 않는다.
+  */
+  const recommendBasis = [
+    changes?.find((item) => item.category === 'SKIN')?.description ?? '',
+    ...(result?.overview.keywords.filter((keyword) => keyword.selected).map((keyword) => keyword.label) ?? []),
+  ].join(' ').trim();
+
   const todayDone = today.filter((task) => task.status === 'DONE').length;
   const groups = groupByTiming(today);
   // 미리보기도 **목록과 같은 순서**여야 한다. 정렬만 다르면 위 카드와 아래 목록의
@@ -205,6 +216,14 @@ export default function HomeScreen() {
             </View>
             <AppButton label="새로 진단하기" onPress={() => router.push('/analysis-new')} />
           </View>
+
+          {/*
+            **분석 결과를 근거로 한 추천이 먼저, 전체 진열이 그 아래다.** 결과가
+            없으면 추천 블록은 스스로 아무것도 그리지 않는다 — 근거 없이 "당신을
+            위한 추천"이라고 말하지 않는다.
+          */}
+          <ProductRecommendation basis={recommendBasis} />
+          <ProductShelf />
         </>
       ) : (
         <View style={[styles.lockedArea, { borderRadius: radius.xl, overflow: 'hidden' }]}>
