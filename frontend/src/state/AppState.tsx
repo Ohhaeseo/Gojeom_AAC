@@ -393,10 +393,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     rawId: string, password: string, birthDate: string, agreedConsents: ConsentCode[],
   ): Promise<ActionResult> => {
     const id = rawId.trim().toLowerCase();
-    if (!id) return { ok: false, message: '아이디를 입력해주세요.' };
+    if (!id) return { ok: false, message: '이메일을 입력해주세요.' };
 
     if (mode === 'mock') {
-      if (accounts[id]) return { ok: false, message: '이미 사용 중인 아이디예요.' };
+      if (accounts[id]) return { ok: false, message: '이미 가입된 이메일이에요.' };
       setAccounts((current) => ({ ...current, [id]: createAccountData(password) }));
       setCurrentAccountId(id);
       return { ok: true };
@@ -413,7 +413,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [accounts, mode, resetServerState]);
 
-  // 로그인 방식(아이디·Google)이 달라도 세션을 받은 뒤 할 일은 같다.
+  // 로그인 방식(이메일·Google)이 달라도 세션을 받은 뒤 할 일은 같다.
   const adoptSession = useCallback(async (session: Session) => {
     resetServerState();
     setCurrentAccountId(session.userId);

@@ -54,7 +54,7 @@ export default function LoginScreen() {
     <AppScreen title="로그인" headerLogo={false} navigation={false} contentStyle={styles.content}>
       <BrandLogo variant="face" style={styles.logo} />
       <View style={styles.form}>
-        <FormField label="아이디" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" placeholder="아이디혹은 전화번호를 입력해 주세요." />
+        <FormField label="이메일" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" keyboardType="email-address" placeholder="이메일을 입력해 주세요." />
         <FormField label="비밀번호" required value={password} onChangeText={(value) => { setPassword(value); setError(''); }} secureTextEntry placeholder="비밀번호를 입력해 주세요." error={error || undefined} />
       </View>
       <View style={styles.linkRow}><Text style={styles.muted}>아직 고점 회원이 아니신가요?</Text><Pressable onPress={() => router.replace('/signup')}><Text style={styles.link}>회원가입 하기</Text></Pressable></View>

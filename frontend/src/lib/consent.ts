@@ -21,7 +21,7 @@ export const CONSENT_LABEL: Record<ConsentCode, string> = {
 
 export const CONSENT_DETAIL: Record<ConsentCode, string> = {
   TERMS: 'GO. 서비스 이용에 관한 기본 약관이에요.',
-  PRIVACY: '아이디와 닉네임, 생년월일을 계정 관리 목적으로 써요.',
+  PRIVACY: '이메일과 닉네임, 생년월일을 계정 관리 목적으로 써요.',
   BIOMETRIC: '얼굴 사진과 인바디·신장·체중·수면 정보를 분석 목적으로만 써요. 다른 사용자에게 공개되지 않아요.',
   MARKETING: '새 기능과 이벤트 소식을 받아요. 동의하지 않아도 가입할 수 있어요.',
 };

@@ -74,7 +74,7 @@ export default function SignupScreen() {
         <Text style={styles.notice}>처음 오신 Google 계정이에요. 생년월일과 동의를 받은 뒤 Google 버튼을 다시 눌러주세요.</Text>
       ) : null}
       <View style={styles.form}>
-        <FormField label="아이디" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" placeholder="아이디혹은 전화번호를 입력해 주세요." error={error || undefined} />
+        <FormField label="이메일" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" keyboardType="email-address" placeholder="이메일을 입력해 주세요." error={error || undefined} />
         <FormField label="비밀번호" required value={password} onChangeText={setPassword} secureTextEntry placeholder="비밀번호를 입력해 주세요." />
         <FormField label="비밀번호 확인" required value={confirm} onChangeText={setConfirm} secureTextEntry placeholder="비밀번호를 다시 입력해 주세요." error={confirm && password !== confirm ? '비밀번호가 일치하지 않아요.' : undefined} />
         <FormField

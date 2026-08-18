@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { AnalysisResult } from '@/types/api';
@@ -64,30 +64,65 @@ export function ComparisonImage({ image, aspectRatio = 1.5 }: Props) {
  * <p><b>끌기 말고도 길을 하나 더 둔다.</b> 아래 `현재`·`고점`을 누르면 끝으로
  * 붙는다. 끌기가 안 먹는 환경에서도 두 장을 다 볼 수 있어야 한다. (N-13)
  */
+/**
+ * 잡은 순간의 비율 + 이동량 → 새 비율. 0~1을 벗어나지 않는다.
+ *
+ * <p>손가락의 화면 좌표가 아니라 <b>이동량</b>으로 계산한다. 좌표로 하려면 이 뷰가
+ * 화면 어디에 있는지 재야 하는데, 스크롤하면 그 값이 바뀐다.
+ */
+export function nextRatio(start: number, dx: number, width: number): number {
+  if (!width) return start;
+  return Math.min(1, Math.max(0, start + dx / width));
+}
+
 function CompareSlider({ currentUrl, peakUrl, aspectRatio }: { currentUrl: string; peakUrl: string; aspectRatio: number }) {
   const [width, setWidth] = useState(0);
-  const [ratio, setRatio] = useState(0.5);
+  /** 아래 `현재`·`고점` 강조에만 쓴다. 끌 때마다 갱신하면 매 프레임 다시 그린다. */
+  const [settled, setSettled] = useState(0.5);
+
+  /**
+   * 경계 위치를 <b>state가 아니라 `Animated.Value`로</b> 들고 있다.
+   *
+   * <p>state로 두면 손가락이 움직일 때마다 컴포넌트가 통째로 다시 그려진다.
+   * 사진 두 장이 걸린 화면이라 그 비용이 그대로 끊김으로 보인다. 값만 바꾸면
+   * 레이아웃 속성만 갱신돼 훨씬 매끄럽다.
+   */
+  const position = useRef(new Animated.Value(0.5)).current;
   // PanResponder 안에서는 state가 만들어진 시점 값으로 굳는다. 최신 값을 ref로 읽는다.
-  const live = useRef({ width: 0, start: 0.5 });
+  const live = useRef({ width: 0, start: 0.5, at: 0.5 });
   live.current.width = width;
 
-  // onPanResponderGrant가 최신 비율을 봐야 한다. state를 그대로 읽으면 첫 값에 묶인다.
-  const ratioRef = useRef(ratio);
-  ratioRef.current = ratio;
+  const moveTo = (next: number, animate = false) => {
+    const clamped = Math.min(1, Math.max(0, next));
+    live.current.at = clamped;
+    if (animate) {
+      // 레이아웃 속성(width·left)이라 네이티브 드라이버를 쓸 수 없다.
+      Animated.timing(position, { toValue: clamped, duration: 200, useNativeDriver: false }).start();
+    } else {
+      position.setValue(clamped);
+    }
+    return clamped;
+  };
 
   const responder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => { live.current.start = ratioRef.current; },
+      // 자식이 가로채기 전에 잡는다. 사진 위에서 시작한 끌기도 여기서 받아야 한다.
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: () => { live.current.start = live.current.at; },
       onPanResponderMove: (_event, gesture) => {
         const box = live.current.width;
         if (!box) return;
-        const next = live.current.start + gesture.dx / box;
-        setRatio(Math.min(1, Math.max(0, next)));
+        moveTo(nextRatio(live.current.start, gesture.dx, box));
       },
+      onPanResponderRelease: () => setSettled(live.current.at),
+      onPanResponderTerminate: () => setSettled(live.current.at),
     }),
   ).current;
+
+  const percent = position.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+
+  const snap = (to: number) => { moveTo(to, true); setSettled(to); };
 
   return (
     <View style={styles.wrap}>
@@ -96,32 +131,37 @@ function CompareSlider({ currentUrl, peakUrl, aspectRatio }: { currentUrl: strin
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
         {...responder.panHandlers}
       >
-        {/* 뒤: 고점. 앞의 현재 사진을 잘라내면 이것이 드러난다. */}
-        <Image source={{ uri: peakUrl }} contentFit="cover" style={styles.layer} accessibilityLabel="고점 예상 모습" />
+        {/*
+          사진에는 **이벤트를 주지 않는다.** 웹에서 `<img>` 위에서 끌면 브라우저가
+          자기 드래그(고스트 이미지)를 시작해 손가락을 빼앗는다. 끌어도 경계가
+          안 움직이는 주된 원인이다. 대상이 되지 않으면 그 동작 자체가 일어나지 않는다.
+        */}
+        <Image source={{ uri: peakUrl }} contentFit="cover" style={styles.layer} pointerEvents="none" accessibilityLabel="고점 예상 모습" />
         {/*
           앞: 현재. **너비를 잘라** 왼쪽만 남긴다. 사진 자체를 줄이면 얼굴이 눌리므로
           바깥 View만 좁히고 사진은 무대 너비 그대로 둔다.
         */}
-        <View style={[styles.clip, { width: `${ratio * 100}%` }]}>
+        <Animated.View style={[styles.clip, { width: percent }]} pointerEvents="none">
           <Image
             source={{ uri: currentUrl }}
             contentFit="cover"
             style={[styles.layer, width ? { width } : null]}
+            pointerEvents="none"
             accessibilityLabel="현재 모습"
           />
-        </View>
-        <View style={[styles.handle, { left: `${ratio * 100}%` }]} pointerEvents="none">
+        </Animated.View>
+        <Animated.View style={[styles.handle, { left: percent }]} pointerEvents="none">
           <View style={styles.handleLine} />
           <View style={styles.handleKnob}><Text style={styles.handleKnobText}>◀ ▶</Text></View>
-        </View>
+        </Animated.View>
       </View>
       <View style={styles.captions}>
-        <Pressable accessibilityRole="button" accessibilityLabel="현재 모습만 보기" onPress={() => setRatio(1)} hitSlop={8}>
-          <Text style={[styles.caption, ratio > 0.5 && styles.captionOn]}>현재</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="현재 모습만 보기" onPress={() => snap(1)} hitSlop={8}>
+          <Text style={[styles.caption, settled > 0.5 && styles.captionOn]}>현재</Text>
         </Pressable>
         <Text style={styles.captionHint}>가운데를 끌어 비교해보세요</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="고점 예상 모습만 보기" onPress={() => setRatio(0)} hitSlop={8}>
-          <Text style={[styles.caption, ratio < 0.5 && styles.captionOn]}>고점</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="고점 예상 모습만 보기" onPress={() => snap(0)} hitSlop={8}>
+          <Text style={[styles.caption, settled < 0.5 && styles.captionOn]}>고점</Text>
         </Pressable>
       </View>
     </View>
@@ -130,7 +170,13 @@ function CompareSlider({ currentUrl, peakUrl, aspectRatio }: { currentUrl: strin
 
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
-  stage: { width: '100%', borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceSunken },
+  /*
+    웹에서 끌기를 방해하는 두 가지를 여기서 막는다.
+    - `userSelect`: 끌면 글자·이미지가 파랗게 선택돼 손가락을 빼앗는다.
+    - `touchAction`: 손대면 브라우저가 먼저 스크롤·확대로 해석한다.
+    RN Web은 이 두 속성을 그대로 CSS로 넘긴다. 네이티브에서는 무시된다.
+  */
+  stage: { width: '100%', borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceSunken, userSelect: 'none', touchAction: 'none', cursor: 'ew-resize' } as unknown as ViewStyle,
   layer: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   clip: { ...StyleSheet.absoluteFillObject, right: undefined, overflow: 'hidden' },
   handle: { position: 'absolute', top: 0, bottom: 0, width: 2, marginLeft: -1, alignItems: 'center', justifyContent: 'center' },

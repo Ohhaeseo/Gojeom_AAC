@@ -13,7 +13,7 @@ import { useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { Category } from '@/types/api';
 
-const providerLabel = { LOCAL: '아이디로 가입', GOOGLE: 'Google 로그인' } as const;
+const providerLabel = { LOCAL: '이메일로 가입', GOOGLE: 'Google 로그인' } as const;
 const joinedLabel = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `가입일 ${d.getFullYear()}년 ${d.getMonth() + 1}월`; };
 
 export default function ProfileScreen() {

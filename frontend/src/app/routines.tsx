@@ -13,7 +13,7 @@ import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits
 import { groupByTiming, todayTasks } from '@/lib/tasks';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
-import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
+import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { Category } from '@/types/api';
 
 /**
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
   groupTitle: { ...typography.label, color: colors.textTertiary, marginTop: 4 },
   groupCount: { color: colors.primary, fontWeight: '700' },
   goalText: { ...typography.caption, color: colors.textTertiary, fontStyle: 'italic' },
-  groupLabel: { ...typography.caption, color: colors.textTertiary, marginTop: 10, marginBottom: 2 },
+  groupLabel: { ...typography.caption, fontFamily: fonts.semibold, fontWeight: '700', fontSize: 13, color: colors.text, marginTop: 14, marginBottom: 2 },
   notifyLine: { ...typography.caption, color: colors.textMuted },
   clearNotify: { alignSelf: 'center', paddingVertical: 8 },
   clearNotifyText: { ...typography.caption, color: colors.textMuted, textDecorationLine: 'underline' },
