@@ -20,7 +20,9 @@ import org.springframework.stereotype.Component;
  * <p>사용자 사진만 {@link ImageDetail#HIGH}로 보낸다. <b>이 단계의 요약이 뒤따르는
  * 모든 단계의 상한</b>이라 여기서 잃은 정보는 뒤에서 되찾을 수 없어, 판독 해상도를
  * 제공자 기본값에 맡기지 않는다. (지금 모델에서는 auto와 결과가 같다 — {@link ImageDetail})
-
+ *
+ * <p>{@code capture}로 <b>판독 조건을 함께 받는다.</b> 어두운 사진에도 똑같이 단정적인
+ * 문장이 나오면 사용자는 그것이 자기 사진 탓인지 알 수 없다. (④ 촬영 품질 게이트)
  */
 @Component
 @RequiredArgsConstructor
@@ -46,7 +48,23 @@ public class ProfileAnalysisPrompt {
               좋은 예) "평균 수면 6.5시간 · 사용자 입력 기준"
               수치를 여러 개 나열하지 않는다. 항목당 하나씩만 적는다.
             - 사용자가 입력하지 않은 항목은 언급하지 않는다. 추측하지 않는다.
-            - 얼굴이 보이지 않거나 사람이 여럿이면 그 사실만 faceImpression에 적는다.
+
+            [사진을 얼마나 볼 수 있었는지 — capture]
+            판독 조건을 스스로 밝힌다. **사용자의 외모를 평가하는 칸이 아니다.**
+            사진이 어땠는지만 말한다.
+
+            - readability: CLEAR(세부까지 보였다) · PARTIAL(일부는 확실하지 않다) · LIMITED(제대로 보기 어려웠다)
+            - issues: 판독을 방해한 요인만 고른다. 없으면 빈 배열이다. 억지로 채우지 않는다.
+              DARK(전반적으로 어둡다) · BACKLIT(역광이라 얼굴만 어둡다)
+              BLURRY(흔들렸거나 초점이 맞지 않는다) · FACE_TOO_SMALL(얼굴이 작게 담겼다)
+              OCCLUDED(머리카락·마스크·안경 등에 얼굴 일부가 가렸다)
+              HEAVY_FILTER(보정이 강해 실제 피부와 다르게 보인다)
+              MULTIPLE_FACES(사람이 여럿) · NO_FACE(얼굴을 찾지 못했다)
+
+            **흐릿해서 못 본 것을 본 것처럼 적지 않는다.** 확실하지 않으면 readability와
+            issues로 밝히고, faceImpression에는 실제로 보인 것만 적는다.
+            얼굴을 찾지 못했으면 NO_FACE로 밝히고 faceImpression에는 "얼굴을 찾지 못함"
+            한 줄만 둔다. 사람이 여럿이면 MULTIPLE_FACES로 밝힌다.
             """;
 
     private final JsonSchemas schemas;

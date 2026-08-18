@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.gojeom.common.enums.Category;
 import com.gojeom.common.enums.KeywordCategory;
+import com.gojeom.profile.entity.CaptureQuality;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -199,11 +200,17 @@ public final class AiPayloads {
 
     // ------------------------------------------------------ PROFILE_ANALYSIS
 
+    /**
+     * {@code capture}는 사진을 얼마나 볼 수 있었는지에 대한 자기 신고다.
+     * <b>{@link #userFacingText()}에 넣지 않는다</b> — 열거형뿐이라 가드레일이
+     * 검사할 문장이 없고, 화면 문구는 프론트가 이 분류로 고른다.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ProfileAnalysisPayload(
             List<String> faceImpression,
             String bodyRange,
-            List<String> healthNotes) {
+            List<String> healthNotes,
+            CaptureQuality capture) {
 
         @JsonIgnore
         public String userFacingText() {

@@ -106,6 +106,12 @@ public class JsonSchemas {
      *
      * <p><b>점수·등급 필드를 두지 않는다.</b> 스키마에 없으면 모델이 만들 수 없다.
      * 가드레일의 1차 방어선이다. (PRD G-1)
+     *
+     * <p>{@code capture}는 <b>사진을 얼마나 볼 수 있었는지</b>를 모델이 스스로 밝히는
+     * 자리다. 사용자를 평가하는 값이 아니라 판독 조건을 말하는 값이라 G-1에 걸리지
+     * 않는다. <b>자유 서술을 두지 않고 열거형으로만 받는다</b> — 문장을 짓게 하면
+     * 사용자에게 노출되는 텍스트가 하나 더 생기고, 그만큼 가드레일 표면이 넓어진다.
+     * 사용자에게 할 말은 프론트가 이 분류로 고른다.
      */
     private static final String PROFILE_ANALYSIS = """
             {
@@ -113,11 +119,23 @@ public class JsonSchemas {
               "strict": true,
               "schema": {
                 "type": "object", "additionalProperties": false,
-                "required": ["faceImpression", "bodyRange", "healthNotes"],
+                "required": ["faceImpression", "bodyRange", "healthNotes", "capture"],
                 "properties": {
                   "faceImpression": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string", "maxLength": 30 } },
                   "bodyRange":      { "type": "string", "maxLength": 40 },
-                  "healthNotes":    { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string", "maxLength": 60 } }
+                  "healthNotes":    { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string", "maxLength": 60 } },
+                  "capture": {
+                    "type": "object", "additionalProperties": false,
+                    "required": ["readability", "issues"],
+                    "properties": {
+                      "readability": { "type": "string", "enum": ["CLEAR", "PARTIAL", "LIMITED"] },
+                      "issues": {
+                        "type": "array", "maxItems": 4,
+                        "items": { "type": "string", "enum": ["DARK", "BACKLIT", "BLURRY", "FACE_TOO_SMALL",
+                                                             "OCCLUDED", "HEAVY_FILTER", "MULTIPLE_FACES", "NO_FACE"] }
+                      }
+                    }
+                  }
                 }
               }
             }

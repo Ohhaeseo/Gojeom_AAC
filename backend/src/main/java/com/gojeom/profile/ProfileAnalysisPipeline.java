@@ -9,6 +9,7 @@ import com.gojeom.ai.prompt.ProfileAnalysisPrompt;
 import com.gojeom.ai.prompt.ProfileFacts;
 import com.gojeom.ai.schema.JsonSchemas;
 import com.gojeom.common.config.AsyncConfig;
+import com.gojeom.common.enums.CaptureReadability;
 import com.gojeom.common.config.OpenAiProperties;
 import com.gojeom.profile.entity.ProfileAnalysisSummary;
 import com.gojeom.storage.StorageService;
@@ -79,11 +80,18 @@ public class ProfileAnalysisPipeline {
                     payload.faceImpression(),
                     payload.bodyRange(),
                     payload.healthNotes(),
+                    payload.capture(),
                     // 이 단계는 상위 모델을 쓸 수 있다. text()로 적으면 기록이 실제와 어긋난다. (②)
                     openAiProperties.model().resolve(AiStage.PROFILE_ANALYSIS.usesVisionModel()),
                     DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(OffsetDateTime.now(ZoneOffset.UTC))));
 
-            log.info("프로필 분석 완료");
+            // 판독 조건이 나빴다는 것은 사용자가 알아야 하는 사실이다. 로그로도 남긴다.
+            if (payload.capture() != null && payload.capture().readability() != CaptureReadability.CLEAR) {
+                log.info("프로필 분석 완료 — 촬영 품질 {} issues={}",
+                        payload.capture().readability(), payload.capture().issues());
+            } else {
+                log.info("프로필 분석 완료");
+            }
         } catch (AiException e) {
             // 사진 key·URL을 로그에 남기지 않는다. (AGENTS.md 규칙 9)
             log.warn("프로필 분석 실패 code={} : {}", e.errorCode().name(), e.getMessage());

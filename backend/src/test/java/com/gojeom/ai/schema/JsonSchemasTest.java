@@ -73,6 +73,36 @@ class JsonSchemasTest {
         assertThat(properties).doesNotContain("score", "grade", "rank", "point");
     }
 
+    @Test
+    @DisplayName("촬영 품질은 열거형으로만 받는다 — 자유 서술 칸을 두지 않는다 (④)")
+    void 촬영_품질은_열거형뿐이다() {
+        JsonNode capture = schemas.profileAnalysis().at("/schema/properties/capture/properties");
+
+        assertThat(capture.path("readability").path("enum").toString())
+                .isEqualTo("[\"CLEAR\",\"PARTIAL\",\"LIMITED\"]");
+        assertThat(capture.path("issues").path("items").path("enum")).isNotEmpty();
+
+        // 문장을 짓게 하는 순간 사용자에게 노출되는 텍스트가 하나 늘고,
+        // 그만큼 OutputValidator가 지켜야 할 표면이 넓어진다. 화면 문구는 프론트가 만든다.
+        capture.fieldNames().forEachRemaining(name -> {
+            JsonNode field = capture.path(name);
+            JsonNode leaf = field.has("items") ? field.path("items") : field;
+            assertThat(leaf.has("enum"))
+                    .as("capture.%s가 열거형이 아니다", name)
+                    .isTrue();
+        });
+    }
+
+    @Test
+    @DisplayName("촬영 품질에도 점수·등급을 뜻하는 이름을 쓰지 않는다 (G-1)")
+    void 촬영_품질에_등급_이름을_쓰지_않는다() {
+        // 스키마의 필드 이름은 모델도 읽는다. 얼굴 정보 옆에 "등급" 칸을 두면
+        // 모델이 얼굴에 등급을 매기기 시작한다. 값 이름까지 함께 본다.
+        String capture = schemas.profileAnalysis().at("/schema/properties/capture").toString().toLowerCase();
+
+        assertThat(capture).doesNotContain("score", "grade", "rank", "point");
+    }
+
     /** 모든 object 노드가 두 조건을 지키는지 재귀 확인. */
     private void walk(JsonNode node, String path, List<String> problems) {
         if (!node.isObject()) {
