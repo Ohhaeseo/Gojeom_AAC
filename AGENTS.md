@@ -454,6 +454,28 @@ cd C:\AAC_gojeomAI\frontend; npx eas-cli@latest whoami
 > 에이전트가 `Bash` 도구로 돌리는 것은 Git Bash라 `&&`가 된다. **내가 되는 것과
 > 사용자 터미널에서 되는 것은 다르다.**
 
+### N-21. `toISOString()`으로 날짜를 만들지 않는다 〔2026-08-19 · 프론트〕
+
+**증상** — 새벽 1시에 "루틴 만들기"를 누르면 `400 VALIDATION_ERROR`
+(`{"startDate":"오늘 이후 날짜를 선택해주세요."}`). **낮에는 멀쩡했다.**
+
+**원인** — `backend.ts`가 시작일 기본값을 `new Date().toISOString().slice(0, 10)`으로
+만들고 있었다. `toISOString()`은 **UTC**다. 한국은 UTC+9라 **자정부터 오전 9시까지는
+어제 날짜**가 나오고, 서버는 `Asia/Seoul` 기준으로 "오늘 이후"를 본다.
+
+`lib/date.ts`의 `toIsoDate`는 처음부터 이것을 피하려고 로컬 기준으로 만들어져 있었고
+주석에도 그렇게 적혀 있었다. 다른 파일이 그것을 안 쓰고 따로 계산한 것이 문제였다.
+
+**재발 방지** — 서버로 보내는 날짜는 **언제나 `toIsoDate`**를 쓴다.
+
+```bash
+grep -rn "toISOString()" frontend/src
+```
+
+**더 중요한 것** — 이런 버그는 **특정 시간대에만 재현된다.** 낮에 눌러 보고
+"안 되네요"를 재현하지 못하면 사용자를 의심하기 쉽다. 재현이 안 될 때는
+**시각·시간대·요일에 걸린 조건**을 먼저 의심한다.
+
 접속 정보는 `backend/.env`에 있고, **Spring은 `.env`를 자동으로 읽지 않는다** —
 `set -a && . ./.env && set +a` 로 주입한 뒤 `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`.
 
