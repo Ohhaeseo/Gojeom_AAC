@@ -12,18 +12,18 @@ import { formatAnalyzedDate } from '@/lib/date';
 import { todayTasks } from '@/lib/tasks';
 import { useAppState, type DrawerItem } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
-import type { Category } from '@/types/api';
+import type { AnalysisResult, Category } from '@/types/api';
 
 const label = { SKIN: '피부', BODY: '체형', HEALTH: '건강' } as const;
-const metricsByCategory: Record<Category, { name: string; value: number }[]> = {
-  SKIN: [{ name: '수분', value: 82 }, { name: '유분', value: 21 }, { name: '각질', value: 38 }, { name: '톤', value: 77 }],
-  BODY: [{ name: '자세 균형', value: 74 }, { name: '활동량', value: 61 }, { name: '근육 균형', value: 68 }, { name: '유연성', value: 57 }],
-  HEALTH: [{ name: '수면', value: 72 }, { name: '수분 섭취', value: 82 }, { name: '활동량', value: 64 }, { name: '회복', value: 76 }],
-};
-const metrics = metricsByCategory.SKIN;
+
+/**
+ * 잠금 미리보기에만 쓰는 예시 문구. 프로필이 없어 **읽어올 결과 자체가 없는**
+ * 상태에서 카드 모양만 보여준다. 실제 카드는 서버가 준 `categoryChanges`를 쓴다.
+ */
+const previewChange = '수분 섭취와 균일한 피부 표현을 중심으로 관리해보세요.';
 
 export default function HomeScreen() {
-  const { nickname, profile, priorities, photoUri, saved, tasks, toggleTask, result, loadDrawer, openSavedResult, routines, loadRoutines, openRoutine, activeRoutineId } = useAppState();
+  const { nickname, profile, priorities, photoUri, saved, tasks, toggleTask, result, loadDrawer, openSavedResult, peekSavedResult, routines, loadRoutines, openRoutines, activeRoutineIds } = useAppState();
   const [selectedCategory, setSelectedCategory] = useState<Category>(priorities[0] ?? 'SKIN');
   useEffect(() => { const first = priorities[0]; if (first && !priorities.includes(selectedCategory)) setSelectedCategory(first); }, [priorities, selectedCategory]);
   const hasProfile = Boolean(profile);
@@ -44,14 +44,29 @@ export default function HomeScreen() {
     return () => { alive = false; };
   }, [loadDrawer, loadRoutines]));
 
-  // 새로고침 직후엔 태스크가 비어 있다. 보고 있던 목표를 서버에서 다시 올린다.
-  const restoreTarget = routines.find((item) => item.routineId === activeRoutineId) ?? routines[0];
+  // 새로고침 직후엔 태스크가 비어 있다. 보고 있던 목표들을 서버에서 다시 올린다.
+  const known = routines.filter((item) => activeRoutineIds.includes(item.routineId));
+  const restoreIds = (known.length ? known : routines.slice(0, 1)).map((item) => item.routineId);
+  // 배열 리터럴은 매번 새 참조라 그대로 의존성에 넣으면 effect가 끝없이 돈다.
+  const restoreKey = restoreIds.join(',');
   useEffect(() => {
-    if (!restoreTarget || tasks.length) return;
-    void openRoutine(restoreTarget.routineId);
-  }, [openRoutine, restoreTarget, tasks.length]);
+    if (!restoreKey || tasks.length) return;
+    void openRoutines(restoreKey.split(','));
+  }, [openRoutines, restoreKey, tasks.length]);
 
-  const activeRoutine = routines.find((item) => item.routineId === activeRoutineId) ?? restoreTarget;
+  const selectedRoutines = routines.filter((item) => restoreIds.includes(item.routineId));
+
+  /**
+   * 탭을 눌러 목표를 넣고 뺀다. **마지막 하나는 빼지 않는다** — 전부 꺼두면
+   * 오늘 할 일이 빈 화면이 되고, 사용자는 무엇을 잘못했는지 알 수 없다.
+   */
+  const toggleRoutine = (id: string) => {
+    const next = activeRoutineIds.includes(id)
+      ? activeRoutineIds.filter((value) => value !== id)
+      : [...activeRoutineIds, id];
+    if (!next.length) return;
+    void openRoutines(next);
+  };
 
   // 메모리에 올라온 결과가 우선이고, 없으면 서버가 준 최근 저장분을 쓴다.
   const recent = result
@@ -68,9 +83,26 @@ export default function HomeScreen() {
     };
   const hasAnyProgress = Boolean(photoUri || priorities.length || saved);
   const done = tasks.filter((task) => task.status === 'DONE').length;
-  const activeMetrics = metricsByCategory[selectedCategory];
+
+  // `변화 방향`은 결과 안에만 있고 서랍 목록에는 없다. 메모리의 `result`가
+  // 우선이고, 새로고침으로 비었으면 최근 저장분을 **읽기만** 해서 채운다.
+  // `openSavedResult`를 쓰면 보고 있던 목표가 풀린다. (오답 노트 N-12)
+  const [savedChanges, setSavedChanges] = useState<AnalysisResult['categoryChanges']>();
+  const fallbackId = result ? undefined : latestSaved?.savedResultId;
+  useEffect(() => {
+    if (!fallbackId) return;
+    let alive = true;
+    void peekSavedResult(fallbackId).then((full) => { if (alive) setSavedChanges(full?.categoryChanges); });
+    return () => { alive = false; };
+  }, [fallbackId, peekSavedResult]);
+  const changes = result?.categoryChanges ?? savedChanges;
+  const activeChange = changes?.find((item) => item.category === selectedCategory);
   // 루틴 화면과 **같은 함수**로 고르고 정렬한다. 각자 하면 순서가 갈린다.
   const today = todayTasks(tasks).items;
+  // 하나만 골랐으면 이름을 줄마다 되풀이할 이유가 없다.
+  const titleOf = (id?: string) => (selectedRoutines.length > 1
+    ? routines.find((item) => item.routineId === id)?.title
+    : undefined);
   const goToMissingStep = () => {
     if (!photoUri) return router.push('/photo');
     if (priorities.length !== 3) return router.push('/priority');
@@ -92,18 +124,18 @@ export default function HomeScreen() {
           {routines.length > 1 ? (
             <View accessibilityRole="tablist" style={styles.routineTabs}>
               {routines.map((item) => {
-                const on = item.routineId === activeRoutine?.routineId;
+                const on = activeRoutineIds.includes(item.routineId);
                 return (
                   // 라벨은 **루틴 이름**이다. 카테고리를 쓰면 같은 카테고리 목표가
                   // 둘일 때 `체형`이 두 개 나와 무엇을 고르는지 알 수 없다.
-                  <Pressable key={item.routineId} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => void openRoutine(item.routineId)} style={[styles.routineTab, on && styles.routineTabOn]}>
+                  <Pressable key={item.routineId} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => toggleRoutine(item.routineId)} style={[styles.routineTab, on && styles.routineTabOn]}>
                     <Text style={[styles.routineTabText, on && styles.routineTabTextOn]} numberOfLines={1}>{item.title}</Text>
                   </Pressable>
                 );
               })}
             </View>
           ) : null}
-          {activeRoutine ? <Text style={styles.routineName} numberOfLines={1}>{activeRoutine.title}</Text> : null}
+          {selectedRoutines.length ? <Text style={styles.routineName} numberOfLines={1}>{selectedRoutines.map((item) => item.title).join(' · ')}</Text> : null}
           {/* 목표가 아직 없으면 "0/0 달성" 링이 그려진다. 분석만 끝난 상태와 목표를 만든 상태는 다르다. */}
           {tasks.length ? <Pressable onPress={() => router.push('/routines')} style={styles.progressCard}><GoalProgressRing completed={done} total={tasks.length} /><Text style={styles.progressText}>{tasks.slice(0, 3).map((task) => `${task.status === 'DONE' ? '✓ ' : ''}${task.title}`).join('\n')}</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="목표 만들러 가기" onPress={() => router.push('/routines')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 설정한 목표가 없어요.</Text><Text style={styles.emptyText}>진단 결과로 만들거나, 진단 없이 바로 만들 수도 있어요.</Text></Pressable>}
 
@@ -120,7 +152,11 @@ export default function HomeScreen() {
                   <View style={[styles.todayBox, task.status === 'DONE' && styles.todayBoxOn]}><Text style={styles.todayCheck}>{task.status === 'DONE' ? '✓' : ''}</Text></View>
                   <View style={styles.todayCopy}>
                     <Text style={[styles.todayTitle, task.status === 'DONE' && styles.todayDone]} numberOfLines={1}>{task.title}</Text>
-                    <Text style={styles.todayMeta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+                    {/*
+                      목표를 여럿 골랐으면 **어느 목표의 일인지 밝힌다.** 시점 순으로
+                      섞여 나열되므로 이름이 없으면 무엇 때문에 하는 일인지 알 수 없다.
+                    */}
+                    <Text style={styles.todayMeta}>{[titleOf(task.routineId), task.timing, task.amountLabel].filter(Boolean).join(' · ')}</Text>
                   </View>
                 </Pressable>
               ))}
@@ -135,25 +171,27 @@ export default function HomeScreen() {
             나의 현재 상태를 **목표 진행도 아래로 내렸다.** 매일 여는 화면에서 먼저
             보여야 하는 것은 오늘 할 일이지 상태 요약이 아니다.
 
-            ⚠️ 아래 수치는 여전히 하드코딩이다. 채울 API가 없어 회의 안건 2번의
-            결정을 기다리는 중이다. (진행률·변화 방향으로 대체하는 안)
+            퍼센트 막대(`수분 82%`)를 걷어내고 **서버가 준 변화 방향**으로 바꿨다.
+            채울 API가 없어서가 아니라 **만들면 안 되는 UI**였다 — API.md §6.4는
+            `changeIntensity`를 텍스트로 정하며 "퍼센트 게이지 UI를 만들지 않는다"고
+            적고 있고, 카테고리별 점수를 지어내면 PRD G-3(진단 표현 금지)과
+            `OutputValidator.SCORE`가 막는 것을 화면이 대신 하는 꼴이 된다.
           */}
           <View accessibilityRole="tablist" style={styles.chips}>{priorities.map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: selectedCategory === item }} onPress={() => setSelectedCategory(item)} style={[styles.chip, selectedCategory !== item && styles.inactiveChip]}><Text style={styles.chipText}>{label[item]}</Text></Pressable>)}</View>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>나의 현재 {label[selectedCategory]} 상태</Text>
             <View style={styles.dashboard}>
-              <View style={styles.metricList}>{activeMetrics.map((item) => <View key={item.name}><View style={styles.metricHeader}><Text style={styles.metricName}>{item.name}</Text><Text style={styles.metricValue}>{item.value}%</Text></View><View style={styles.track}><View style={[styles.fill, { width: `${item.value}%` }, item.name === '유분' && styles.pointFill]} /></View></View>)}</View>
+              <Text style={styles.changeText}>{activeChange?.description ?? '진단을 완료하면 이 카테고리의 관리 방향을 알려드려요.'}</Text>
               <OfficialFaceLogo size={150} />
             </View>
             <AppButton label="새로 진단하기" onPress={() => router.push('/analysis-new')} />
-            <Text style={styles.mockNote}>설정한 고점 기준 대비 참고용 프론트 시연 데이터입니다.</Text>
           </View>
         </>
       ) : (
         <View style={[styles.lockedArea, { borderRadius: radius.xl, overflow: 'hidden' }]}>
           <View pointerEvents="none" style={styles.previewContent}>
             <View style={styles.chips}><View style={styles.chip}><Text style={styles.chipText}>피부</Text></View><View style={[styles.chip, styles.inactiveChip]}><Text style={styles.chipText}>체형</Text></View><View style={[styles.chip, styles.inactiveChip]}><Text style={styles.chipText}>건강</Text></View></View>
-            <View style={styles.card}><Text style={styles.cardTitle}>나의 현재 피부 상태</Text><View style={styles.dashboard}><View style={styles.metricList}>{metrics.map((item) => <View key={item.name}><View style={styles.metricHeader}><Text style={styles.metricName}>{item.name}</Text><Text style={styles.metricValue}>{item.value}%</Text></View><View style={styles.track}><View style={[styles.fill, { width: `${item.value}%` }]} /></View></View>)}</View><OfficialFaceLogo size={150} /></View></View>
+            <View style={styles.card}><Text style={styles.cardTitle}>나의 현재 피부 상태</Text><View style={styles.dashboard}><Text style={styles.changeText}>{previewChange}</Text><OfficialFaceLogo size={150} /></View></View>
             <Text style={styles.sectionTitle}>설정한 목표 진행도 〉</Text><View style={styles.progressCard}><GoalProgressRing completed={2} total={5} /><Text style={styles.progressText}>오늘의 루틴과 목표 진행 상황을 확인해보세요.</Text></View>
             <Text style={styles.sectionTitle}>최근 분석 결과 〉</Text><View style={styles.resultCard}><OfficialFaceLogo size={112} /><View style={styles.resultCopy}><Text style={styles.date}>최근 분석</Text><Text style={styles.resultTitle}>나만의 고점 분석 결과</Text></View></View>
           </View>
@@ -182,4 +220,4 @@ function CheckRow({ label: text, done }: { label: string; done: boolean }) {
   return <View style={styles.checkRow}><View style={[styles.checkbox, done && styles.checkboxDone]}><Text style={styles.checkmark}>{done ? '✓' : ''}</Text></View><Text style={styles.checkLabel}>{text}</Text></View>;
 }
 
-const styles = StyleSheet.create({ content: { paddingTop: 28 }, title: { ...typography.h1, color: colors.text }, sub: { ...typography.body, color: colors.textMuted }, chips: { flexDirection: 'row', gap: 12 }, chip: { minWidth: 78, paddingVertical: 9, alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.primary }, inactiveChip: { backgroundColor: '#C8C9C9' }, chipText: { ...typography.label, color: colors.white }, card: { borderRadius: radius.lg, padding: spacing.md, backgroundColor: colors.surface, gap: spacing.md, ...shadow }, cardTitle: { ...typography.title, color: colors.text }, dashboard: { flexDirection: 'row', gap: spacing.md }, metricList: { flex: 1, gap: 9 }, metricHeader: { flexDirection: 'row', justifyContent: 'space-between' }, metricName: { ...typography.caption, color: colors.textMuted }, metricValue: { ...typography.caption, color: colors.textMuted }, track: { height: 10, borderRadius: 5, backgroundColor: colors.disabled, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 5, backgroundColor: colors.primaryLight }, pointFill: { backgroundColor: colors.point }, face: { width: 150, height: 180, borderRadius: radius.md }, mockNote: { ...typography.caption, color: colors.textMuted, textAlign: 'center' }, sectionTitle: { ...typography.title, color: colors.text, marginTop: 4 }, progressCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, progressText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 28 }, ringWrap: { width: 104, height: 126, alignItems: 'center', justifyContent: 'center' }, ringCaption: { ...typography.label, color: colors.danger, marginTop: -4 }, emptyAnalysis: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, resultCard: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.surface, ...shadow }, thumb: { width: 112, height: 112, borderRadius: radius.md }, resultCopy: { flex: 1, justifyContent: 'center', gap: 8 }, date: { ...typography.caption, color: colors.textMuted }, resultTitle: { ...typography.label, color: colors.text }, lockedArea: { minHeight: 760, marginTop: spacing.sm, position: 'relative' }, previewContent: { gap: spacing.md }, lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md }, registrationModal: { width: '100%', gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, emptyTitle: { ...typography.title, color: colors.text, textAlign: 'center' }, emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' }, errorText: { ...typography.caption, color: colors.danger }, routineTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -4 }, routineTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface }, routineTabOn: { borderColor: colors.primary, backgroundColor: colors.primary }, routineTabText: { ...typography.caption, color: colors.textMuted }, routineTabTextOn: { color: colors.white, fontWeight: '700' }, routineName: { ...typography.caption, color: colors.textMuted, marginTop: -4 }, checkList: { gap: 10, paddingVertical: 4 }, checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, checkbox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, checkboxDone: { borderColor: colors.primary, backgroundColor: colors.primary }, checkmark: { color: colors.white, fontSize: 14, fontWeight: '700' }, checkLabel: { ...typography.body, color: colors.text }, todayCard: { gap: 2, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, todayHead: { ...typography.label, color: colors.text, marginBottom: 6 }, todayCount: { color: colors.primary }, todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 }, todayBox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, todayBoxOn: { borderColor: colors.primary, backgroundColor: colors.primary }, todayCheck: { color: colors.white, fontSize: 13, fontWeight: '700' }, todayCopy: { flex: 1, gap: 2 }, todayTitle: { ...typography.body, color: colors.text }, todayDone: { color: colors.textMuted, textDecorationLine: 'line-through' }, todayMeta: { ...typography.caption, color: colors.textTertiary } });
+const styles = StyleSheet.create({ content: { paddingTop: 28 }, title: { ...typography.h1, color: colors.text }, sub: { ...typography.body, color: colors.textMuted }, chips: { flexDirection: 'row', gap: 12 }, chip: { minWidth: 78, paddingVertical: 9, alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.primary }, inactiveChip: { backgroundColor: '#C8C9C9' }, chipText: { ...typography.label, color: colors.white }, card: { borderRadius: radius.lg, padding: spacing.md, backgroundColor: colors.surface, gap: spacing.md, ...shadow }, cardTitle: { ...typography.title, color: colors.text }, dashboard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md }, changeText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 26 }, track: { height: 10, borderRadius: 5, backgroundColor: colors.disabled, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 5, backgroundColor: colors.primaryLight }, face: { width: 150, height: 180, borderRadius: radius.md }, sectionTitle: { ...typography.title, color: colors.text, marginTop: 4 }, progressCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, progressText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 28 }, ringWrap: { width: 104, height: 126, alignItems: 'center', justifyContent: 'center' }, ringCaption: { ...typography.label, color: colors.danger, marginTop: -4 }, emptyAnalysis: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, resultCard: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.surface, ...shadow }, thumb: { width: 112, height: 112, borderRadius: radius.md }, resultCopy: { flex: 1, justifyContent: 'center', gap: 8 }, date: { ...typography.caption, color: colors.textMuted }, resultTitle: { ...typography.label, color: colors.text }, lockedArea: { minHeight: 760, marginTop: spacing.sm, position: 'relative' }, previewContent: { gap: spacing.md }, lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md }, registrationModal: { width: '100%', gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, emptyTitle: { ...typography.title, color: colors.text, textAlign: 'center' }, emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' }, errorText: { ...typography.caption, color: colors.danger }, routineTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -4 }, routineTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface }, routineTabOn: { borderColor: colors.primary, backgroundColor: colors.primary }, routineTabText: { ...typography.caption, color: colors.textMuted }, routineTabTextOn: { color: colors.white, fontWeight: '700' }, routineName: { ...typography.caption, color: colors.textMuted, marginTop: -4 }, checkList: { gap: 10, paddingVertical: 4 }, checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, checkbox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, checkboxDone: { borderColor: colors.primary, backgroundColor: colors.primary }, checkmark: { color: colors.white, fontSize: 14, fontWeight: '700' }, checkLabel: { ...typography.body, color: colors.text }, todayCard: { gap: 2, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, todayHead: { ...typography.label, color: colors.text, marginBottom: 6 }, todayCount: { color: colors.primary }, todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 }, todayBox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, todayBoxOn: { borderColor: colors.primary, backgroundColor: colors.primary }, todayCheck: { color: colors.white, fontSize: 13, fontWeight: '700' }, todayCopy: { flex: 1, gap: 2 }, todayTitle: { ...typography.body, color: colors.text }, todayDone: { color: colors.textMuted, textDecorationLine: 'line-through' }, todayMeta: { ...typography.caption, color: colors.textTertiary } });

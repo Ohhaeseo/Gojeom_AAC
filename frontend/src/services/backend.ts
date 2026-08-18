@@ -314,6 +314,11 @@ export type RoutineSummary = {
   targetWeightKg: number | null;
   /** 식사 방향. **일반 가이드다.** 관련이 옅은 목표는 null이다. (V11) */
   dietGuide: string | null;
+  /**
+   * 이 목표의 알림 시각 `HH:mm`. **정하지 않았으면 null**이고, 그때는
+   * `/notifications/settings`의 `defaultTime`을 따른다. (V12)
+   */
+  notifyTime: string | null;
 };
 
 export type RoutineDetail = {
@@ -373,6 +378,14 @@ export const getRoutine = (routineId: string) => request<RoutineDetail>(`/routin
 /** 목표 이름 변경. 갱신된 요약이 돌아온다. */
 export const renameRoutine = (routineId: string, title: string) =>
   request<RoutineSummary>(`/routines/${routineId}`, { method: 'PATCH', body: { title } });
+
+/**
+ * 목표별 알림 시각. `null`을 주면 기본 시각을 따르도록 되돌린다.
+ *
+ * 켜고 끄는 것은 여기가 아니라 `/notifications/settings`다.
+ */
+export const setRoutineNotifyTime = (routineId: string, notifyTime: string | null) =>
+  request<RoutineSummary>(`/routines/${routineId}/notification`, { method: 'PATCH', body: { notifyTime } });
 
 export const deleteRoutine = (routineId: string) => request<void>(`/routines/${routineId}`, { method: 'DELETE' });
 

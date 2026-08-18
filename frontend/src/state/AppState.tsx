@@ -107,6 +107,12 @@ type AppStateValue = {
   /** 서랍 항목을 결과 화면에 올린다. `viewState`가 `SAVED`로 온다. (API.md §6.5) */
   openSavedResult: (savedResultId: string) => Promise<ActionResult>;
   /**
+   * 저장한 결과를 **읽기만** 한다. `openSavedResult`와 달리 화면에 올리지 않고
+   * 목표 연결도 건드리지 않는다 — 홈이 `변화 방향`을 그리려고 부르는데, 그때
+   * 보고 있던 목표가 풀리면 `오늘 할 일`이 함께 비어버린다.
+   */
+  peekSavedResult: (savedResultId: string) => Promise<AnalysisResult | undefined>;
+  /**
    * 서랍에서 지운다. `resultId`를 같이 주면 화면에 올라와 있던 결과일 때
    * 메모리에서도 함께 내린다 — 홈이 지운 결과를 계속 그리지 않게 한다.
    */
@@ -131,10 +137,17 @@ type AppStateValue = {
   /** 목록에서 고른 목표의 태스크를 화면에 올린다. */
   openRoutine: (routineId: string) => Promise<ActionResult>;
   /**
+   * 여러 목표를 한 번에 올린다. 태스크는 합쳐서 하나의 목록이 되고,
+   * 시점 순으로 섞여 나열된다. (피드백 7번 · `lib/tasks.ts`)
+   */
+  openRoutines: (routineIds: string[]) => Promise<ActionResult>;
+  /**
    * 지금 보고 있는 목표의 id. 홈과 루틴 화면이 이 값을 함께 본다.
    * 저장돼 있어 새로고침해도 유지된다.
    */
   activeRoutineId?: string;
+  /** 지금 고른 목표 전부. 홈의 다중 선택이 쓴다. `activeRoutineId`는 그 첫 번째다. */
+  activeRoutineIds: string[];
   /** 분석 없이 카테고리+기간만으로 목표를 만든다. (경로 B) */
   createRoutines: (items: RoutinePlanItem[]) => Promise<ActionResult>;
   /**
@@ -151,6 +164,11 @@ type AppStateValue = {
   reorderRoutines: (routineIds: string[]) => Promise<ActionResult>;
   /** 목표 이름 변경. 목표가 둘 이상이면 이름이 곧 구분 수단이라 바꿀 수 있어야 한다. */
   renameRoutine: (routineId: string, title: string) => Promise<ActionResult>;
+  /**
+   * 목표별 알림 시각 `HH:mm`. 빼면(`undefined`) 사용자 기본 시각을 따른다. (V12)
+   * 알림 on/off는 목표가 아니라 사용자 단위다.
+   */
+  setRoutineNotifyTime: (routineId: string, notifyTime?: string) => Promise<ActionResult>;
   deleteRoutine: (routineId: string) => Promise<ActionResult>;
 };
 
@@ -270,22 +288,36 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
   const [routines, setRoutines] = useState<backend.RoutineSummary[]>([]);
   // ref가 아니라 state다. 화면이 "지금 어느 목표를 보고 있는지" 알아야 한다.
-  const [activeRoutineId, setActiveRoutineIdState] = useState<string>();
+  // **배열이다** — 홈에서 목표를 여러 개 골라 한 번에 볼 수 있다. (피드백 7번)
+  const [activeRoutineIds, setActiveRoutineIdsState] = useState<string[]>([]);
   const analysisId = useRef<string | undefined>(undefined);
   const routineId = useRef<string | undefined>(undefined);
+  const activeRoutineId = activeRoutineIds[0];
 
-  const setActiveRoutineId = useCallback((id: string | undefined) => {
-    setActiveRoutineIdState(id);
-    routineId.current = id;
-    void (id
-      ? AsyncStorage.setItem(ACTIVE_ROUTINE_STORAGE_KEY, id)
+  const setActiveRoutineIds = useCallback((ids: string[]) => {
+    setActiveRoutineIdsState(ids);
+    routineId.current = ids[0];
+    void (ids.length
+      ? AsyncStorage.setItem(ACTIVE_ROUTINE_STORAGE_KEY, JSON.stringify(ids))
       : AsyncStorage.removeItem(ACTIVE_ROUTINE_STORAGE_KEY)).catch(() => undefined);
   }, []);
+
+  const setActiveRoutineId = useCallback((id: string | undefined) => {
+    setActiveRoutineIds(id ? [id] : []);
+  }, [setActiveRoutineIds]);
 
   // 새로고침 후 마지막에 보던 목표를 되살린다.
   useEffect(() => {
     AsyncStorage.getItem(ACTIVE_ROUTINE_STORAGE_KEY)
-      .then((stored) => { if (stored) { setActiveRoutineIdState(stored); routineId.current = stored; } })
+      .then((stored) => {
+        if (!stored) return;
+        // 예전 값은 id 하나가 그대로 들어 있다. 배열로 바뀌기 전에 저장된 것을
+        // 버리면 쓰던 사람이 보던 목표를 잃는다.
+        const ids: string[] = stored.startsWith('[') ? JSON.parse(stored) : [stored];
+        if (!ids.length) return;
+        setActiveRoutineIdsState(ids);
+        routineId.current = ids[0];
+      })
       .catch(() => undefined);
   }, []);
 
@@ -663,6 +695,16 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, setActiveRoutineId]);
 
+  const peekSavedResult = useCallback(async (savedResultId: string): Promise<AnalysisResult | undefined> => {
+    if (mode === 'mock') return demoResult;
+    try {
+      return await backend.getSavedResult(savedResultId);
+    } catch {
+      // 홈의 곁다리 카드라 조용히 접는다. 이것 때문에 홈 전체가 오류를 띄우면 안 된다.
+      return undefined;
+    }
+  }, [mode]);
+
   const deleteSavedResult = useCallback(async (savedResultId: string, resultId?: string): Promise<ActionResult> => {
     if (mode === 'mock') { updateAccount((current) => ({ ...current, saved: false })); return { ok: true }; }
     try {
@@ -726,17 +768,32 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     if (loaded) setRoutines(loaded.items);
   }, [mode]);
 
-  const openRoutine = useCallback(async (id: string): Promise<ActionResult> => {
-    if (mode === 'mock') return { ok: true };
-    try {
-      const detail = await backend.getRoutine(id);
-      setActiveRoutineId(id);
-      setTasks(detail.tasks);
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, message: messageOf(error, '목표를 불러오지 못했어요.') };
-    }
-  }, [mode, setActiveRoutineId]);
+  /**
+   * 고른 목표들의 태스크를 한 번에 올린다.
+   *
+   * <b>태스크에 `routineId`를 붙여 둔다.</b> 서버 응답에는 없지만, 합친 목록에서
+   * 오늘 회차를 목표별로 고르려면 출처를 알아야 한다. 이것이 없으면 시작일이
+   * 다른 목표가 통째로 사라진다. (`lib/tasks.ts`)
+   *
+   * 하나라도 실패하면 **성공한 것만 올린다.** 목표 셋 중 하나를 못 읽었다고
+   * 나머지 둘까지 못 보여줄 이유가 없다.
+   */
+  const openRoutines = useCallback(async (ids: string[]): Promise<ActionResult> => {
+    if (mode === 'mock') { setActiveRoutineIds(ids); return { ok: true }; }
+    if (!ids.length) { setActiveRoutineIds([]); setTasks([]); return { ok: true }; }
+    const loaded = await Promise.all(ids.map((id) => backend.getRoutine(id)
+      .then((detail) => detail.tasks.map((task) => ({ ...task, routineId: id })))
+      .catch(() => undefined)));
+    const ok = ids.filter((_, index) => loaded[index]);
+    if (!ok.length) return { ok: false, message: '목표를 불러오지 못했어요.' };
+    setActiveRoutineIds(ok);
+    setTasks(loaded.flatMap((tasks) => tasks ?? []));
+    return ok.length === ids.length
+      ? { ok: true }
+      : { ok: false, message: '일부 목표를 불러오지 못했어요.' };
+  }, [mode, setActiveRoutineIds]);
+
+  const openRoutine = useCallback((id: string) => openRoutines([id]), [openRoutines]);
 
   /**
    * 경로 B — 분석 없이 카테고리와 기간만으로 목표를 만든다.
@@ -803,6 +860,23 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '목표 이름을 바꾸지 못했어요.') };
+    }
+  }, [mode]);
+
+  /**
+   * 목표별 알림 시각. `undefined`를 주면 기본 시각을 따르도록 되돌린다.
+   *
+   * 켜고 끄는 것은 `updateNotificationSettings`가 갖는다 — 사용자 단위다.
+   */
+  const setRoutineNotifyTime = useCallback(async (id: string, notifyTime?: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      const updated = await backend.setRoutineNotifyTime(id, notifyTime ?? null);
+      // 서버가 준 요약으로 갈아끼운다. 목록을 다시 부르지 않아도 화면이 맞는다.
+      setRoutines((current) => current.map((item) => (item.routineId === id ? updated : item)));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '알림 시각을 바꾸지 못했어요.') };
     }
   }, [mode]);
 
@@ -875,6 +949,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     deleteAllAnalyses,
     loadDrawer,
     openSavedResult,
+    peekSavedResult,
     deleteSavedResult,
     notificationSettings,
     loadNotificationSettings,
@@ -886,18 +961,21 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     loadRoutines,
     openRoutine,
     activeRoutineId,
+    activeRoutineIds,
+    openRoutines,
     createRoutines,
     renameRoutine,
+    setRoutineNotifyTime,
     routineDraft,
     setRoutineDraft,
     updateRoutineDraft,
     reorderRoutines: reorderRoutinesFn,
     deleteRoutine,
   }), [
-    account, activeRoutineId, analysisKeywords, analysisPercent, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
+    account, activeRoutineId, activeRoutineIds, analysisKeywords, analysisPercent, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
     loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
-    openRoutine, openSavedResult, photoUri, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
+    openRoutine, openRoutines, openSavedResult, peekSavedResult, photoUri, setRoutineNotifyTime, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
     result, routineDraft, routines, updateRoutineDraft,
     saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
     startAnalysis, tasks, toggleTask, updateNotificationSettings,
