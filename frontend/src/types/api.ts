@@ -96,5 +96,18 @@ export type RoutineTask = {
   durationLabel: string;
   amountLabel: string;
   scheduledDate: string;
+  /**
+   * 이 배정이 속한 주의 첫날. **ISO 월요일이 아니라 목표 시작일 기준**이다.
+   * 주 N회의 "그 주"를 세는 기준이라 서버가 정해서 내려준다. (V15)
+   */
+  weekStart?: string;
+  /**
+   * 그 주에 몇 번 하면 되는지. **null이면 매일 하는 일**이라 그날 한 번으로 끝난다.
+   *
+   * 값이 있으면 그 주의 **모든 날**에 배정이 있고, 그중 이 수만큼 체크하면 채워진다.
+   * 화면은 "이번 주 2/3"처럼 진행을 보여줘야 한다 — 안 그러면 사용자가 매일 해야
+   * 하는 일로 읽는다.
+   */
+  weeklyTarget?: number | null;
   status: TaskStatus;
 };

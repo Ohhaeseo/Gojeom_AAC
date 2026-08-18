@@ -1,4 +1,4 @@
-import { frequencyRank, groupByTiming, timingRank, todayTasks } from '@/lib/tasks';
+import { frequencyRank, groupByTiming, timingRank, todayTasks, weeklyProgress } from '@/lib/tasks';
 import type { RoutineTask } from '@/types/api';
 
 /**
@@ -185,5 +185,40 @@ describe('groupByTiming', () => {
 
   it('하나도 없으면 빈 배열이다', () => {
     expect(groupByTiming([])).toEqual([]);
+  });
+});
+
+describe('weeklyProgress', () => {
+  const weekly = (title: string, weekStart: string, status: 'PENDING' | 'DONE'): RoutineTask => ({
+    taskId: title + weekStart + status + Math.random(),
+    routineId: 'r1', category: 'BODY', title, timing: '주 3회 저녁',
+    durationLabel: '', amountLabel: '30초 3세트',
+    scheduledDate: weekStart, weekStart, weeklyTarget: 3, status,
+  });
+
+  it('매일 하는 일은 셀 것이 없다', () => {
+    const daily: RoutineTask = {
+      taskId: 'd1', routineId: 'r1', category: 'BODY', title: '스쿼트 하기', timing: '매일 아침',
+      durationLabel: '', amountLabel: '15회', scheduledDate: '2026-08-19',
+      weekStart: '2026-08-19', weeklyTarget: null, status: 'PENDING',
+    };
+    expect(weeklyProgress(daily, [daily])).toBeUndefined();
+  });
+
+  it('같은 주의 같은 태스크만 센다', () => {
+    const all = [
+      weekly('플랭크 버티기', '2026-08-19', 'DONE'),
+      weekly('플랭크 버티기', '2026-08-19', 'DONE'),
+      weekly('플랭크 버티기', '2026-08-19', 'PENDING'),
+      // 다음 주 것은 이번 주에 세지 않는다
+      weekly('플랭크 버티기', '2026-08-26', 'DONE'),
+    ];
+    expect(weeklyProgress(all[0]!, all)).toEqual({ done: 2, target: 3 });
+  });
+
+  it('목표 횟수를 넘겨 체크해도 상한을 넘지 않는다', () => {
+    // 넷째 날을 더 체크했다고 4/3이 되면 안 된다.
+    const all = Array.from({ length: 5 }, () => weekly('플랭크 버티기', '2026-08-19', 'DONE'));
+    expect(weeklyProgress(all[0]!, all)).toEqual({ done: 3, target: 3 });
   });
 });

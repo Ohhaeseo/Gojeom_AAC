@@ -223,6 +223,14 @@ public final class RoutineDtos {
     }
 
     @JsonInclude(JsonInclude.Include.ALWAYS)
+    /**
+     * {@code weeklyTarget}은 <b>그 주에 몇 번 하면 되는지</b>다. null이면 매일 하는 일이라
+     * 그날 한 번으로 끝난다. (V15)
+     *
+     * <p>값이 있으면 그 주의 모든 날에 배정이 있고, 그중 이 수만큼 체크하면 채워진다.
+     * 화면은 "이번 주 2/3"처럼 진행을 보여줘야 한다 — 없으면 사용자가 매일 해야 하는
+     * 일로 읽는다.
+     */
     public record TaskView(
             UUID taskId,
             Category category,
@@ -231,6 +239,8 @@ public final class RoutineDtos {
             String durationLabel,
             String amountLabel,
             LocalDate scheduledDate,
+            LocalDate weekStart,
+            Short weeklyTarget,
             TaskStatus status) {
     }
 

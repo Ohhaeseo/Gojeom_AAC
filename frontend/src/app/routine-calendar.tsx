@@ -7,7 +7,7 @@ import {
   dayLabel, groupByDate, monthGrid, monthLabel, monthsOf, nearestDate,
 } from '@/lib/calendar';
 import { toIsoDate } from '@/lib/date';
-import { groupByTiming } from '@/lib/tasks';
+import { groupByTiming, weeklyProgress } from '@/lib/tasks';
 import * as backend from '@/services/backend';
 import type { RoutineDetail } from '@/services/backend';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -190,6 +190,19 @@ export default function RoutineCalendarScreen() {
                     <View style={styles.taskCopy}>
                       <Text style={[styles.taskTitle, task.status === 'DONE' && styles.doneText]}>{task.title}</Text>
                       <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+                      {/*
+                        주 N회는 그 주의 모든 날에 뜬다. 이 줄이 없으면 사용자가
+                        **매일 해야 하는 일로 읽는다.** (V15)
+                      */}
+                      {(() => {
+                        const week = weeklyProgress(task, tasks);
+                        return week ? (
+                          <Text style={[styles.weekly, week.done >= week.target && styles.weeklyDone]}>
+                            이번 주 {week.done}/{week.target}
+                            {week.done >= week.target ? ' · 다 했어요' : ''}
+                          </Text>
+                        ) : null;
+                      })()}
                     </View>
                     <View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}>
                       <Text style={styles.check}>{task.status === 'DONE' ? '✓' : ''}</Text>
@@ -246,6 +259,8 @@ const styles = StyleSheet.create({
   taskTitle: { ...typography.label, color: colors.text },
   doneText: { textDecorationLine: 'line-through' },
   meta: { ...typography.caption, color: colors.textTertiary },
+  weekly: { ...typography.caption, color: colors.primaryPressed },
+  weeklyDone: { color: colors.textMuted },
   checkbox: { width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   checkboxDone: { backgroundColor: colors.primary },
   check: { ...typography.label, color: colors.white },

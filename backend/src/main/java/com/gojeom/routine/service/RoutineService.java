@@ -276,7 +276,7 @@ public class RoutineService {
                 tasks.stream()
                         .map(t -> new TaskView(t.getId(), t.getCategory(), t.getTitle(), t.getTiming(),
                                 t.getDurationLabel(), t.getAmountLabel(), t.getScheduledDate(),
-                                t.getStatus()))
+                                t.getWeekStart(), t.getWeeklyTarget(), t.getStatus()))
                         .toList(),
                 notification(userId, routine));
     }

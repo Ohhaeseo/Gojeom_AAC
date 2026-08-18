@@ -55,11 +55,11 @@ function compareTasks(a: RoutineTask, b: RoutineTask): number {
 /**
  * 한 목표 안에서 오늘에 해당하는 회차를 고른다.
  *
- * 서버는 AI가 만든 한 주치 구성을 **기간만큼 주 단위로 복제해** 저장한다
- * (`RoutineTxService.persistStandalone`). 6개월짜리 목표면 같은 태스크가 24번
- * 들어 있다. 그대로 그리면 96줄이 나열돼 화면이 쓸모없어진다.
+ * 서버는 AI가 만든 한 주치 구성을 **기간 안의 날짜마다** 펼쳐 저장한다
+ * (`TaskScheduleExpander`, V15). 6개월짜리 목표면 같은 태스크가 180번 들어 있다.
+ * 그대로 그리면 화면이 쓸모없어진다.
  *
- * 오늘 이전 중 가장 최근 회차를 고르고, 아직 시작 전이면 첫 회차를 보여준다.
+ * 오늘 것을 고르고, 아직 시작 전이면 첫날을 보여준다.
  */
 function pickRound(tasks: RoutineTask[]): { date?: string; items: RoutineTask[] } {
   const today = toIsoDate(new Date());
@@ -75,8 +75,8 @@ function pickRound(tasks: RoutineTask[]): { date?: string; items: RoutineTask[] 
  * 하나를 고르면, 시작일이 다른 목표는 그 날짜에 회차가 없어 **통째로 사라진다.**
  * 목표별로 오늘 회차를 고른 뒤 합치고, 합친 목록을 다시 정렬한다.
  *
- * <b>완료 체크는 회차 단위다.</b> 오늘 체크하면 그 주가 완료로 기록된다.
- * 날짜별로 따로 체크하려면 태스크를 일 단위로 쪼개야 한다.
+ * <b>완료 체크는 날짜 단위다.</b> 주 N회짜리는 그 주의 모든 날에 배정이 있고
+ * 그중 N개를 체크하면 채워진다 — 진행은 {@link weeklyProgress}가 센다. (V15)
  *
  * <p><b>홈과 루틴 화면이 이 함수를 함께 쓴다.</b> 각자 고르고 정렬하면 같은
  * 태스크가 두 화면에서 다른 순서로 나온다.
@@ -144,4 +144,32 @@ export function groupByTiming(items: RoutineTask[]): TaskGroup[] {
       items: items.filter((task) => timingRank(task.timing) === group.rank),
     }))
     .filter((group) => group.items.length > 0);
+}
+
+/**
+ * 주 N회 태스크의 그 주 진행. (V15)
+ *
+ * **주 3회짜리는 그 주의 모든 날에 배정이 있다.** 그중 3개를 체크하면 채워진 것이라,
+ * 날짜 하나만 보고 "했다/안 했다"로 말할 수 없다. 같은 주의 같은 태스크를 모아 센다.
+ *
+ * 같은 태스크인지는 `title + timing`으로 가른다 — `TaskTimingSplitter`가 시점마다
+ * 나누므로 한 목표 안에서 이 둘의 짝은 유일하다. 서버의 진행률 집계와 같은 기준이다.
+ *
+ * @returns 매일 하는 일이면 `undefined`. 셀 것이 없다.
+ */
+export function weeklyProgress(
+  task: RoutineTask,
+  all: RoutineTask[],
+): { done: number; target: number } | undefined {
+  if (!task.weeklyTarget) return undefined;
+
+  const sameWeek = all.filter((other) =>
+    other.title === task.title
+    && other.timing === task.timing
+    && other.weekStart === task.weekStart
+    && other.routineId === task.routineId);
+
+  // 넷째 날을 더 체크했다고 4/3이 되면 안 된다.
+  const done = Math.min(sameWeek.filter((t) => t.status === 'DONE').length, task.weeklyTarget);
+  return { done, target: task.weeklyTarget };
 }
