@@ -52,6 +52,11 @@ export type AnalysisResult = {
 
 export type RoutineTask = {
   taskId: string;
+  /**
+   * 어느 목표의 태스크인지. **서버가 주지 않는다** — 목표를 여러 개 합쳐 올릴 때
+   * 화면이 붙인다. 합친 목록에서 회차를 목표별로 고르려면 출처를 알아야 한다.
+   */
+  routineId?: string;
   category: Category;
   title: string;
   timing: string;
