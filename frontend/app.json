@@ -24,7 +24,8 @@
         "expo-image-picker",
         {
           "photosPermission": "분위기 분석에 사용할 사진을 선택하려면 사진 접근 권한이 필요해요.",
-          "cameraPermission": "분위기 분석에 사용할 사진을 촬영하려면 카메라 권한이 필요해요."
+          "cameraPermission": "분위기 분석에 사용할 사진을 촬영하려면 카메라 권한이 필요해요.",
+          "microphonePermission": false
         }
       ],
       "expo-font",
@@ -33,6 +34,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "eec53c17-899a-469d-b5ed-1370b7e81d34"
+      }
+    },
+    "owner": "ohhaeseo"
   }
 }
