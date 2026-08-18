@@ -411,6 +411,49 @@ powershell -c "Get-Service *postgres*; Get-NetTCPConnection -LocalPort 5432"
 제공자 휴리스틱에 맡기지 않기 위해서다.** 주석에 "지금 모델에서는 차이가 없다"를
 실측값과 함께 적어, 다음 사람이 같은 기대를 하지 않게 했다.
 
+### N-19. Metro는 **고치기 전 상태**도 캐시한다 〔2026-08-18 · 프론트〕
+
+**증상** — `goal.tsx`에 `layout.maxWidth`를 쓰고 import도 넣었는데 브라우저가
+`ReferenceError: layout is not defined`를 냈다. **typecheck는 통과했고** 파일에는
+import가 분명히 있었다. 개발 서버를 껐다 켜도, `.expo`와 `node_modules/.cache`를
+지워도 그대로였다.
+
+**원인** — 스타일을 먼저 고치고 import를 **나중에** 넣었다. 그 사이 잠깐 존재한
+"`layout`을 쓰는데 import는 없는" 상태를 Metro가 변환 캐시에 담았고, 이후 그것을
+계속 내놓았다. Metro 캐시는 프로젝트 안이 아니라 **`%TEMP%\metro-cache`**에 있어서
+`.expo`를 지워도 살아남는다.
+
+**재발 방지** — 코드와 화면이 어긋나면 **코드를 의심하기 전에 캐시를 지운다.**
+특히 한 파일을 두 번에 나눠 고쳤을 때 그렇다.
+
+```powershell
+Remove-Item -Recurse -Force "$env:TEMP\metro-cache"
+```
+
+**빨리 가르는 법** — 문제의 식별자를 리터럴로 바꿔 보면 1분 안에 갈린다.
+리터럴로 바꿔서 사라지면 코드가 아니라 **바인딩·캐시** 문제다.
+
+### N-20. 이 PC의 셸은 PowerShell 5.1이다 〔2026-08-18 · 도구〕
+
+**증상** — 사용자에게 건넨 `cd frontend && npx eas credentials -p android`가
+`'&&' 토큰은 이 버전에서 올바른 문 구분 기호가 아닙니다`로 죽었다. 같은 명령에
+`could not determine executable to run`까지 겹쳤다.
+
+**원인** — 두 가지를 한꺼번에 틀렸다.
+1. **PowerShell 5.1에는 `&&`가 없다.** bash 습관으로 이어 썼다.
+2. **패키지 이름이 `eas`가 아니라 `eas-cli`다.** `npx eas`는 실행할 것을 못 찾는다.
+
+**재발 방지** — 사용자에게 건네는 명령은 **PowerShell 기준**으로 쓴다. 잇는 것은
+`;`이거나 줄을 나눈다. `npx`로 도구를 부를 때는 **패키지 이름**을 확인한다 —
+실행 파일 이름과 다를 수 있다.
+
+```powershell
+cd C:\AAC_gojeomAI\frontend; npx eas-cli@latest whoami
+```
+
+> 에이전트가 `Bash` 도구로 돌리는 것은 Git Bash라 `&&`가 된다. **내가 되는 것과
+> 사용자 터미널에서 되는 것은 다르다.**
+
 접속 정보는 `backend/.env`에 있고, **Spring은 `.env`를 자동으로 읽지 않는다** —
 `set -a && . ./.env && set +a` 로 주입한 뒤 `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`.
 
