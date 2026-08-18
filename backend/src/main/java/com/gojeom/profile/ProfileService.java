@@ -15,6 +15,7 @@ import com.gojeom.storage.deletion.StorageDeletionService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ public class ProfileService {
     private final StorageDeletionService storageDeletionService;
     private final ProfileTxService profileTxService;
     private final ProfilePhotoValidator profilePhotoValidator;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 프로필 등록.
@@ -56,9 +58,22 @@ public class ProfileService {
     }
 
     @Transactional
+    /**
+     * 시안 11의 "분석 정보 수정".
+     *
+     * <p><b>값이 실제로 바뀌면 프로필 요약을 다시 만든다.</b> 요약의
+     * {@code bodyRange}·{@code healthNotes}가 이 수치들로 만들어지기 때문이다.
+     * 다시 만들지 않으면, 고점 분석 프롬프트 안에서 최신 수치와 옛 요약이 서로 다른
+     * 값을 말하게 된다.
+     *
+     * <p>응답 시점에는 아직 옛 요약이다 — 신규 등록과 마찬가지로 비동기다.
+     * 프론트는 필요하면 {@code GET /profiles/me}로 다시 읽는다.
+     */
     public ProfileResponse updateBody(UUID userId, ProfileUpdateRequest request) {
         Profile profile = findActive(userId);
-        profile.updateBody(request.weightKg(), request.sleepHours(), request.inbody());
+        if (profile.updateBody(request.weightKg(), request.sleepHours(), request.inbody())) {
+            eventPublisher.publishEvent(new ProfileBodyChangedEvent(profile.getId()));
+        }
         return toResponse(profile);
     }
 

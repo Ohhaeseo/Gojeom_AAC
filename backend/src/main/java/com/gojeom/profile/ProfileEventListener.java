@@ -22,4 +22,18 @@ public class ProfileEventListener {
     public void onProfileCreated(ProfileCreatedEvent event) {
         pipeline.run(event.profileId());
     }
+
+    /**
+     * 신체 정보가 바뀌면 요약을 다시 만든다.
+     *
+     * <p>사진은 그대로라 {@code faceImpression}·{@code capture}는 사실상 같은 값이 다시
+     * 나오지만, {@code bodyRange}·{@code healthNotes}는 새 수치로 다시 쓰인다.
+     *
+     * <p><b>옛 요약을 먼저 지우지 않는다.</b> 다시 만드는 데 실패하면(AI 오류) 요약이
+     * 통째로 사라져 사진에서 읽은 것까지 잃는다. 낡은 채로 몇 초 두는 편이 낫다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onProfileBodyChanged(ProfileBodyChangedEvent event) {
+        pipeline.run(event.profileId());
+    }
 }
