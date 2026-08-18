@@ -123,44 +123,55 @@
 
 ## 5. 엔드포인트 개요
 
-| # | Method | Path | 인증 | 설명 | PRD |
-| --- | --- | --- | --- | --- | --- |
-| 1 | POST | `/auth/signup` | — | 회원가입 | F-01 |
-| 2 | POST | `/auth/login` | — | 로그인 | F-01 |
-| 3 | POST | `/auth/oauth/google` | — | Google 로그인 | F-01 |
-| 4 | POST | `/auth/refresh` | — | 토큰 갱신 | F-01 |
-| 5 | POST | `/auth/logout` | ✔ | 로그아웃 | F-01 |
-| 6 | GET | `/users/me` | ✔ | 내 정보 + 온보딩 상태 | F-01 |
-| 7 | DELETE | `/users/me` | ✔ | 계정 삭제 | §10 |
-| 8 | POST | `/uploads/presigned` | ✔ | 업로드용 presigned URL | F-02 |
-| 9 | POST | `/profiles` | ✔ | 프로필 등록 | F-02·F-04 |
-| 10 | GET | `/profiles/me` | ✔ | 프로필 조회 | F-13 |
-| 11 | PATCH | `/profiles/me` | ✔ | 신체 정보 수정 | F-13 |
-| 12 | PATCH | `/profiles/me/priorities` | ✔ | **우선순위 변경** | F-02·F-13 |
-| 13 | DELETE | `/profiles/me/photo` | ✔ | 사진 삭제 | §10 |
-| 14 | POST | `/profiles/inbody/scan` | ✔ | **인바디 서류 스캔(OCR)** | F-03 |
-| 15 | POST | `/analyses` | ✔ | 고점 입력 → 키워드 추출 시작 | F-05 |
-| 16 | GET | `/analyses/{id}` | ✔ | 진행 상태 폴링 | F-06 |
-| 17 | GET | `/analyses/{id}/keywords` | ✔ | 키워드 후보 조회 | F-06 |
-| 18 | POST | `/analyses/{id}/keywords/selection` | ✔ | 키워드 확정 → 결과 생성 | F-06 |
-| 19 | GET | `/analyses/{id}/result` | ✔ | 결과 조회 (`FRESH`) | F-07 |
-| 20 | POST | `/analyses/{id}/result/save` | ✔ | 서랍에 저장 | F-08 |
-| 21 | GET | `/saved-results` | ✔ | 서랍 (3섹션) | F-08 |
-| 22 | GET | `/saved-results/{id}` | ✔ | 서랍 상세 (`SAVED`) | F-08 |
-| 23 | DELETE | `/saved-results/{id}` | ✔ | 서랍 항목 삭제 | F-08 |
-| 24 | POST | `/routines` | ✔ | 목표 생성 (**경로 2종**) | F-09 |
-| 25 | GET | `/routines` | ✔ | 목표 목록 | F-09 |
-| 26 | GET | `/routines/{id}` | ✔ | 목표 상세 | F-10 |
-| 27 | DELETE | `/routines/{id}` | ✔ | 내 목표 삭제 | F-10 |
-| 28 | PATCH | `/routine-tasks/{id}` | ✔ | 완료 체크 | F-10 |
-| 29 | GET | `/notifications/settings` | ✔ | 알림 설정 조회 | F-11 |
-| 30 | PATCH | `/notifications/settings` | ✔ | 알림 설정 변경 | F-11 |
-| 31 | POST | `/notifications/device-tokens` | ✔ | 푸시 토큰 등록 | F-11 |
-| 32 | DELETE | `/analyses` | ✔ | **내 분석 전체 삭제** | F-13 |
-| 33 | GET | `/subscriptions/me` | ✔ | 구독·분석권 상태 | F-12 |
-| 34 | POST | `/subscriptions/checkout` | ✔ | 결제 시작 | F-12 |
-| 35 | POST | `/subscriptions/webhook` | — | PG 웹훅 (서버 전용) | F-12 |
-| 36 | GET | `/consents/terms` | — | 약관 목록 | §10 |
+| # | Method | Path | 인증 | 설명 | PRD | 상태 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | POST | `/auth/signup` | — | 회원가입 | F-01 | ✅ |
+| 2 | POST | `/auth/login` | — | 로그인 | F-01 | ✅ |
+| 3 | POST | `/auth/oauth/google` | — | Google 로그인 | F-01 | ✅ |
+| 4 | POST | `/auth/refresh` | — | 토큰 갱신 | F-01 | ✅ |
+| 5 | POST | `/auth/logout` | ✔ | 로그아웃 | F-01 | ✅ |
+| 6 | GET | `/users/me` | ✔ | 내 정보 + 온보딩 상태 | F-01 | ✅ |
+| 7 | PATCH | `/users/me` | ✔ | 표시 이름 변경 | F-13 | ✅ |
+| 7-1 | DELETE | `/users/me` | ✔ | 계정 삭제 | §10 | ✅ |
+| 8 | POST | `/uploads/presigned` | ✔ | 업로드용 presigned URL | F-02 | ✅ |
+| 9 | POST | `/profiles` | ✔ | 프로필 등록 | F-02·F-04 | ✅ |
+| 10 | GET | `/profiles/me` | ✔ | 프로필 조회 | F-13 | ✅ |
+| 11 | PATCH | `/profiles/me` | ✔ | 신체 정보 수정 (**바뀌면 프로필 요약 재생성**) | F-13 | ✅ |
+| 12 | PATCH | `/profiles/me/priorities` | ✔ | **우선순위 변경** | F-02·F-13 | ✅ |
+| 13 | DELETE | `/profiles/me/photo` | ✔ | 사진 삭제 | §10 | ✅ |
+| 14 | POST | `/profiles/inbody/scan` | ✔ | **인바디 서류 스캔(OCR)** | F-03 | ✅ |
+| 15 | POST | `/analyses` | ✔ | 고점 입력 → 키워드 추출 시작 | F-05 | ✅ |
+| 16 | GET | `/analyses/{id}` | ✔ | 진행 상태 폴링 | F-06 | ✅ |
+| 17 | GET | `/analyses/{id}/keywords` | ✔ | 키워드 후보 조회 | F-06 | ✅ |
+| 18 | POST | `/analyses/{id}/keywords/selection` | ✔ | 키워드 확정 → 결과 생성 | F-06 | ✅ |
+| 19 | GET | `/analyses/{id}/result` | ✔ | 결과 조회 (`FRESH`) | F-07 | ✅ |
+| 20 | POST | `/analyses/{id}/result/save` | ✔ | 서랍에 저장 | F-08 | ✅ |
+| 21 | GET | `/saved-results` | ✔ | 서랍 (3섹션) | F-08 | ✅ |
+| 22 | GET | `/saved-results/{id}` | ✔ | 서랍 상세 (`SAVED`) | F-08 | ✅ |
+| 23 | DELETE | `/saved-results/{id}` | ✔ | 서랍 항목 삭제 | F-08 | ✅ |
+| 24 | POST | `/routines` | ✔ | 목표 생성 (**경로 2종**) | F-09 | ✅ |
+| 25 | GET | `/routines` | ✔ | 목표 목록 | F-09 | ✅ |
+| 26 | GET | `/routines/{id}` | ✔ | 목표 상세 | F-10 | ✅ |
+| 26-1 | PATCH | `/routines/{id}` | ✔ | **목표 이름 변경** | F-10 | ✅ |
+| 26-2 | PATCH | `/routines/{id}/notification` | ✔ | **목표별 알림 시각** (V12) | F-11 | ✅ |
+| 26-3 | PATCH | `/routines/order` | ✔ | **목표 순서 변경** | F-10 | ✅ |
+| 27 | DELETE | `/routines/{id}` | ✔ | 내 목표 삭제 | F-10 | ✅ |
+| 28 | PATCH | `/routine-tasks/{id}` | ✔ | 완료 체크 | F-10 | ✅ |
+| 29 | GET | `/notifications/settings` | ✔ | 알림 설정 조회 | F-11 | ✅ |
+| 30 | PATCH | `/notifications/settings` | ✔ | 알림 설정 변경 | F-11 | ✅ |
+| 31 | POST | `/notifications/device-tokens` | ✔ | 푸시 토큰 등록 | F-11 | ✅ |
+| 32 | DELETE | `/analyses` | ✔ | **내 분석 전체 삭제** | F-13 | ✅ |
+| 32-1 | GET | `/results/{id}/product-recommendation` | ✔ | **어울리는 상품 추천** (V14) | F-07 | ✅ |
+| 33 | GET | `/subscriptions/me` | ✔ | 구독·분석권 상태 | F-12 | 🚧 |
+| 34 | POST | `/subscriptions/checkout` | ✔ | 결제 시작 | F-12 | 🚧 |
+| 35 | POST | `/subscriptions/webhook` | — | PG 웹훅 (서버 전용) | F-12 | 🚧 |
+| 36 | GET | `/consents/terms` | — | 약관 목록 | §10 | 🚧 |
+
+✅ 구현됨 · 🚧 **아직 구현되지 않음** — 문서에만 있다.
+
+> **🚧를 표에서 지우지 않은 이유** — 지우면 계획이 사라진다. 다만 그대로 두면
+> 문서가 없는 것을 약속하는 꼴이라 표시를 붙였다. 구독·결제(33~35)는 범위 밖이고,
+> 약관 전문(36)은 지금 화면에 체크박스와 한 줄 설명만 있다.
 
 ---
 
@@ -836,6 +847,26 @@
 
 > **효능을 약속하는 말과 수치를 프롬프트에서 금지했다.** 카탈로그에도 시험 결과를
 > 넣지 않는다 — 입력에 있으면 모델이 그것을 근거로 문장을 만든다. (PRD G-3)
+
+---
+
+#### `PATCH /routines/order`
+
+목표 순서 변경. 루틴 화면에서 끌거나 ▲▼로 올리고 내린 결과를 저장한다.
+
+```json
+// Request — 화면에 보이는 순서 그대로, 전부 보낸다
+{ "routineIds": ["7a2e...", "9b41...", "c0d3..."] }
+```
+
+응답은 `GET /routines`와 같은 `RoutineListResponse`다. 새 순서로 정렬돼 돌아오므로
+프론트가 다시 조회하지 않아도 된다.
+
+- **일부만 보내지 않는다.** 목록 전체를 순서대로 보낸다. 빠진 목표가 있으면 그
+  목표의 자리를 서버가 정해야 하는데, 그 규칙을 사용자가 알 수 없다.
+- 빈 배열은 `400`. 남의 목표 id가 섞이면 `403 FORBIDDEN_RESOURCE`.
+- 🔴 **경로가 `/routines/{routineId}`보다 먼저 선언돼야 한다.** 뒤에 두면
+  `order`가 `{routineId}`로 잡혀 UUID 파싱에서 `400`이 난다.
 
 ---
 
