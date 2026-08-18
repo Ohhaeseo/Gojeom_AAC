@@ -1,3 +1,4 @@
+import { toIsoDate } from '@/lib/date';
 import type { AnalysisStatus, Category, Profile, RoutineTask } from '@/types/api';
 
 const wait = (ms = 350) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -19,5 +20,5 @@ export async function pollMockAnalysis(onStatus: (status: AnalysisStatus) => voi
 
 export async function createMockRoutine(sourceType: 'FROM_ANALYSIS' | 'STANDALONE', categories: Category[]): Promise<RoutineTask[]> {
   await wait();
-  return categories.map((category, index) => ({ taskId: `task-${index}`, category, title: '자외선 차단제 바르기', timing: '매일 외출 전', durationLabel: '약 2분', amountLabel: '4ml', scheduledDate: new Date().toISOString().slice(0, 10), status: 'PENDING', sourceType } as RoutineTask & { sourceType: typeof sourceType }));
+  return categories.map((category, index) => ({ taskId: `task-${index}`, category, title: '자외선 차단제 바르기', timing: '매일 외출 전', durationLabel: '약 2분', amountLabel: '4ml', scheduledDate: toIsoDate(new Date()), status: 'PENDING', sourceType } as RoutineTask & { sourceType: typeof sourceType }));
 }

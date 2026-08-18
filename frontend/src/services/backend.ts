@@ -1,3 +1,5 @@
+import { toIsoDate } from '@/lib/date';
+
 import type { ConsentCode } from '@/lib/consent';
 import { ApiError, request } from '@/services/api';
 import { clearSession, patchSession, saveSession, type Session } from '@/services/session';
@@ -339,7 +341,16 @@ export type RoutineDetail = {
   notification: { enabled: boolean; time: string };
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+/**
+ * 목표 시작일의 기본값. **로컬 날짜다.**
+ *
+ * 🔴 `toISOString()`을 쓰면 UTC 날짜가 나온다. 한국은 UTC+9라 **자정부터 오전 9시
+ * 사이에는 어제 날짜**가 나오고, 서버가 `Asia/Seoul` 기준으로 "오늘 이후"를 검사하므로
+ * (`RoutineService.requireFutureStartDate`) 그 시간대에 목표 생성이 400으로 막힌다.
+ *
+ * 새벽에만 터져서 낮에 아무리 눌러 봐도 재현되지 않는다. 실제로 01시에 걸렸다.
+ */
+const today = () => toIsoDate(new Date());
 
 export const createRoutineFromAnalysis = (sourceAnalysisResultId: string, startDate = today()) =>
   request<{ routines: RoutineSummary[] }>('/routines', {
