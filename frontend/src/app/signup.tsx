@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -28,6 +28,13 @@ export default function SignupScreen() {
   // 숫자 8자리로만 들고 있다가 보낼 때 YYYY-MM-DD로 바꾼다. 화면에는 점을 찍어 보여준다.
   const [birth, setBirth] = useState('');
   const [agreed, setAgreed] = useState<ConsentCode[]>([]);
+
+  /*
+    로그인 화면에서 처음 쓰는 Google 계정으로 눌렀을 때 여기로 온다.
+    **왜 회원가입 화면에 와 있는지 말해 주지 않으면 튕긴 것처럼 보인다.**
+    (`login.tsx` · 서버가 `CONSENT_REQUIRED`를 돌려준 경우)
+  */
+  const { reason } = useLocalSearchParams<{ reason?: string }>();
 
   const birthCheck = checkBirth(birth);
   const requiredOk = REQUIRED_CONSENTS.every((code) => agreed.includes(code));
@@ -63,6 +70,9 @@ export default function SignupScreen() {
   return (
     <AppScreen title="회원가입" headerLogo={false} contentStyle={styles.content}>
       <BrandLogo variant="face" style={styles.logo} />
+      {reason === 'google-new' ? (
+        <Text style={styles.notice}>처음 오신 Google 계정이에요. 생년월일과 동의를 받은 뒤 Google 버튼을 다시 눌러주세요.</Text>
+      ) : null}
       <View style={styles.form}>
         <FormField label="아이디" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" placeholder="아이디혹은 전화번호를 입력해 주세요." error={error || undefined} />
         <FormField label="비밀번호" required value={password} onChangeText={setPassword} secureTextEntry placeholder="비밀번호를 입력해 주세요." />
@@ -109,4 +119,4 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({ content: { paddingTop: 40 }, logo: { alignSelf: 'center', width: 145, height: 98 }, form: { gap: 12 }, consents: { padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface }, divider: { height: 1, marginVertical: 6, backgroundColor: colors.divider }, linkRow: { alignItems: 'center', gap: 4 }, muted: { ...typography.body, color: colors.textMuted }, link: { ...typography.label, color: colors.primary }, social: { flexDirection: 'row', justifyContent: 'center', gap: 28, alignItems: 'center' }, socialButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }, socialIcon: { width: 38, height: 38 }, privacy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' } });
+const styles = StyleSheet.create({ content: { paddingTop: 40 }, notice: { ...typography.body, color: colors.primary, textAlign: 'center' }, logo: { alignSelf: 'center', width: 145, height: 98 }, form: { gap: 12 }, consents: { padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface }, divider: { height: 1, marginVertical: 6, backgroundColor: colors.divider }, linkRow: { alignItems: 'center', gap: 4 }, muted: { ...typography.body, color: colors.textMuted }, link: { ...typography.label, color: colors.primary }, social: { flexDirection: 'row', justifyContent: 'center', gap: 28, alignItems: 'center' }, socialButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }, socialIcon: { width: 38, height: 38 }, privacy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' } });

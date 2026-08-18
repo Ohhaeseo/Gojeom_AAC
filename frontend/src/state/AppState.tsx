@@ -9,7 +9,14 @@ import type { AnalysisResult, Category, Inbody, Profile, RoutineTask } from '@/t
 
 export type { DrawerItem, InbodyScan } from '@/services/backend';
 
-export type ActionResult = { ok: boolean; message?: string };
+/**
+ * 화면이 결과를 판단하는 최소 형태.
+ *
+ * `code`는 **문구가 아니라 분기가 필요할 때만** 본다. 지금은 Google 최초 로그인이
+ * `CONSENT_REQUIRED`로 돌아올 때 로그인 화면이 가입 화면으로 보내는 데 쓴다.
+ * 메시지 문자열로 분기하면 문구를 다듬는 순간 조용히 깨진다.
+ */
+export type ActionResult = { ok: boolean; message?: string; code?: string };
 
 /** 서랍 3섹션. (API.md §6.5) */
 export type DrawerSections = { inProgress: backend.DrawerItem[]; recent: backend.DrawerItem[]; all: backend.DrawerItem[] };
@@ -444,7 +451,14 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       await adoptSession(await backend.googleLogin(idToken, birthDate, agreedConsents));
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error, 'Google 로그인에 실패했어요.') };
+      // 처음 쓰는 Google 계정이면 서버가 `CONSENT_REQUIRED`로 돌려보낸다. 나이와
+      // 동의를 받아야 계정을 만들 수 있기 때문이다. 화면이 그것을 알아야
+      // "실패"가 아니라 가입 화면으로 안내할 수 있다.
+      return {
+        ok: false,
+        message: messageOf(error, 'Google 로그인에 실패했어요.'),
+        code: error instanceof ApiError ? error.code : undefined,
+      };
     }
   }, [adoptSession, mode]);
 

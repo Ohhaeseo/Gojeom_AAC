@@ -26,8 +26,20 @@ export default function LoginScreen() {
     setPending(true);
     const result = await loginWithGoogle(idToken);
     setPending(false);
-    if (!result.ok) return setError(result.message ?? 'Google 로그인에 실패했어요.');
-    setError(''); router.replace('/home');
+    if (result.ok) { setError(''); return router.replace('/home'); }
+    /*
+      **Google은 가입과 로그인이 같은 엔드포인트다.** 처음 쓰는 계정이면 서버가
+      계정을 만들어야 하는데, 그 전에 나이와 동의가 필요해 `CONSENT_REQUIRED`가
+      돌아온다. 이것은 실패가 아니라 **가입이 필요하다는 뜻**이므로 빨간 오류를
+      띄우는 대신 가입 화면으로 보낸다.
+
+      토큰은 들려 보내지 않는다 — 라우터 파라미터는 웹에서 주소창에 남는다.
+      가입 화면에서 Google 버튼을 한 번 더 누르면 그때 동의와 함께 넘어간다.
+    */
+    if (result.code === 'CONSENT_REQUIRED') {
+      return router.replace({ pathname: '/signup', params: { reason: 'google-new' } });
+    }
+    setError(result.message ?? 'Google 로그인에 실패했어요.');
   };
   const submit = async () => {
     setPending(true);
