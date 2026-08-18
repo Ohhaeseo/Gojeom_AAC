@@ -31,6 +31,11 @@ public class ProfileTxService {
     @Transactional
     public Profile replaceActive(UUID userId, ProfileCreateRequest request) {
         profileRepository.findByUserIdAndIsActiveTrue(userId).ifPresent(Profile::deactivate);
+        // 🔴 **비활성화를 먼저 내보낸다.** Hibernate는 액션 큐에서 INSERT를 UPDATE보다
+        // 앞세우므로, 이 flush가 없으면 새 행이 먼저 들어가 부분 유니크 인덱스
+        // ux_profiles_active(user_id WHERE is_active)에 걸려 500이 난다.
+        // 두 번째 프로필을 만들 때만 터지는 자리라 첫 등록만 확인하면 지나친다.
+        profileRepository.flush();
 
         Profile profile = profileRepository.save(Profile.create(
                 userId,

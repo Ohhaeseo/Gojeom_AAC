@@ -121,6 +121,46 @@ public class RoutineService {
     }
 
     /**
+     * 진행률. <b>행을 그냥 세지 않는다.</b> (V15)
+     *
+     * <p>주 N회 태스크는 그 주의 <b>모든 날</b>에 행이 있지만 실제로 해야 하는 것은
+     * N번뿐이다. 행으로 세면 4주짜리 주 3회가 28개 중 12개로 잡혀 <b>진행률이 100%에
+     * 영영 닿지 않는다.</b> 실제로 목표를 만들어 보고 0/112로 나오는 것을 보고 찾았다.
+     *
+     * <p>{@code RoutineTaskRepository.countProgressByRoutineIds}와 같은 규칙이다 —
+     * 저쪽은 목록용이라 SQL로 집계하고, 여기는 이미 태스크를 다 들고 있어 자바로 센다.
+     * 같은 태스크인지는 {@code title + timing}으로 가른다.
+     */
+    private static Progress progressOf(List<RoutineTask> tasks) {
+        long total = 0;
+        long done = 0;
+
+        // 매일 하는 일 — 행 하나가 곧 한 번이다.
+        for (RoutineTask task : tasks) {
+            if (task.getWeeklyTarget() == null) {
+                total++;
+                if (task.getStatus() == TaskStatus.DONE) {
+                    done++;
+                }
+            }
+        }
+
+        // 주 N회 — (태스크·주)마다 목표는 N이고, 완료는 그 주의 완료 수를 N으로 상한한다.
+        Map<List<Object>, List<RoutineTask>> weekly = tasks.stream()
+                .filter(t -> t.getWeeklyTarget() != null)
+                .collect(Collectors.groupingBy(
+                        t -> List.of(t.getTitle(), String.valueOf(t.getTiming()), t.getWeekStart())));
+
+        for (List<RoutineTask> bucket : weekly.values()) {
+            long target = bucket.get(0).getWeeklyTarget();
+            long checked = bucket.stream().filter(t -> t.getStatus() == TaskStatus.DONE).count();
+            total += target;
+            done += Math.min(checked, target);
+        }
+        return new Progress(done, total, rate(done, total));
+    }
+
+    /**
      * 경로 A의 기간. <b>AI가 정하지만 서버가 범위를 지킨다.</b> (V15)
      *
      * <p>스키마가 4~52주를 강제하지만 값이 비거나 범위를 벗어나 오면 목표가 통째로
@@ -272,7 +312,7 @@ public class RoutineService {
                 routine.getTitle(),
                 result == null ? null : result.getCreatedAt(),
                 overview(result),
-                new Progress(done, tasks.size(), rate(done, tasks.size())),
+                progressOf(tasks),
                 tasks.stream()
                         .map(t -> new TaskView(t.getId(), t.getCategory(), t.getTitle(), t.getTiming(),
                                 t.getDurationLabel(), t.getAmountLabel(), t.getScheduledDate(),
@@ -337,11 +377,10 @@ public class RoutineService {
 
         List<RoutineTask> tasks = routineTaskRepository
                 .findByRoutineIdOrderByScheduledDateAscTitleAsc(routine.getId());
-        long done = tasks.stream().filter(t -> t.getStatus() == TaskStatus.DONE).count();
-        routine.syncStatus(done, tasks.size());
+        Progress progress = progressOf(tasks);
+        routine.syncStatus(progress.done(), progress.total());
 
-        return new TaskUpdateResponse(task.getId(), task.getStatus(),
-                new Progress(done, tasks.size(), rate(done, tasks.size())));
+        return new TaskUpdateResponse(task.getId(), task.getStatus(), progress);
     }
 
     /** 시안 23의 "내 목표 삭제". 태스크는 FK {@code ON DELETE CASCADE}로 함께 지워진다. */
