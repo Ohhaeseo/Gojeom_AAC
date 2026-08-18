@@ -10,7 +10,7 @@ import { FormField } from '@/components/ui/FormField';
 import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
 import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits } from '@/lib/date';
-import { todayTasks } from '@/lib/tasks';
+import { groupByTiming, todayTasks } from '@/lib/tasks';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -295,16 +295,22 @@ export default function RoutinesScreen() {
       })}
 
       <Text style={styles.sectionTitle}>오늘 할 일</Text>
-      <Text style={styles.description}>{today.date ? `${formatAnalyzedDate(today.date)} 회차 · ` : ''}전체 {tasks.length}개 중 {done}개 완료</Text>
-      {today.items.length ? today.items.map((task) => (
-        <Pressable key={task.taskId} onPress={() => toggleTask(task.taskId)} style={[styles.task, task.status === 'DONE' && styles.taskDone]}>
-          <View style={styles.taskCopy}>
-            <Text style={[styles.taskTitle, task.status === 'DONE' && styles.doneText]}>{task.title}</Text>
-            {/* 소요 시간(durationLabel)은 빼고 시점과 분량만 남긴다. */}
-            <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
-          </View>
-          <View style={styles.completeRow}><View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}><Text style={styles.check}>{task.status === 'DONE' ? '✓' : ''}</Text></View><Text style={styles.completeText}>완료</Text></View>
-        </Pressable>
+      <Text style={styles.description}>{today.date ? `${formatAnalyzedDate(today.date)} 회차 · ` : ''}오늘 {today.items.length}개 · 전체 {tasks.length}개 중 {done}개 완료</Text>
+      {/* 묶는 규칙도 홈과 **같은 함수**를 쓴다. 각자 나누면 두 화면의 순서가 갈린다. */}
+      {today.items.length ? groupByTiming(today.items).map((group) => (
+        <View key={group.key}>
+          <Text style={styles.groupLabel}>{group.label}</Text>
+          {group.items.map((task) => (
+            <Pressable key={task.taskId} onPress={() => toggleTask(task.taskId)} style={[styles.task, task.status === 'DONE' && styles.taskDone]}>
+              <View style={styles.taskCopy}>
+                <Text style={[styles.taskTitle, task.status === 'DONE' && styles.doneText]}>{task.title}</Text>
+                {/* 소요 시간(durationLabel)은 빼고 시점과 분량만 남긴다. */}
+                <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+              </View>
+              <View style={styles.completeRow}><View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}><Text style={styles.check}>{task.status === 'DONE' ? '✓' : ''}</Text></View><Text style={styles.completeText}>완료</Text></View>
+            </Pressable>
+          ))}
+        </View>
       )) : <Text style={styles.description}>태스크를 불러오는 중이에요.</Text>}
 
       <Text style={styles.sectionTitle}>알림 설정</Text>
@@ -423,6 +429,7 @@ const styles = StyleSheet.create({
   groupTitle: { ...typography.label, color: colors.textTertiary, marginTop: 4 },
   groupCount: { color: colors.primary, fontWeight: '700' },
   goalText: { ...typography.caption, color: colors.textTertiary, fontStyle: 'italic' },
+  groupLabel: { ...typography.caption, color: colors.textTertiary, marginTop: 10, marginBottom: 2 },
   notifyLine: { ...typography.caption, color: colors.textMuted },
   clearNotify: { alignSelf: 'center', paddingVertical: 8 },
   clearNotifyText: { ...typography.caption, color: colors.textMuted, textDecorationLine: 'underline' },

@@ -1,4 +1,4 @@
-import { frequencyRank, timingRank, todayTasks } from '@/lib/tasks';
+import { frequencyRank, groupByTiming, timingRank, todayTasks } from '@/lib/tasks';
 import type { RoutineTask } from '@/types/api';
 
 /**
@@ -147,5 +147,43 @@ describe('todayTasks — 회차 선택', () => {
 
   it('빈 배열을 넣으면 빈 결과다', () => {
     expect(todayTasks([])).toEqual({ items: [] });
+  });
+});
+
+describe('groupByTiming', () => {
+  const today = iso(0);
+
+  it('시점 구분이 없는 것이 맨 위, 그 아래로 하루 순서다', () => {
+    const groups = groupByTiming(todayTasks([
+      task('자기 전 스트레칭', '자기 전', today),
+      task('물 자주 마시기', '수시로', today),
+      task('아침 세안', '아침', today),
+      task('저녁 보습', '저녁', today),
+      task('점심 후 걷기', '점심 후', today),
+    ]).items);
+
+    expect(groups.map((group) => group.label)).toEqual(['수시로', '아침', '점심', '저녁', '자기 전']);
+    expect(groups[0]?.items.map((item) => item.title)).toEqual(['물 자주 마시기']);
+  });
+
+  // 제목만 있고 아래가 빈 칸은 없느니만 못하다.
+  it('비어 있는 묶음은 내보내지 않는다', () => {
+    const groups = groupByTiming(todayTasks([task('아침 세안', '아침', today)]).items);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.label).toBe('아침');
+  });
+
+  it('묶음 안에서는 자주 반복하는 것이 위다', () => {
+    const groups = groupByTiming(todayTasks([
+      task('주3회 저녁운동', '주 3회 저녁', today),
+      task('매일 저녁 보습', '저녁', today),
+    ]).items);
+
+    expect(groups[0]?.items.map((item) => item.title)).toEqual(['매일 저녁 보습', '주3회 저녁운동']);
+  });
+
+  it('하나도 없으면 빈 배열이다', () => {
+    expect(groupByTiming([])).toEqual([]);
   });
 });

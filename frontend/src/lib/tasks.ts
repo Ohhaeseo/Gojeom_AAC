@@ -105,3 +105,43 @@ export function todayTasks(tasks: RoutineTask[]): { date?: string; items: Routin
   }
   return { date, items: items.sort(compareTasks) };
 }
+
+/**
+ * 시점 묶음. 라벨은 `timingRank`가 매기는 순위와 짝이다.
+ *
+ * `rank`가 없는 것(`1.5`)은 **시점 구분이 없는 일**이다 — "물 자주 마시기"처럼
+ * 하루 중 언제라고 말할 수 없는 것들이라 맨 위에 따로 모은다.
+ */
+export type TaskGroup = { key: string; label: string; items: RoutineTask[] };
+
+const GROUP_LABEL: { rank: number; key: string; label: string }[] = [
+  { rank: 0, key: 'MORNING', label: '아침' },
+  { rank: 1, key: 'NOON', label: '점심' },
+  { rank: 2, key: 'EVENING', label: '저녁' },
+  { rank: 3, key: 'NIGHT', label: '자기 전' },
+];
+
+/** 시점 구분이 없는 묶음. 하루 내내 걸쳐 있어 맨 위에 둔다. */
+const ANYTIME = { rank: 1.5, key: 'ANYTIME', label: '수시로' };
+
+/**
+ * 오늘 할 일을 **시점별로 나눈다.**
+ *
+ * <b>시점 구분이 없는 것이 맨 위</b>고, 그 아래로 아침 → 점심 → 저녁 → 자기 전이다.
+ * 그냥 나열하면 아침에 할 일과 자기 전에 할 일이 한 덩어리로 보여 "지금 뭘 해야
+ * 하는지"를 눈으로 골라내야 한다.
+ *
+ * 묶음 안의 순서는 {@link todayTasks}가 매긴 그대로다 — 자주 반복하는 것이 위다.
+ * <b>비어 있는 묶음은 내보내지 않는다.</b> 제목만 있고 아래가 빈 칸은 없느니만 못하다.
+ */
+export function groupByTiming(items: RoutineTask[]): TaskGroup[] {
+  // ANYTIME의 rank는 1.5(모르는 것을 중간에 두는 값)라 그대로 정렬하면 점심과
+  // 저녁 사이로 간다. **맨 앞에 못 박는다.**
+  return [ANYTIME, ...GROUP_LABEL]
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      items: items.filter((task) => timingRank(task.timing) === group.rank),
+    }))
+    .filter((group) => group.items.length > 0);
+}

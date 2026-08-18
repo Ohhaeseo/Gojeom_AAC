@@ -9,7 +9,7 @@ import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { formatAnalyzedDate } from '@/lib/date';
-import { todayTasks } from '@/lib/tasks';
+import { groupByTiming, todayTasks } from '@/lib/tasks';
 import { useAppState, type DrawerItem } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { AnalysisResult, Category } from '@/types/api';
@@ -99,6 +99,11 @@ export default function HomeScreen() {
   const activeChange = changes?.find((item) => item.category === selectedCategory);
   // 루틴 화면과 **같은 함수**로 고르고 정렬한다. 각자 하면 순서가 갈린다.
   const today = todayTasks(tasks).items;
+  const todayDone = today.filter((task) => task.status === 'DONE').length;
+  const groups = groupByTiming(today);
+  // 미리보기도 **목록과 같은 순서**여야 한다. 정렬만 다르면 위 카드와 아래 목록의
+  // 첫 줄이 달라 보여 같은 것을 말하는지 헷갈린다.
+  const ordered = groups.flatMap((group) => group.items);
   // 하나만 골랐으면 이름을 줄마다 되풀이할 이유가 없다.
   const titleOf = (id?: string) => (selectedRoutines.length > 1
     ? routines.find((item) => item.routineId === id)?.title
@@ -137,7 +142,7 @@ export default function HomeScreen() {
           ) : null}
           {selectedRoutines.length ? <Text style={styles.routineName} numberOfLines={1}>{selectedRoutines.map((item) => item.title).join(' · ')}</Text> : null}
           {/* 목표가 아직 없으면 "0/0 달성" 링이 그려진다. 분석만 끝난 상태와 목표를 만든 상태는 다르다. */}
-          {tasks.length ? <Pressable onPress={() => router.push('/routines')} style={styles.progressCard}><GoalProgressRing completed={done} total={tasks.length} /><Text style={styles.progressText}>{tasks.slice(0, 3).map((task) => `${task.status === 'DONE' ? '✓ ' : ''}${task.title}`).join('\n')}</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="목표 만들러 가기" onPress={() => router.push('/routines')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 설정한 목표가 없어요.</Text><Text style={styles.emptyText}>진단 결과로 만들거나, 진단 없이 바로 만들 수도 있어요.</Text></Pressable>}
+          {tasks.length ? <Pressable onPress={() => router.push('/routines')} style={styles.progressCard}><GoalProgressRing completed={done} total={tasks.length} /><Text style={styles.progressText}>{ordered.slice(0, 3).map((task) => `${task.status === 'DONE' ? '✓ ' : ''}${task.title}`).join('\n')}</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="목표 만들러 가기" onPress={() => router.push('/routines')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 설정한 목표가 없어요.</Text><Text style={styles.emptyText}>진단 결과로 만들거나, 진단 없이 바로 만들 수도 있어요.</Text></Pressable>}
 
           {/*
             **홈에서 바로 체크한다.** 오늘 할 일을 보려고 루틴 화면까지 들어갔다
@@ -146,8 +151,20 @@ export default function HomeScreen() {
           */}
           {today.length ? (
             <View style={styles.todayCard}>
-              <Text style={styles.todayHead}>오늘 할 일 <Text style={styles.todayCount}>{done}/{tasks.length}</Text></Text>
-              {today.map((task) => (
+              {/*
+                **오늘 기준으로 센다.** `tasks`에는 기간만큼 복제된 회차가 전부
+                들어 있어(6개월이면 24회차) `0/48`처럼 나온다. 홈에서 궁금한 것은
+                오늘 몇 개를 했느냐지 목표 전체 태스크 수가 아니다.
+              */}
+              <Text style={styles.todayHead}>오늘 할 일 <Text style={styles.todayCount}>{todayDone}/{today.length}</Text></Text>
+              {groups.map((group) => (
+                <View key={group.key}>
+                  {/*
+                    시점으로 나눈다. 그냥 나열하면 아침에 할 일과 자기 전에 할 일이
+                    한 덩어리라 "지금 뭘 해야 하는지"를 눈으로 골라내야 한다.
+                  */}
+                  <Text style={styles.groupLabel}>{group.label}</Text>
+                  {group.items.map((task) => (
                 <Pressable key={task.taskId} accessibilityRole="checkbox" accessibilityState={{ checked: task.status === 'DONE' }} accessibilityLabel={task.title} onPress={() => toggleTask(task.taskId)} style={styles.todayRow}>
                   <View style={[styles.todayBox, task.status === 'DONE' && styles.todayBoxOn]}><Text style={styles.todayCheck}>{task.status === 'DONE' ? '✓' : ''}</Text></View>
                   <View style={styles.todayCopy}>
@@ -159,6 +176,8 @@ export default function HomeScreen() {
                     <Text style={styles.todayMeta}>{[titleOf(task.routineId), task.timing, task.amountLabel].filter(Boolean).join(' · ')}</Text>
                   </View>
                 </Pressable>
+                  ))}
+                </View>
               ))}
             </View>
           ) : null}
@@ -200,7 +219,7 @@ export default function HomeScreen() {
             <View style={styles.registrationModal}>
               <Text style={styles.emptyTitle}>{hasAnyProgress ? '프로필 준비 현황' : '아직 프로필이 없어요...'}</Text><Text style={styles.emptyText}>{hasAnyProgress ? '분석을 시작하려면 아래 정보를 완성해주세요.' : '여기를 눌러 맞춤형 분석이 담긴 프로필을 등록해 보세요.'}</Text>
               {hasAnyProgress ? <View style={styles.checkList}><CheckRow label="내 사진 등록하기" done={Boolean(photoUri)} /><CheckRow label="우선 순위 설정하기" done={priorities.length === 3} /><CheckRow label="신장, 체중 입력하기" done={Boolean(profile)} /><CheckRow label="고점 등록하기" done={saved} /></View> : null}
-              <AppButton label={hasAnyProgress ? '부족한 정보 채우기' : '새로 진단하기'} onPress={goToMissingStep} />
+              <AppButton label={hasAnyProgress ? '부족한 정보 채우기' : '프로필 만들기'} onPress={goToMissingStep} />
             </View>
           </View>
         </View>
@@ -220,4 +239,4 @@ function CheckRow({ label: text, done }: { label: string; done: boolean }) {
   return <View style={styles.checkRow}><View style={[styles.checkbox, done && styles.checkboxDone]}><Text style={styles.checkmark}>{done ? '✓' : ''}</Text></View><Text style={styles.checkLabel}>{text}</Text></View>;
 }
 
-const styles = StyleSheet.create({ content: { paddingTop: 28 }, title: { ...typography.h1, color: colors.text }, sub: { ...typography.body, color: colors.textMuted }, chips: { flexDirection: 'row', gap: 12 }, chip: { minWidth: 78, paddingVertical: 9, alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.primary }, inactiveChip: { backgroundColor: '#C8C9C9' }, chipText: { ...typography.label, color: colors.white }, card: { borderRadius: radius.lg, padding: spacing.md, backgroundColor: colors.surface, gap: spacing.md, ...shadow }, cardTitle: { ...typography.title, color: colors.text }, dashboard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md }, changeText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 26 }, track: { height: 10, borderRadius: 5, backgroundColor: colors.disabled, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 5, backgroundColor: colors.primaryLight }, face: { width: 150, height: 180, borderRadius: radius.md }, sectionTitle: { ...typography.title, color: colors.text, marginTop: 4 }, progressCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, progressText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 28 }, ringWrap: { width: 104, height: 126, alignItems: 'center', justifyContent: 'center' }, ringCaption: { ...typography.label, color: colors.danger, marginTop: -4 }, emptyAnalysis: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, resultCard: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.surface, ...shadow }, thumb: { width: 112, height: 112, borderRadius: radius.md }, resultCopy: { flex: 1, justifyContent: 'center', gap: 8 }, date: { ...typography.caption, color: colors.textMuted }, resultTitle: { ...typography.label, color: colors.text }, lockedArea: { minHeight: 760, marginTop: spacing.sm, position: 'relative' }, previewContent: { gap: spacing.md }, lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md }, registrationModal: { width: '100%', gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, emptyTitle: { ...typography.title, color: colors.text, textAlign: 'center' }, emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' }, errorText: { ...typography.caption, color: colors.danger }, routineTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -4 }, routineTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface }, routineTabOn: { borderColor: colors.primary, backgroundColor: colors.primary }, routineTabText: { ...typography.caption, color: colors.textMuted }, routineTabTextOn: { color: colors.white, fontWeight: '700' }, routineName: { ...typography.caption, color: colors.textMuted, marginTop: -4 }, checkList: { gap: 10, paddingVertical: 4 }, checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, checkbox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, checkboxDone: { borderColor: colors.primary, backgroundColor: colors.primary }, checkmark: { color: colors.white, fontSize: 14, fontWeight: '700' }, checkLabel: { ...typography.body, color: colors.text }, todayCard: { gap: 2, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, todayHead: { ...typography.label, color: colors.text, marginBottom: 6 }, todayCount: { color: colors.primary }, todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 }, todayBox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, todayBoxOn: { borderColor: colors.primary, backgroundColor: colors.primary }, todayCheck: { color: colors.white, fontSize: 13, fontWeight: '700' }, todayCopy: { flex: 1, gap: 2 }, todayTitle: { ...typography.body, color: colors.text }, todayDone: { color: colors.textMuted, textDecorationLine: 'line-through' }, todayMeta: { ...typography.caption, color: colors.textTertiary } });
+const styles = StyleSheet.create({ content: { paddingTop: 28 }, title: { ...typography.h1, color: colors.text }, sub: { ...typography.body, color: colors.textMuted }, chips: { flexDirection: 'row', gap: 12 }, chip: { minWidth: 78, paddingVertical: 9, alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.primary }, inactiveChip: { backgroundColor: '#C8C9C9' }, chipText: { ...typography.label, color: colors.white }, card: { borderRadius: radius.lg, padding: spacing.md, backgroundColor: colors.surface, gap: spacing.md, ...shadow }, cardTitle: { ...typography.title, color: colors.text }, dashboard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md }, changeText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 26 }, track: { height: 10, borderRadius: 5, backgroundColor: colors.disabled, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 5, backgroundColor: colors.primaryLight }, face: { width: 150, height: 180, borderRadius: radius.md }, sectionTitle: { ...typography.title, color: colors.text, marginTop: 4 }, progressCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, progressText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 28 }, ringWrap: { width: 104, height: 126, alignItems: 'center', justifyContent: 'center' }, ringCaption: { ...typography.label, color: colors.danger, marginTop: -4 }, emptyAnalysis: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, resultCard: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.surface, ...shadow }, thumb: { width: 112, height: 112, borderRadius: radius.md }, resultCopy: { flex: 1, justifyContent: 'center', gap: 8 }, date: { ...typography.caption, color: colors.textMuted }, resultTitle: { ...typography.label, color: colors.text }, lockedArea: { minHeight: 760, marginTop: spacing.sm, position: 'relative' }, previewContent: { gap: spacing.md }, lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md }, registrationModal: { width: '100%', gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, emptyTitle: { ...typography.title, color: colors.text, textAlign: 'center' }, emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' }, errorText: { ...typography.caption, color: colors.danger }, routineTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -4 }, routineTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface }, routineTabOn: { borderColor: colors.primary, backgroundColor: colors.primary }, routineTabText: { ...typography.caption, color: colors.textMuted }, routineTabTextOn: { color: colors.white, fontWeight: '700' }, routineName: { ...typography.caption, color: colors.textMuted, marginTop: -4 }, checkList: { gap: 10, paddingVertical: 4 }, checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, checkbox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, checkboxDone: { borderColor: colors.primary, backgroundColor: colors.primary }, checkmark: { color: colors.white, fontSize: 14, fontWeight: '700' }, checkLabel: { ...typography.body, color: colors.text }, todayCard: { gap: 2, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, todayHead: { ...typography.label, color: colors.text, marginBottom: 6 }, groupLabel: { ...typography.caption, color: colors.textTertiary, marginTop: 10, marginBottom: 2 }, todayCount: { color: colors.primary }, todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 }, todayBox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, todayBoxOn: { borderColor: colors.primary, backgroundColor: colors.primary }, todayCheck: { color: colors.white, fontSize: 13, fontWeight: '700' }, todayCopy: { flex: 1, gap: 2 }, todayTitle: { ...typography.body, color: colors.text }, todayDone: { color: colors.textMuted, textDecorationLine: 'line-through' }, todayMeta: { ...typography.caption, color: colors.textTertiary } });
