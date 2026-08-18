@@ -389,6 +389,28 @@ CREATE UNIQUE INDEX ux_users_email_active ON users(email) WHERE deleted_at IS NU
 powershell -c "Get-Service *postgres*; Get-NetTCPConnection -LocalPort 5432"
 ```
 
+### N-18. 제공자 기본값을 "나쁜 값"으로 단정하지 않는다 〔2026-08-18 · AI〕
+
+**증상** — `image_url.detail`을 안 보내면 "OpenAI가 auto로 **축소**해 읽는다"고 단정하고,
+`detail: "high"`를 판독 품질을 올리는 가장 싼 방법으로 제안했다. 주석과 문서에도 그렇게 적었다.
+
+**원인** — 문서에서 읽은 동작을 **우리 모델·우리 이미지 크기에서 재보지 않았다.**
+실측하니 `gpt-5.4`는 256~1024px 전 구간에서 auto와 high의 입력 토큰이 **같았다**
+(2373 대 2373 등, 차이 ±1은 잡음). 지금 핀에서는 이 파라미터가 아무것도 바꾸지 않는다.
+
+**재발 방지** — 품질을 올린다고 말하기 전에 **관측 가능한 지표로 확인한다.**
+이미지 파라미터는 `usage.prompt_tokens`가 가장 정직한 증거다 — 실제로 더 읽었다면
+토큰이 늘어난다. 같은 방식으로 모델 상향도 재봤고, 그쪽은 실제로 갈렸다
+(요약 관찰 수 1.00건 → 3.00건, 같은 사진 4회씩).
+
+```bash
+# detail 유무만 바꿔 같은 사진을 두 번 부르고 prompt_tokens를 비교한다
+```
+
+**남긴 것** — `detail`은 걷어내지 않고 뒀다. 효과가 있어서가 아니라 **판독 해상도를
+제공자 휴리스틱에 맡기지 않기 위해서다.** 주석에 "지금 모델에서는 차이가 없다"를
+실측값과 함께 적어, 다음 사람이 같은 기대를 하지 않게 했다.
+
 접속 정보는 `backend/.env`에 있고, **Spring은 `.env`를 자동으로 읽지 않는다** —
 `set -a && . ./.env && set +a` 로 주입한 뒤 `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun`.
 

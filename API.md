@@ -363,12 +363,21 @@
 
 `GET /profiles/me` · `PATCH /profiles/me` · `PATCH /profiles/me/priorities`도 **같은 형식**을 반환한다.
 
-- ⚠️ **`analysisSummary`는 현재 항상 `null`이다.** AI 연동(D2-2) 전이라 채울 값이 없고, 가짜 값을 넣지 않는다. 연동되면 아래 형태가 들어간다.
+- **`analysisSummary`는 프로필 생성 직후 비동기로 채워진다.** 그전까지는 `null`이고, AI 분석이 실패해도 `null`로 남는다 — 가짜 값을 넣지 않는다. 프로필 등록 자체는 성공이므로 프론트는 이 값이 없어도 동작해야 한다.
   ```json
-  { "faceImpression": ["부드러운 얼굴선"], "bodyRange": "표준 범위",
+  { "faceImpression": ["차분한 눈매", "부드러운 얼굴선", "담백한 인상"],
+    "bodyRange": "표준 범위",
     "healthNotes": ["평균 수면 6.5시간 · 사용자 입력 기준"],
-    "modelVersion": "...", "analyzedAt": "2026-08-14T04:12:00Z" }
+    "capture": { "readability": "PARTIAL", "issues": ["DARK"] },
+    "modelVersion": "gpt-5.4", "analyzedAt": "2026-08-14T04:12:00Z" }
   ```
+- **`capture`는 사진을 얼마나 읽을 수 있었는지**를 말한다. **사진에 대한 판정이지 사용자에 대한 판정이 아니다.**
+  - `readability` — `CLEAR`(세부까지 보였다) · `PARTIAL`(일부는 확실하지 않다) · `LIMITED`(제대로 보기 어려웠다)
+  - `issues` — `DARK` · `BACKLIT` · `BLURRY` · `FACE_TOO_SMALL` · `OCCLUDED` · `HEAVY_FILTER` · `MULTIPLE_FACES` · `NO_FACE`. 없으면 빈 배열이다.
+  - 🔴 **이 값을 화면에 그대로 내보내지 않는다.** `LIMITED`를 띄우면 사용자는 자기가 평가받았다고 읽는다(G-1). 프론트는 상태가 아니라 **무엇을 다시 하면 되는지**를 문장으로 말한다 — 문구 표는 `frontend/src/lib/capture.ts`에 있다.
+  - **자유 서술 필드를 두지 않았다.** AI에게 문장을 짓게 하면 사용자 노출 텍스트가 하나 늘고 그만큼 가드레일 표면이 넓어진다. AI는 분류만 하고 말은 코드가 한다.
+  - 이 필드가 생기기 전에 만들어진 프로필에는 **없다**(JSONB라 마이그레이션 없이 늘렸다). **없는 것을 "문제 없음"과 같이 다룬다** — 안내를 띄우지 않는다.
+  - `NO_FACE`·`MULTIPLE_FACES`는 업로드 단계의 `ProfilePhotoValidator`가 이미 막는다. AI 쪽 판정은 그 얼굴 탐지가 오탐했을 때를 위한 **뒷받침**이다.
 - `photoUrl`은 사진을 삭제하면 `null`이 된다.
 - **`priorities` 검증** — 정확히 3개, 중복 없이, `SKIN`·`BODY`·`HEALTH` 전부. 어긋나면 `400 VALIDATION_ERROR`.
 - **`photoKey` 소유 검증** — 다른 사용자의 key를 보내면 `403 FORBIDDEN_RESOURCE`.
