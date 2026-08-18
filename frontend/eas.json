@@ -9,6 +9,11 @@
   "build": {
     // 개발 빌드 — Google 로그인·Push처럼 네이티브 모듈이 필요한 것을 실기기에서 확인한다.
     // Expo Go로는 확인할 수 없다.
+    //
+    // ⚠️ 이 프로필의 env는 사실상 쓰이지 않는다. dev-client 빌드는 JS를 PC의 Metro에서
+    // 받아오고, `EXPO_PUBLIC_*`은 **Metro가 번들할 때** 로컬 `.env`에서 인라인된다.
+    // 그래서 주소를 바꾸려면 다시 빌드할 필요 없이 `frontend/.env`를 고치고 Metro만
+    // 다시 띄우면 된다. 아래 값은 임베드 번들이 쓰일 때를 위한 것이다.
     "development": {
       "developmentClient": true,
       "distribution": "internal",
