@@ -27,7 +27,8 @@
           "cameraPermission": "분위기 분석에 사용할 사진을 촬영하려면 카메라 권한이 필요해요."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,

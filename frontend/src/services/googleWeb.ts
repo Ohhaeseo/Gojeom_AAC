@@ -7,15 +7,15 @@
  * GIS가 콜백으로 주는 `credential`이 곧 ID 토큰이다. 이 토큰의 `aud`는 여기
  * 쓰는 클라이언트 ID와 같고, 백엔드 `GoogleTokenVerifier`가 같은 값 하나만
  * audience로 허용한다. 그래서 프론트·백엔드가 **반드시 같은 웹 클라이언트 ID**를
- * 써야 한다.
+ * 써야 한다. 클라이언트 ID 자체는 네이티브도 함께 쓰므로 `googleClient.ts`에 있다.
  */
 
+import { googleWebClientId, isGoogleConfigured } from '@/services/googleClient';
+
+// 웹 버튼이 이 모듈에서 가져다 쓰고 있어 그대로 통과시킨다.
+export { isGoogleConfigured };
+
 const SCRIPT_SRC = 'https://accounts.google.com/gsi/client';
-
-export const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
-
-/** 백엔드 `GoogleOAuthProperties.isConfigured()`와 같은 판정을 쓴다. */
-export const isGoogleConfigured = () => googleWebClientId.endsWith('.apps.googleusercontent.com');
 
 type GoogleIdApi = {
   accounts: {
