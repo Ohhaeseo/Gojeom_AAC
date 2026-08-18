@@ -177,7 +177,7 @@ export type ProfileInput = {
   inbody?: Inbody | null;
 };
 
-type ProfileResponse = Profile & { analysisSummary?: unknown; createdAt?: string };
+type ProfileResponse = Profile & { createdAt?: string };
 
 export const createProfile = (input: ProfileInput) =>
   request<ProfileResponse>('/profiles', { method: 'POST', body: input });

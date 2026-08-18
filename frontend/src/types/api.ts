@@ -20,6 +20,38 @@ export type Inbody = {
   bmi?: number | null;
 };
 
+/** 프로필 사진을 얼마나 읽을 수 있었는지. 사진에 대한 말이지 사용자에 대한 말이 아니다. */
+export type CaptureReadability = 'CLEAR' | 'PARTIAL' | 'LIMITED';
+
+export type CaptureIssue =
+  | 'DARK'
+  | 'BACKLIT'
+  | 'BLURRY'
+  | 'FACE_TOO_SMALL'
+  | 'OCCLUDED'
+  | 'HEAVY_FILTER'
+  | 'MULTIPLE_FACES'
+  | 'NO_FACE';
+
+export type CaptureQuality = { readability: CaptureReadability; issues: CaptureIssue[] };
+
+/**
+ * 사진 기반 현재 상태 요약. 서버가 프로필 생성 직후 비동기로 채운다.
+ *
+ * **분석이 끝나기 전에는 통째로 없다.** 실패해도 null로 남는다 — 프로필 등록 자체는
+ * 성공이므로 이것이 없다고 화면이 깨지면 안 된다.
+ *
+ * `capture`는 나중에 늘린 필드라 그전에 만들어진 프로필에는 없다.
+ */
+export type ProfileAnalysisSummary = {
+  faceImpression?: string[];
+  bodyRange?: string | null;
+  healthNotes?: string[];
+  capture?: CaptureQuality | null;
+  modelVersion?: string;
+  analyzedAt?: string;
+};
+
 export type Profile = {
   profileId: string;
   photoUrl: string | null;
@@ -28,6 +60,7 @@ export type Profile = {
   weightKg: number;
   sleepHours?: number | null;
   inbody?: Inbody | null;
+  analysisSummary?: ProfileAnalysisSummary | null;
 };
 
 export type AnalysisResult = {
