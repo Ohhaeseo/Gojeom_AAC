@@ -11,7 +11,7 @@ import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { formatAnalyzedDate } from '@/lib/date';
 import { useAppState } from '@/state/AppState';
-import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
+import { colors, layout, radius, shadow, spacing, typography } from '@/theme/tokens';
 
 type Overlay = 'none' | 'loading' | 'done';
 
@@ -80,21 +80,29 @@ export default function GoalScreen() {
       <AppButton label="맞춤형 목표로 설정하기" onPress={createRoutine} />
 
       <Modal transparent visible={overlay !== 'none'} animationType="fade" presentationStyle="overFullScreen" statusBarTranslucent>
-        <View style={[styles.overlayRoot, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <View style={styles.overlayRoot}>
+          {/* 흐림과 어둡게는 화면 전체를 덮는다 — 뒤가 한 뼘이라도 또렷하면 덮다 만 것으로 보인다. */}
           <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
           <View style={styles.dim} />
-          <View style={styles.overlayCenter}>
-            <AnalysisLogo completed={overlay === 'done'} />
-            <Text style={styles.overlayTitle}>{overlay === 'done' ? '목표 설계 완료!✓' : '목표 설계 중...'}</Text>
-            <Text style={styles.overlayDescription}>{overlay === 'done' ? '맞춤 루틴을 만들었어요.\n5초 후 루틴 화면으로 넘어가요.' : '분석 결과를 바탕으로\n맞춤 루틴을 만들고 있어요.'}</Text>
-            {/*
-              목표 생성은 폴링이 없는 동기 호출이라 **서버가 진행률을 주지 않는다.**
-              예전에는 `86%`가 박혀 있었는데, 늘 86%에 멈춘 게이지는 아무것도
-              알려주지 않으면서 알려주는 척한다. 퍼센트 없이 진행 중임만 보인다.
-            */}
-            {overlay === 'done' ? null : <ProgressGauge label="맞춤 루틴 만드는 중" />}
+          {/*
+            **내용은 본문과 같은 폭에 모은다.** 넓은 화면에서 이걸 빠뜨리면 버튼만
+            창 끝까지 늘어나 뒤에 비치는 본문 기둥과 폭이 어긋난다. `AppScreen`의
+            `shell`과 같은 규칙이고 `GoModal`도 카드에 maxWidth를 건다.
+          */}
+          <View style={[styles.overlayColumn, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 20) }]}>
+            <View style={styles.overlayCenter}>
+              <AnalysisLogo completed={overlay === 'done'} />
+              <Text style={styles.overlayTitle}>{overlay === 'done' ? '목표 설계 완료!✓' : '목표 설계 중...'}</Text>
+              <Text style={styles.overlayDescription}>{overlay === 'done' ? '맞춤 루틴을 만들었어요.\n5초 후 루틴 화면으로 넘어가요.' : '분석 결과를 바탕으로\n맞춤 루틴을 만들고 있어요.'}</Text>
+              {/*
+                목표 생성은 폴링이 없는 동기 호출이라 **서버가 진행률을 주지 않는다.**
+                예전에는 `86%`가 박혀 있었는데, 늘 86%에 멈춘 게이지는 아무것도
+                알려주지 않으면서 알려주는 척한다. 퍼센트 없이 진행 중임만 보인다.
+              */}
+              {overlay === 'done' ? null : <ProgressGauge label="맞춤 루틴 만드는 중" />}
+            </View>
+            {overlay === 'done' ? <View style={styles.overlayButton}><AppButton label="바로 루틴 확인하기" variant="secondary" onPress={openRoutines} /></View> : null}
           </View>
-          {overlay === 'done' ? <View style={styles.overlayButton}><AppButton label="바로 루틴 확인하기" variant="secondary" onPress={openRoutines} /></View> : null}
         </View>
       </Modal>
     </AppScreen>
@@ -163,7 +171,9 @@ const styles = StyleSheet.create({
   change: { gap: 8 },
   body: { ...typography.body, color: colors.textTertiary },
   question: { ...typography.label, color: colors.text, textAlign: 'center' },
-  overlayRoot: { flex: 1, paddingHorizontal: 45 },
+  overlayRoot: { flex: 1 },
+  // 본문(AppScreen.shell)과 같은 폭 규칙. 좁은 화면에서는 width가 이겨 그대로 돈다.
+  overlayColumn: { flex: 1, width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', paddingHorizontal: 45 },
   dim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(18,29,45,0.18)' },
   overlayCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   overlayTitle: { ...typography.title, color: colors.text, textAlign: 'center' },
