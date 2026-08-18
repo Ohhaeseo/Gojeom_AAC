@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { NativeModules, Pressable, StyleSheet, TurboModuleRegistry } from 'react-native';
 
 import { googleWebClientId } from '@/services/googleClient';
 
@@ -30,11 +30,34 @@ type GoogleSigninModule = typeof import('@react-native-google-signin/google-sign
  * <p>그래서 <b>누를 때</b> 불러오고, 없으면 문구로 알린다.
  */
 function loadGoogleSignin(): GoogleSigninModule | null {
+  if (!hasNativeGoogleSignin()) {
+    return null;
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('@react-native-google-signin/google-signin') as GoogleSigninModule;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 네이티브 쪽에 실제로 등록돼 있는지. <b>불러오기 전에</b> 묻는다.
+ *
+ * <p>{@code try/catch}로 감싸는 것만으로는 부족했다. Metro의 모듈 로더는 평가 중에
+ * 난 예외를 <b>스스로 붙잡아 LogBox에 치명적 오류로 보고</b>하고 {@code undefined}를
+ * 돌려준다. 우리 {@code catch}는 돌지 않는데 <b>빨간 화면은 그대로 뜬다.</b>
+ * 실제로 그렇게 물렸다 — 화면은 살아 있는데 오류 화면이 덮는다.
+ *
+ * <p>그래서 {@code getEnforcing}(없으면 던진다) 대신 {@code get}(없으면 null)으로
+ * 먼저 확인하고, 있을 때만 불러온다. 던질 일이 없으니 보고될 것도 없다.
+ */
+function hasNativeGoogleSignin(): boolean {
+  try {
+    return TurboModuleRegistry.get('RNGoogleSignin') != null
+        || NativeModules.RNGoogleSignin != null;
+  } catch {
+    return false;
   }
 }
 
