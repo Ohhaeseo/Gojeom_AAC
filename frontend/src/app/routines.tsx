@@ -50,6 +50,7 @@ type CardProps = {
   /** 순서 조작 UI(끌기 손잡이 + 위·아래). 목표가 하나뿐이면 없다. */
   controls?: ReactNode;
   onSelect: () => void;
+  onCalendar: () => void;
   onRename: () => void;
   onRemove: () => void;
   /** 알림 시각 편집 열기. */
@@ -66,7 +67,7 @@ type CardProps = {
  * **카드를 누르면 펼쳐지고, 이름 변경·삭제는 형제로 뺐다.** 카드 안에 넣으면
  * 누를 때 이벤트가 카드로 올라가 함께 발동한다. (오답 노트 N-11)
  */
-function RoutineCard({ item, selected, progress, dragging, controls, onSelect, onRename, onRemove, onNotify, notifyAt, notifyOwn }: CardProps) {
+function RoutineCard({ item, selected, progress, dragging, controls, onSelect, onCalendar, onRename, onRemove, onNotify, notifyAt, notifyOwn }: CardProps) {
   return (
     <View style={[styles.card, selected && styles.cardOn, dragging && styles.cardDragging]}>
       <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 선택`} onPress={onSelect} style={styles.cardBody}>
@@ -114,6 +115,9 @@ function RoutineCard({ item, selected, progress, dragging, controls, onSelect, o
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 알림 시각 바꾸기`} onPress={onNotify} style={styles.cardAction}>
           <Text style={styles.cardActionText}>알림 시각</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 캘린더 보기`} onPress={onCalendar} style={styles.cardAction}>
+          <Text style={styles.cardActionText}>캘린더</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 삭제`} onPress={onRemove} style={styles.cardAction}>
           <Text style={[styles.cardActionText, styles.cardActionDanger]}>삭제</Text>
@@ -304,6 +308,7 @@ export default function RoutinesScreen() {
                   dragging={dragging}
                   controls={items.length > 1 ? controls : null}
                   onSelect={() => select(item.routineId)}
+                  onCalendar={() => router.push({ pathname: '/routine-calendar', params: { routineId: item.routineId } })}
                   onRename={() => { setRenaming(item); setNameDraft(item.title); }}
                   onRemove={() => setRemoving(item)}
                   onNotify={() => { setNotifying(item); setTimeDraft(toTimeDigits(item.notifyTime)); }}
