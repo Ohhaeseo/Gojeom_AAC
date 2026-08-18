@@ -13,5 +13,8 @@ public enum AiStage {
     KEYWORD_EXTRACTION,
     RESULT_GENERATION,
     IMAGE_GENERATION,
-    ROUTINE_GENERATION
+    ROUTINE_GENERATION,
+
+    /** 분석 결과 → 어울리는 상품 고르기. 분석에 속하므로 analysis_id가 있다. */
+    PRODUCT_RECOMMENDATION
 }

@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { ProductCard } from '@/components/product/ProductShelf';
-import { ingredientGuide, recommendProducts } from '@/data/products';
+import { ingredientGuide, productsByIds, recommendProducts, type Product } from '@/data/products';
+import * as backend from '@/services/backend';
 import { colors, fonts, radius, spacing, typography } from '@/theme/tokens';
 
 type Props = {
@@ -11,6 +13,8 @@ type Props = {
    * 추천할 근거가 없다.
    */
   basis: string;
+  /** 결과 id. 있으면 **AI가 고른 추천**을 먼저 물어본다. */
+  resultId?: string;
 };
 
 /**
@@ -22,10 +26,31 @@ type Props = {
  *
  * <p>추천 이유를 함께 적는다. 왜 이것이 나왔는지 모르면 광고로 읽힌다.
  */
-export function ProductRecommendation({ basis }: Props) {
+export function ProductRecommendation({ basis, resultId }: Props) {
+  /**
+   * AI가 고른 추천. **없으면 규칙으로 고른다.**
+   *
+   * 서버가 느리거나 실패해도 화면이 비지 않게 규칙 기반을 먼저 그려 두고, 답이
+   * 오면 갈아끼운다. 곁다리 기능이 본 화면을 붙잡고 있으면 안 된다.
+   */
+  const [aiPicked, setAiPicked] = useState<{ products: Product[]; reason: string | null }>();
+  useEffect(() => {
+    if (!resultId) return;
+    let alive = true;
+    backend.getProductRecommendation(resultId)
+      .then((data) => {
+        if (!alive) return;
+        setAiPicked({ products: productsByIds(data.productIds), reason: data.reason });
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [resultId]);
+
   if (!basis.trim()) return null;
 
-  const picked = recommendProducts(basis);
+  // AI가 골랐으면 그것을, 아직이거나 못 골랐으면 규칙으로 고른 것을 쓴다.
+  const picked = aiPicked?.products.length ? aiPicked.products : recommendProducts(basis);
+  const reason = aiPicked?.products.length ? aiPicked.reason : null;
   const guide = ingredientGuide(basis);
 
   return (
@@ -33,7 +58,8 @@ export function ProductRecommendation({ basis }: Props) {
       <Text style={styles.sectionTitle}>분석 결과로 고른 제품</Text>
       {picked.length ? (
         <>
-          <Text style={styles.lead}>이번 분석에서 나온 피부 고민에 맞춰 골랐어요.</Text>
+          {/* 왜 이것이 나왔는지 밝힌다. 이유 없이 상품만 뜨면 광고로 읽힌다. */}
+          <Text style={styles.lead}>{reason ?? '이번 분석에서 나온 피부 고민에 맞춰 골랐어요.'}</Text>
           <View style={styles.grid}>
             {picked.map((product) => <ProductCard key={product.id} product={product} />)}
           </View>

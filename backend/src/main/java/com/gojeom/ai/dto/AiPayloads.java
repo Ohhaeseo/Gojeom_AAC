@@ -27,6 +27,21 @@ public final class AiPayloads {
     public record KeywordExtraction(List<ExtractedKeyword> keywords) {
     }
 
+    /**
+     * 상품 추천. (피드백 11번)
+     *
+     * <p><b>{@code productIds}가 비어 있는 것이 정상 답</b>이다 — 어울리는 것이 없으면
+     * 없다고 말하게 뒀다. 그때 화면은 성분 이야기로 대신한다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ProductRecommendation(List<String> productIds, String reason) {
+
+        @JsonIgnore
+        public String userFacingText() {
+            return reason == null ? "" : reason;
+        }
+    }
+
     /** {@code category}는 4종이다. 얼굴 키워드를 담아야 하므로 {@link Category}가 아니다. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ExtractedKeyword(String label, String reason, KeywordCategory category) {

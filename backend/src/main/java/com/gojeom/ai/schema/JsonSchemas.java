@@ -240,6 +240,7 @@ public class JsonSchemas {
     private final JsonNode routineFromAnalysis;
     private final JsonNode routineStandalone;
     private final JsonNode inbodyOcr;
+    private final JsonNode productRecommendation;
 
     /**
      * 스키마를 <b>기동 시점에</b> 파싱한다. 오타가 있으면 첫 AI 호출이 아니라
@@ -252,7 +253,36 @@ public class JsonSchemas {
         this.routineFromAnalysis = parse(objectMapper, ROUTINE_FROM_ANALYSIS);
         this.routineStandalone = parse(objectMapper, ROUTINE_STANDALONE);
         this.inbodyOcr = parse(objectMapper, INBODY_OCR);
+        this.productRecommendation = parse(objectMapper, PRODUCT_RECOMMENDATION);
     }
+
+    /**
+     * 상품 추천. (피드백 11번)
+     *
+     * <p><b>{@code productIds}는 비어 있어도 된다.</b> 억지로 고르게 하면 관계없는
+     * 상품이 "당신을 위한 추천"으로 나간다. 없으면 없다고 답하게 두고, 그때는
+     * 화면이 성분 이야기로 대신한다.
+     *
+     * <p>{@code reason}은 <b>왜 이것을 골랐는지</b>다. 이유 없이 상품만 뜨면 광고로
+     * 읽힌다. 효능을 약속하는 말이 섞이지 않게 길이를 짧게 묶는다.
+     */
+    private static final String PRODUCT_RECOMMENDATION = """
+            {
+              "name": "product_recommendation",
+              "strict": true,
+              "schema": {
+                "type": "object", "additionalProperties": false,
+                "required": ["productIds", "reason"],
+                "properties": {
+                  "productIds": {
+                    "type": "array", "maxItems": 3,
+                    "items": { "type": "string", "maxLength": 40 }
+                  },
+                  "reason": { "type": "string", "maxLength": 80 }
+                }
+              }
+            }
+            """;
 
     private JsonNode parse(ObjectMapper objectMapper, String json) {
         try {
@@ -280,6 +310,10 @@ public class JsonSchemas {
 
     public JsonNode routineStandalone() {
         return routineStandalone;
+    }
+
+    public JsonNode productRecommendation() {
+        return productRecommendation;
     }
 
     public JsonNode inbodyOcr() {

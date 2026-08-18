@@ -406,3 +406,12 @@ export const updateNotificationSettings = (patch: { enabled?: boolean; defaultTi
 /** Expo 푸시 토큰 등록. 같은 토큰을 다시 보내면 서버가 지금 사용자에게 옮겨 붙인다. */
 export const registerDeviceToken = (token: string, platform: 'WEB' | 'IOS' | 'ANDROID') =>
   request<void>('/notifications/device-tokens', { method: 'POST', body: { token, platform } });
+
+/**
+ * 이 분석 결과에 어울리는 상품. **AI가 고른다.** (피드백 11번)
+ *
+ * 서버는 id만 준다 — 사진·링크·설명은 `src/data/products.ts`가 갖고 있다.
+ * 모르는 id가 오면 화면이 조용히 건너뛴다. `productIds`가 비어 있는 것도 정상 답이다.
+ */
+export const getProductRecommendation = (resultId: string) =>
+  request<{ productIds: string[]; reason: string | null }>(`/results/${resultId}/product-recommendation`);

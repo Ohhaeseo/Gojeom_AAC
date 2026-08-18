@@ -23,7 +23,22 @@ export type Product = {
   tags: string[];
   /** 한 줄 설명. **무엇을 겨냥한 제품인지**만 적는다. (PRD G-3) */
   summary: string;
-  /** 이 제품을 권할 만한 고민 낱말. 분석 결과 문장과 맞춰본다. */
+  /**
+   * 같은 제품의 다른 용량을 묶는 열쇠.
+   *
+   * <b>50ml와 15ml를 나란히 추천하지 않는다.</b> 같은 크림이 두 줄로 나오면 고를 것이
+   * 늘어난 것이 아니라 자리만 차지한다. 추천에서는 한 줄만 남긴다.
+   */
+  family: string;
+  /**
+   * 이 제품을 권할 만한 고민 낱말. 분석 결과 문장과 맞춰본다.
+   *
+   * <b>한 글자짜리를 쓰지 않는다.</b> `결`은 `결과`·`해결`에도 들어 있어 엉뚱하게
+   * 걸린다. `피부결`처럼 그 자체로 뜻이 서는 낱말만 쓴다.
+   *
+   * <b>지시하는 말을 넣지 않는다.</b> `집중`은 "집중해보세요"라는 안내 문장에 늘
+   * 들어 있어 아무 고민에나 걸렸다.
+   */
   concerns: string[];
   image: ImageSourcePropType;
 };
@@ -45,7 +60,8 @@ export const PRODUCTS: Product[] = [
     group: 'SOOTHE',
     tags: ['피부 진정', '장벽 회복', '수분 크림'],
     summary: '진정과 수분에 초점을 둔 수딩 크림이에요.',
-    concerns: ['진정', '붉', '열감', '수분', '건조', '보습', '예민', '자극'],
+    family: 'blue-repair',
+    concerns: ['붉은기', '진정', '열감', '예민', '자극', '건조', '당김', '보습'],
     image: require('../../assets/products/blue-repair-soothing-cream.png'),
   },
   {
@@ -55,7 +71,8 @@ export const PRODUCTS: Product[] = [
     group: 'SOOTHE',
     tags: ['피부 진정', '집중 보습', '마스크팩'],
     summary: '마스크와 크림을 함께 쓰는 집중 보습 솔루션이에요.',
-    concerns: ['진정', '수분', '건조', '보습', '집중'],
+    family: 'blue-repair-mask',
+    concerns: ['진정', '건조', '당김', '보습', '푸석'],
     image: require('../../assets/products/blue-repair-solution.png'),
   },
   {
@@ -65,7 +82,8 @@ export const PRODUCTS: Product[] = [
     group: 'BARRIER',
     tags: ['피부 장벽', '피부 진정', '재생 크림'],
     summary: '피부 장벽 관리에 초점을 둔 크림이에요.',
-    concerns: ['장벽', '예민', '자극', '건조', '진정', '결'],
+    family: 'core-rebuild',
+    concerns: ['장벽', '트러블', '예민', '자극', '각질'],
     image: require('../../assets/products/core-rebuild-cream-50.png'),
   },
   {
@@ -75,7 +93,8 @@ export const PRODUCTS: Product[] = [
     group: 'BARRIER',
     tags: ['피부 장벽', '피부 진정', '휴대용 크림'],
     summary: '50ml와 같은 크림의 휴대용 용량이에요.',
-    concerns: ['장벽', '예민', '자극', '건조', '휴대'],
+    family: 'core-rebuild',
+    concerns: ['장벽', '트러블', '예민', '자극', '각질'],
     image: require('../../assets/products/core-rebuild-cream-15.png'),
   },
   {
@@ -85,7 +104,8 @@ export const PRODUCTS: Product[] = [
     group: 'CLEANSE',
     tags: ['피부 정화', '수분 균형', '저자극 토너'],
     summary: '피부를 정돈하고 수분 균형을 잡는 겔 토너예요.',
-    concerns: ['모공', '결', '정돈', '유분', '각질', '수분', '균형'],
+    family: 'clarify',
+    concerns: ['모공', '피부결', '유분', '번들', '각질', '피지'],
     image: require('../../assets/products/clarify-gel-toner.png'),
   },
   {
@@ -95,7 +115,8 @@ export const PRODUCTS: Product[] = [
     group: 'SUN',
     tags: ['자외선 차단', '안티에이징', '데일리 선케어'],
     summary: '매일 쓰는 용량의 선 에센스예요.',
-    concerns: ['자외선', '선케어', '주름', '탄력', '톤'],
+    family: 'sun-essence',
+    concerns: ['자외선', '선케어', '주름', '탄력', '색소', '잡티', '피부톤'],
     image: require('../../assets/products/sun-essence-30.png'),
   },
   {
@@ -105,7 +126,8 @@ export const PRODUCTS: Product[] = [
     group: 'SUN',
     tags: ['자외선 차단', '안티에이징', '휴대용 선케어'],
     summary: '덧바르기 좋은 휴대용 선 에센스예요.',
-    concerns: ['자외선', '선케어', '외출', '휴대', '주름'],
+    family: 'sun-essence',
+    concerns: ['자외선', '선케어', '주름', '탄력', '색소', '잡티', '피부톤'],
     image: require('../../assets/products/sun-essence-10.png'),
   },
   {
@@ -115,6 +137,7 @@ export const PRODUCTS: Product[] = [
     group: 'ACCESSORY',
     tags: ['선케어 액세서리', '휴대용 케이스', '선 에센스 전용'],
     summary: '선 에센스를 가방에 걸어 두는 전용 키링이에요.',
+    family: 'keyring',
     // 화장품이 아니라 액세서리다. 피부 고민으로 추천하지 않는다.
     concerns: [],
     image: require('../../assets/products/portable-keyring.png'),
@@ -136,15 +159,33 @@ export function recommendProducts(text: string, limit = 3): Product[] {
   const haystack = text.replace(/\s+/g, '');
   if (!haystack) return [];
 
-  return PRODUCTS
+  const scored = PRODUCTS
     .map((product) => ({
       product,
-      hits: product.concerns.filter((word) => haystack.includes(word)).length,
+      /**
+       * 걸린 낱말 수를 <b>제품이 가진 낱말 수로 나눈다.</b>
+       *
+       * 개수만 세면 낱말을 많이 달아둔 제품이 무슨 고민에나 1등으로 올라온다.
+       * 실제로 그랬다 — 코어 리빌드가 네 사례 중 셋에 끼어 있었다. 비율로 보면
+       * "이 고민을 얼마나 정면으로 겨냥하는 제품인지"에 가까워진다.
+       */
+      fit: product.concerns.length
+        ? product.concerns.filter((word) => haystack.includes(word)).length / product.concerns.length
+        : 0,
     }))
-    .filter((entry) => entry.hits > 0)
-    .sort((a, b) => b.hits - a.hits)
-    .slice(0, limit)
-    .map((entry) => entry.product);
+    .filter((entry) => entry.fit > 0)
+    .sort((a, b) => b.fit - a.fit);
+
+  // 같은 제품의 다른 용량은 하나만 남긴다. (50ml와 15ml가 나란히 나오지 않게)
+  const seen = new Set<string>();
+  const picked: Product[] = [];
+  for (const entry of scored) {
+    if (seen.has(entry.product.family)) continue;
+    seen.add(entry.product.family);
+    picked.push(entry.product);
+    if (picked.length === limit) break;
+  }
+  return picked;
 }
 
 /**
@@ -200,4 +241,11 @@ export function ingredientGuide(text: string): IngredientGuide {
   const haystack = text.replace(/\s+/g, '');
   return INGREDIENT_GUIDES.find((guide) => guide.keywords.some((word) => haystack.includes(word)))
     ?? DEFAULT_GUIDE;
+}
+
+/** id로 상품을 찾는다. **모르는 id는 건너뛴다** — 서버 목록이 앞서 갈 수 있다. */
+export function productsByIds(ids: string[]): Product[] {
+  return ids
+    .map((id) => PRODUCTS.find((product) => product.id === id))
+    .filter((product): product is Product => Boolean(product));
 }

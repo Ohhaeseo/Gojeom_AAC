@@ -78,3 +78,37 @@ describe('ingredientGuide', () => {
     });
   });
 });
+
+describe('다듬은 낱말 규칙', () => {
+  // `결`은 `결과`·`해결`에도 들어 있다. 한 글자짜리를 쓰지 않는 이유다.
+  it('한 글자짜리 고민 낱말을 쓰지 않는다', () => {
+    PRODUCTS.forEach((product) => {
+      product.concerns.forEach((word) => expect(word.length).toBeGreaterThan(1));
+    });
+  });
+
+  it('안내 문장에 흔한 말이 고민 낱말에 없다', () => {
+    const banned = ['집중', '관리', '유지', '정돈', '균형', '휴대'];
+    PRODUCTS.forEach((product) => {
+      product.concerns.forEach((word) => expect(banned).not.toContain(word));
+    });
+  });
+
+  // 같은 크림이 두 줄로 나오면 고를 것이 늘어난 게 아니라 자리만 차지한다.
+  it('같은 제품의 다른 용량을 나란히 추천하지 않는다', () => {
+    const picked = recommendProducts('자외선과 주름, 탄력이 신경 쓰여요', 3);
+    const families = picked.map((p) => p.family);
+
+    expect(new Set(families).size).toBe(families.length);
+  });
+
+  /**
+   * 낱말을 많이 달아둔 제품이 무슨 고민에나 1등으로 올라오던 문제.
+   * 비율로 재면 그 고민을 정면으로 겨냥하는 제품이 앞에 온다.
+   */
+  it('고민을 정면으로 겨냥하는 제품이 앞에 온다', () => {
+    expect(recommendProducts('모공이 도드라지고 유분이 많아요')[0]?.id).toBe('clarify-gel-toner');
+    expect(recommendProducts('피부톤과 자외선이 신경 쓰여요')[0]?.family).toBe('sun-essence');
+    expect(recommendProducts('트러블이 반복되고 각질이 일어나요')[0]?.family).toBe('core-rebuild');
+  });
+});

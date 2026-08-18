@@ -222,7 +222,7 @@ export default function HomeScreen() {
             없으면 추천 블록은 스스로 아무것도 그리지 않는다 — 근거 없이 "당신을
             위한 추천"이라고 말하지 않는다.
           */}
-          <ProductRecommendation basis={recommendBasis} />
+          <ProductRecommendation basis={recommendBasis} resultId={result?.resultId ?? latestSaved?.resultId} />
           <ProductShelf />
         </>
       ) : (
