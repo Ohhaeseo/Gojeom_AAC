@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { GoModal } from '@/components/ui/GoModal';
+import { pushMessage, registerForPush } from '@/services/push';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -32,6 +33,21 @@ export default function SettingsScreen() {
     router.replace('/home');
   };
 
+  /**
+   * 알림 권한 확인. **밑줄이 그어져 있으면 눌리는 것이어야 한다.**
+   *
+   * 예전에는 문구만 있고 `onPress`가 없어, 눌러도 아무 일이 없었다. 라벨이 하는
+   * 말과 동작이 다른 자리였다.
+   *
+   * 실제로 권한을 물어보고 그 결과를 그대로 알려준다. 이미 허락했으면 다시 묻지
+   * 않고 잘 되고 있다고 말한다. (`services/push`)
+   */
+  const checkPermission = async () => {
+    setError('');
+    const result = await registerForPush();
+    setError(result.ok ? '알림을 받을 수 있어요. 기기가 등록됐어요.' : (pushMessage(result) ?? ''));
+  };
+
   const apply = async (patch: { enabled?: boolean; defaultTime?: string }) => {
     setError('');
     const outcome = await updateNotificationSettings(patch);
@@ -52,12 +68,12 @@ export default function SettingsScreen() {
         {open ? <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.options}>{times.map((time) => <Pressable key={time} onPress={() => { setOpen(false); void apply({ defaultTime: time }); }} style={styles.option}><Text style={styles.optionText}>{time}</Text></Pressable>)}</ScrollView> : null}
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <View style={styles.card}><Text style={styles.label}>알림 권한 설정</Text><Text style={styles.description}>알림을 받으려면 기기에서 GO.의 알림 권한을 허용해야 해요.{`\n`}권한을 허용하지 않으면 알림이 전송되지 않아요.</Text><Text style={styles.underline}>알림 권한 확인하기</Text></View>
+      <View style={styles.card}><Text style={styles.label}>알림 권한 설정</Text><Text style={styles.description}>알림을 받으려면 기기에서 GO.의 알림 권한을 허용해야 해요.{`\n`}권한을 허용하지 않으면 알림이 전송되지 않아요.</Text><Text accessibilityRole="button" accessibilityLabel="알림 권한 확인하기" onPress={checkPermission} style={styles.underline}>알림 권한 확인하기</Text></View>
       <View style={styles.card}><Text style={styles.label}>개인정보 보호 안내</Text><Text style={styles.description}>얼굴 사진과 건강 정보는 분석 및 개인화 결과 제공 목적으로만 사용되며, 다른 사용자나 공개 영역에 노출되지 않습니다.</Text></View>
-      <Text onPress={() => setRemove(true)} style={styles.danger}>원본 사진, 분석 정보 삭제</Text>
+      <Text accessibilityRole="button" accessibilityLabel="원본 사진과 분석 정보 삭제" onPress={() => setRemove(true)} style={styles.danger}>원본 사진, 분석 정보 삭제</Text>
       <View style={styles.accountRow}>
-        <Text onPress={() => setExit(true)} style={styles.action}>로그아웃</Text>
-        <Text onPress={() => setWithdraw(true)} style={styles.withdraw}>회원 탈퇴</Text>
+        <Text accessibilityRole="button" accessibilityLabel="로그아웃" onPress={() => setExit(true)} style={styles.action}>로그아웃</Text>
+        <Text accessibilityRole="button" accessibilityLabel="회원 탈퇴" onPress={() => setWithdraw(true)} style={styles.withdraw}>회원 탈퇴</Text>
       </View>
 
       <GoModal visible={exit} title="로그아웃할까요?" description="계정에 저장된 정보는 유지되며 다시 로그인하면 이어서 사용할 수 있어요." confirmLabel="로그아웃" onClose={() => setExit(false)} onConfirm={() => { void logout(); setExit(false); router.replace('/auth'); }} />

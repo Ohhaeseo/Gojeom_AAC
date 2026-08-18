@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
 import type { ConsentCode } from '@/lib/consent';
-import { ApiError, isMockMode } from '@/services/api';
+import { router } from 'expo-router';
+
+import { ApiError, isMockMode, onSessionExpired } from '@/services/api';
 import * as backend from '@/services/backend';
 import { pushMessage, registerForPush } from '@/services/push';
 import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
@@ -141,7 +143,8 @@ type AppStateValue = {
 
   // ---- 목표 목록 (경로 A·B 공통)
   routines: backend.RoutineSummary[];
-  loadRoutines: () => Promise<void>;
+  /** 목표 목록. **실패를 삼키지 않는다** — 못 불러온 것과 없는 것은 다르다. */
+  loadRoutines: () => Promise<ActionResult>;
   /** 목록에서 고른 목표의 태스크를 화면에 올린다. */
   openRoutine: (routineId: string) => Promise<ActionResult>;
   /**
@@ -386,6 +389,22 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     analysisId.current = undefined;
     setActiveRoutineId(undefined);
   }, [setActiveRoutineId]);
+
+  /**
+   * 세션이 끊기면 **로그인 화면으로 보낸다.**
+   *
+   * 통신 층은 세션을 지우고 알려주기만 한다(`onSessionExpired`). 무엇을 할지는
+   * 여기서 정한다 — 메모리에 남은 남의 데이터를 비우고 인증 화면으로 옮긴다.
+   *
+   * <b>지우기만 하고 두면 잠금 화면이 뜬 홈이 남는다.</b> 사용자는 그것을 "로그인이
+   * 풀렸다"가 아니라 "내 데이터가 사라졌다"로 읽는다. (API.md §2)
+   */
+  useEffect(() => onSessionExpired(() => {
+    resetServerState();
+    setCurrentAccountId(undefined);
+    router.replace('/auth');
+  }), [resetServerState]);
+
 
   // ---------------------------------------------------------------- 계정
 
@@ -792,10 +811,21 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode, result, setActiveRoutineId]);
 
-  const loadRoutines = useCallback(async () => {
-    if (mode === 'mock') { setRoutines([]); return; }
-    const loaded = await backend.listRoutines().catch(() => undefined);
-    if (loaded) setRoutines(loaded.items);
+  /**
+   * 목표 목록을 읽는다.
+   *
+   * <b>못 불러온 것과 없는 것을 구분해 돌려준다.</b> 예전에는 실패를 삼키고
+   * 빈 목록을 그대로 뒀는데, 그러면 서버가 죽었을 때 화면이 "아직 만든 목표가
+   * 없어요"라고 **단정한다.** 목표는 멀쩡히 있는데 사라졌다고 말하는 셈이다.
+   */
+  const loadRoutines = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') { setRoutines([]); return { ok: true }; }
+    try {
+      setRoutines((await backend.listRoutines()).items);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 불러오지 못했어요.') };
+    }
   }, [mode]);
 
   /**

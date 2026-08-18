@@ -124,8 +124,27 @@ async function tryRefresh(): Promise<boolean> {
     await updateTokens(tokens.accessToken, tokens.refreshToken);
     return true;
   } catch {
-    // refresh도 만료됐다. 로그인 화면으로 돌아가야 한다.
+    // refresh도 만료됐다. 세션을 지우고 **화면에 알린다.**
     await clearSession();
+    expiredHandlers.forEach((handler) => handler());
     return false;
   }
+}
+
+/**
+ * 세션이 끊겼을 때 부를 것들.
+ *
+ * <b>여기서 직접 화면을 옮기지 않는다.</b> 이 파일은 통신만 하는 층이라 라우터를
+ * 알면 테스트도 어려워지고 의존이 거꾸로 선다. 대신 알려주기만 하고, 무엇을 할지는
+ * 화면 쪽(`AppState`)이 정한다.
+ *
+ * <b>예전에는 세션만 지우고 아무에게도 알리지 않았다.</b> 그래서 만료된 사용자가
+ * 잠금 화면이 뜬 홈을 보며 "내 데이터가 사라졌다"고 읽었다.
+ */
+type ExpiredHandler = () => void;
+const expiredHandlers = new Set<ExpiredHandler>();
+
+export function onSessionExpired(handler: ExpiredHandler): () => void {
+  expiredHandlers.add(handler);
+  return () => expiredHandlers.delete(handler);
 }

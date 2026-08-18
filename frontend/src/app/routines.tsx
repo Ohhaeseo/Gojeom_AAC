@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { FormField } from '@/components/ui/FormField';
+import { AppButton } from '@/components/ui/AppButton';
 import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
 import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits } from '@/lib/date';
@@ -131,6 +132,8 @@ export default function RoutinesScreen() {
   } = useAppState();
   const [selectedId, setSelectedId] = useState<string | undefined>(activeRoutineId);
   const [loading, setLoading] = useState(true);
+  /** 목록을 **못 불러온** 상태. 빈 목록과 구분해야 한다. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   const [renaming, setRenaming] = useState<RoutineSummary>();
   const [removing, setRemoving] = useState<RoutineSummary>();
@@ -200,8 +203,11 @@ export default function RoutinesScreen() {
     let alive = true;
     void loadNotificationSettings();
     loadDrawer().then((d) => { if (alive) setSavedCount(d.all.length); }).catch(() => { if (alive) setSavedCount(0); });
+    // **못 불러온 것과 없는 것을 구분한다.** 삼키면 아래에서 "목표가 없어요"라고
+    // 단정하게 되는데, 서버가 죽었을 뿐 목표는 멀쩡히 있을 수 있다.
     loadRoutines()
-      .catch(() => { if (alive) setError('목표를 불러오지 못했어요.'); })
+      .then((outcome) => { if (alive) setLoadFailed(!outcome.ok); })
+      .catch(() => { if (alive) setLoadFailed(true); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [loadRoutines, loadNotificationSettings, loadDrawer]));
@@ -224,6 +230,22 @@ export default function RoutinesScreen() {
 
   if (loading && !routines.length) {
     return <AppScreen navigation contentStyle={styles.content}><ActivityIndicator color={colors.primary} style={styles.loading} /></AppScreen>;
+  }
+
+  /*
+    못 불러왔으면 **"없다"고 말하지 않는다.** 목표가 있는 사람에게 없다고 하면
+    데이터가 사라진 줄 안다. 무엇이 잘못됐고 무엇을 하면 되는지만 말한다.
+  */
+  if (loadFailed && !routines.length) {
+    return (
+      <AppScreen navigation contentStyle={styles.content}>
+        <View style={styles.emptyHead}>
+          <Text style={styles.title}>목표를 불러오지 못했어요</Text>
+          <Text style={styles.lead}>연결을 확인하고 다시 시도해주세요. 저장된 목표는 그대로 있어요.</Text>
+        </View>
+        <AppButton label="다시 시도" onPress={() => { setLoading(true); void loadRoutines().then((o) => { setLoadFailed(!o.ok); setLoading(false); }); }} />
+      </AppScreen>
+    );
   }
 
   if (!routines.length) return <EmptyRoutines savedCount={savedCount} error={error} />;
