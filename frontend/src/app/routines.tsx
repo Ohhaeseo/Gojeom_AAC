@@ -9,7 +9,7 @@ import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { FormField } from '@/components/ui/FormField';
 import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
-import { formatAnalyzedDate } from '@/lib/date';
+import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits } from '@/lib/date';
 import { todayTasks } from '@/lib/tasks';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
@@ -51,6 +51,12 @@ type CardProps = {
   onSelect: () => void;
   onRename: () => void;
   onRemove: () => void;
+  /** 알림 시각 편집 열기. */
+  onNotify: () => void;
+  /** 이 목표에 실제로 적용되는 알림 시각 `HH:mm`. */
+  notifyAt: string;
+  /** 목표가 자기 시각을 갖고 있는지. 아니면 기본 시각을 따르는 중이다. (V12) */
+  notifyOwn: boolean;
 };
 
 /**
@@ -59,7 +65,7 @@ type CardProps = {
  * **카드를 누르면 펼쳐지고, 이름 변경·삭제는 형제로 뺐다.** 카드 안에 넣으면
  * 누를 때 이벤트가 카드로 올라가 함께 발동한다. (오답 노트 N-11)
  */
-function RoutineCard({ item, selected, progress, dragging, controls, onSelect, onRename, onRemove }: CardProps) {
+function RoutineCard({ item, selected, progress, dragging, controls, onSelect, onRename, onRemove, onNotify, notifyAt, notifyOwn }: CardProps) {
   return (
     <View style={[styles.card, selected && styles.cardOn, dragging && styles.cardDragging]}>
       <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 선택`} onPress={onSelect} style={styles.cardBody}>
@@ -86,6 +92,16 @@ function RoutineCard({ item, selected, progress, dragging, controls, onSelect, o
             <Text style={styles.dietText}>{item.dietGuide}</Text>
           </View>
         ) : null}
+        {/*
+          이 목표에 **실제로 적용되는** 시각을 보여준다. 목표가 자기 값을 갖고
+          있지 않으면 기본 시각을 따르는 중이라는 것을 밝힌다 — 빈칸으로 두면
+          "알림이 없다"로 읽힌다. (V12)
+        */}
+        {selected ? (
+          <Text style={styles.notifyLine}>
+            알림 {notifyAt}{notifyOwn ? '' : ' · 기본 시각을 따르는 중'}
+          </Text>
+        ) : null}
       </Pressable>
       {/*
         순서 조작은 카드 Pressable **밖**이다. 안에 넣으면 끌거나 누를 때 이벤트가
@@ -94,6 +110,9 @@ function RoutineCard({ item, selected, progress, dragging, controls, onSelect, o
       <View style={styles.cardActions}>
         <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 이름 바꾸기`} onPress={onRename} style={styles.cardAction}>
           <Text style={styles.cardActionText}>이름 바꾸기</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 알림 시각 바꾸기`} onPress={onNotify} style={styles.cardAction}>
+          <Text style={styles.cardActionText}>알림 시각</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 삭제`} onPress={onRemove} style={styles.cardAction}>
           <Text style={[styles.cardActionText, styles.cardActionDanger]}>삭제</Text>
@@ -108,7 +127,7 @@ export default function RoutinesScreen() {
   const {
     routines, loadRoutines, openRoutine, tasks, toggleTask, loadDrawer, activeRoutineId,
     renameRoutine, deleteRoutine, reorderRoutines,
-    notificationSettings, loadNotificationSettings, updateNotificationSettings,
+    notificationSettings, loadNotificationSettings, updateNotificationSettings, setRoutineNotifyTime,
   } = useAppState();
   const [selectedId, setSelectedId] = useState<string | undefined>(activeRoutineId);
   const [loading, setLoading] = useState(true);
@@ -116,6 +135,9 @@ export default function RoutinesScreen() {
   const [renaming, setRenaming] = useState<RoutineSummary>();
   const [removing, setRemoving] = useState<RoutineSummary>();
   const [nameDraft, setNameDraft] = useState('');
+  const [notifying, setNotifying] = useState<RoutineSummary>();
+  // 숫자만 들고 있다가 보낼 때 HH:mm으로 바꾼다. (`lib/date`)
+  const [timeDraft, setTimeDraft] = useState('');
   const [busy, setBusy] = useState(false);
 
   const commitRename = async () => {
@@ -124,6 +146,23 @@ export default function RoutinesScreen() {
     const outcome = await renameRoutine(renaming.routineId, nameDraft);
     setBusy(false); setRenaming(undefined);
     if (!outcome.ok) setError(outcome.message ?? '목표 이름을 바꾸지 못했어요.');
+  };
+
+  /**
+   * 알림 시각 저장. `undefined`를 보내면 기본 시각을 따르도록 되돌린다.
+   *
+   * <b>비우고 저장하면 지우는 것</b>이다. "정하지 않음"과 "지움"을 따로 둘 이유가
+   * 없어 같은 동작으로 묶었다. (V12)
+   */
+  const commitNotify = async (clear = false) => {
+    if (!notifying) return;
+    setBusy(true);
+    const outcome = await setRoutineNotifyTime(
+      notifying.routineId,
+      clear ? undefined : toApiTime(timeDraft),
+    );
+    setBusy(false); setNotifying(undefined);
+    if (!outcome.ok) setError(outcome.message ?? '알림 시각을 바꾸지 못했어요.');
   };
 
   /**
@@ -191,6 +230,7 @@ export default function RoutinesScreen() {
 
   const current = routines.find((item) => item.routineId === selectedId) ?? first;
   const done = tasks.filter((task) => task.status === 'DONE').length;
+  const timeCheck = checkTime(timeDraft);
   const today = todayTasks(tasks);
 
   return (
@@ -238,6 +278,9 @@ export default function RoutinesScreen() {
                   onSelect={() => select(item.routineId)}
                   onRename={() => { setRenaming(item); setNameDraft(item.title); }}
                   onRemove={() => setRemoving(item)}
+                  onNotify={() => { setNotifying(item); setTimeDraft(toTimeDigits(item.notifyTime)); }}
+                  notifyAt={item.notifyTime ?? notificationSettings.defaultTime}
+                  notifyOwn={item.notifyTime != null}
                 />
               )}
             />
@@ -275,6 +318,39 @@ export default function RoutinesScreen() {
       >
         <FormField value={nameDraft} onChangeText={(value) => setNameDraft(value.slice(0, 60))} placeholder="목표 이름을 입력해주세요." autoFocus />
         <Text style={styles.counter}>{nameDraft.length}/60</Text>
+      </GoModal>
+
+      {/*
+        목표별 알림 시각. (V12)
+
+        **켜고 끄는 것은 여기 없다** — on/off는 사용자 단위라 아래 "알림 설정"
+        토글 하나가 갖는다. 목표마다 두면 "전체는 껐는데 목표는 켜져 있다"는
+        상태가 생긴다.
+      */}
+      <GoModal
+        visible={Boolean(notifying)}
+        title="알림 시각"
+        description={`"${notifying?.title ?? ''}"의 알림을 받을 시각이에요. 비워두면 기본 시각(${notificationSettings.defaultTime})을 따라요.`}
+        confirmLabel={busy ? '저장 중...' : '저장하기'}
+        confirmDisabled={!timeCheck.ok || busy}
+        onClose={() => setNotifying(undefined)}
+        onConfirm={() => void commitNotify()}
+      >
+        <FormField
+          value={formatTimeInput(timeDraft)}
+          onChangeText={(value) => setTimeDraft(value.replace(/\D/g, '').slice(0, 4))}
+          keyboardType="number-pad"
+          placeholder="예) 07:30"
+          error={timeCheck.message}
+          autoFocus
+        />
+        {/*
+          되돌리는 길을 확인 버튼과 **따로** 둔다. 입력을 지우고 저장하는 것으로
+          대신하면 "빈칸 = 지움"을 사용자가 알아내야 한다.
+        */}
+        <Pressable accessibilityRole="button" onPress={() => void commitNotify(true)} disabled={busy} style={styles.clearNotify}>
+          <Text style={styles.clearNotifyText}>기본 시각 따르기</Text>
+        </Pressable>
       </GoModal>
 
       {/* 태스크가 함께 지워진다는 것을 미리 알린다. 되돌릴 수 없다. */}
@@ -341,6 +417,9 @@ const styles = StyleSheet.create({
   groupTitle: { ...typography.label, color: colors.textTertiary, marginTop: 4 },
   groupCount: { color: colors.primary, fontWeight: '700' },
   goalText: { ...typography.caption, color: colors.textTertiary, fontStyle: 'italic' },
+  notifyLine: { ...typography.caption, color: colors.textMuted },
+  clearNotify: { alignSelf: 'center', paddingVertical: 8 },
+  clearNotifyText: { ...typography.caption, color: colors.textMuted, textDecorationLine: 'underline' },
   diet: { gap: 3, marginTop: 6, padding: 10, borderRadius: radius.md, backgroundColor: colors.surfaceSunken },
   dietLabel: { ...typography.caption, color: colors.primaryPressed, fontWeight: '700' },
   dietText: { ...typography.caption, color: colors.textTertiary, lineHeight: 18 },
