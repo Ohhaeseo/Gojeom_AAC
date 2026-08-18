@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -89,9 +90,24 @@ public class Routine extends BaseCreatedEntity {
     @Column(name = "diet_guide", length = 160)
     private String dietGuide;
 
+    /**
+     * 이 목표의 알림 시각. <b>NULL이면 정하지 않은 것</b>이고, 그때는
+     * {@code notification_settings.default_time}을 쓴다. (V12 · API.md §6.6)
+     *
+     * <p>기본값을 여기에 복사해 두지 않는다. 복사하면 사용자가 나중에 기본 시각을
+     * 바꿔도 이미 만든 목표는 옛 값에 묶인다.
+     */
+    @Column(name = "notify_time")
+    private LocalTime notifyTime;
+
     /** 식사 방향은 AI가 만든 뒤에 붙인다. 생성자 인자를 더 늘리지 않는다. */
     public void applyDietGuide(String dietGuide) {
         this.dietGuide = dietGuide == null || dietGuide.isBlank() ? null : dietGuide.trim();
+    }
+
+    /** 알림 시각을 바꾼다. {@code null}을 주면 기본 시각을 따르도록 되돌린다. */
+    public void changeNotifyTime(LocalTime notifyTime) {
+        this.notifyTime = notifyTime;
     }
 
     private Routine(UUID userId, RoutineSourceType sourceType, UUID analysisResultId,
@@ -144,6 +160,11 @@ public class Routine extends BaseCreatedEntity {
         return userId.equals(candidate);
     }
 
+    /** 목표 이름 변경. 태스크와 기간은 건드리지 않는다. */
+    public void changeTitle(String title) {
+        this.title = title;
+    }
+
     /**
      * 태스크 완료율에 맞춰 상태를 맞춘다.
      *
@@ -153,11 +174,6 @@ public class Routine extends BaseCreatedEntity {
      *
      * <p>사용자가 취소한 목표({@code CANCELED})는 건드리지 않는다.
      */
-    /** 목표 이름 변경. 태스크와 기간은 건드리지 않는다. */
-    public void changeTitle(String title) {
-        this.title = title;
-    }
-
     public void syncStatus(long doneCount, long totalCount) {
         if (status == RoutineStatus.CANCELED) {
             return;

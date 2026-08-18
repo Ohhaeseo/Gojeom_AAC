@@ -25,6 +25,7 @@ import com.gojeom.routine.dto.RoutineDtos.RoutineCreateResponse;
 import com.gojeom.routine.dto.RoutineDtos.RoutineDetailResponse;
 import com.gojeom.routine.dto.RoutineDtos.RoutineItem;
 import com.gojeom.routine.dto.RoutineDtos.RoutineListResponse;
+import com.gojeom.routine.dto.RoutineDtos.RoutineNotifyTimeRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineOrderRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineOverview;
 import com.gojeom.routine.dto.RoutineDtos.RoutineRenameRequest;
@@ -256,7 +257,7 @@ public class RoutineService {
                                 t.getDurationLabel(), t.getAmountLabel(), t.getScheduledDate(),
                                 t.getStatus()))
                         .toList(),
-                notification(userId));
+                notification(userId, routine));
     }
 
     /** 고점 요약 카드. 경로 B는 근거가 될 분석 결과가 없어 null이다. (API.md §6.6) */
@@ -274,16 +275,22 @@ public class RoutineService {
     }
 
     /**
-     * 알림 설정.
+     * 이 목표에 실제로 적용되는 알림 설정.
      *
-     * <p>설정 엔드포인트(D3-5)가 아직 없어 실제로는 행이 없고 문서상 기본값이 나간다.
-     * 그래도 테이블을 읽어두면 설정 기능이 붙을 때 이 코드를 고칠 필요가 없다.
+     * <p><b>목표가 자기 시각을 갖고 있으면 그것이 이긴다.</b> 없으면 사용자 기본
+     * 시각을 따른다(V12). 화면이 둘 중 무엇이 적용되는지 계산하지 않아도 되도록
+     * <b>서버가 정해서 내려준다.</b>
+     *
+     * <p>켜짐 여부는 언제나 사용자 단위다. 목표마다 on/off를 두지 않는다.
      */
-    private NotificationView notification(UUID userId) {
-        return notificationSettingRepository.findByUserId(userId)
+    private NotificationView notification(UUID userId, Routine routine) {
+        NotificationView user = notificationSettingRepository.findByUserId(userId)
                 .map(s -> new NotificationView(s.isEnabled(), s.getDefaultTime()))
                 .orElseGet(() -> new NotificationView(
                         NotificationSetting.DEFAULT_ENABLED, NotificationSetting.DEFAULT_TIME));
+        return routine.getNotifyTime() == null
+                ? user
+                : new NotificationView(user.enabled(), routine.getNotifyTime());
     }
 
     // ------------------------------------------------------------ 완료 체크 · 삭제
@@ -368,13 +375,35 @@ public class RoutineService {
         return toSummary(routine, progress);
     }
 
+    /**
+     * 목표별 알림 시각 변경. ({@code PATCH /routines/{id}/notification} · V12)
+     *
+     * <p>사용자 단위 {@code default_time} 하나로는 "아침 루틴은 7시, 자기 전 루틴은
+     * 22시"를 표현할 수 없다. 목표마다 시각을 따로 둔다.
+     *
+     * <p><b>{@code null}은 지우는 것이고, 지우면 기본 시각을 따른다.</b> 기본값을
+     * 목표에 복사해 두지 않으므로 나중에 기본 시각을 바꾸면 함께 따라간다.
+     *
+     * <p>알림을 켜고 끄는 것은 여기서 하지 않는다. on/off는 사용자 단위다.
+     */
+    @Transactional
+    public RoutineSummary changeNotifyTime(UUID userId, UUID routineId, RoutineNotifyTimeRequest request) {
+        Routine routine = findOwned(userId, routineId);
+        routine.changeNotifyTime(request.notifyTime());
+
+        long[] progress = progressByRoutineId(List.of(routineId))
+                .getOrDefault(routineId, new long[] { 0L, 0L });
+        return toSummary(routine, progress);
+    }
+
     // ------------------------------------------------------------ 공통
 
     /** {@code progress}는 {@code [완료 수, 전체 수]}. 목록과 이름 변경이 같은 모양을 돌려준다. */
     private RoutineSummary toSummary(Routine routine, long[] progress) {
         return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
                 routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(), routine.getEndDate(),
-                progress[1], routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide());
+                progress[1], routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide(),
+                routine.getNotifyTime());
     }
 
     private Routine findOwned(UUID userId, UUID routineId) {

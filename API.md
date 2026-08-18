@@ -801,6 +801,28 @@
 - 완료 시 카드가 `surface-sunken` 배경으로 흐려진다. ([design.md](design.md) §4.3)
 - 미수행 재배치는 **미구현**이다. `MISSED` 상태만 정의되어 있다. (PRD O-4)
 
+#### `PATCH /routines/{id}/notification`
+
+목표별 알림 시각. (V12 · 회의 안건 5번)
+
+```json
+// Request — 이 목표만 07:30에 알린다
+{ "notifyTime": "07:30" }
+// Request — 정하지 않음으로 되돌린다 (기본 시각을 따른다)
+{ "notifyTime": null }
+// 200 — 갱신된 RoutineSummary
+{ "success": true, "data": { "routineId": "rt77...", "notifyTime": "07:30", "…": "…" } }
+```
+
+- **`notifyTime`이 `null`이면 `/notifications/settings`의 `defaultTime`을 따른다.** 기본값을
+  목표에 복사해 두지 않으므로, 나중에 기본 시각을 바꾸면 정하지 않은 목표는 함께 따라간다.
+- **켜고 끄는 것은 여기 없다.** on/off는 사용자 단위로 `/notifications/settings`가 갖는다.
+  목표마다 두면 "전체는 껐는데 목표는 켜져 있다"는 상태가 생긴다.
+- `GET /routines/{id}`의 `notification.time`은 **실제로 적용되는 시각**이다 —
+  목표에 값이 있으면 그것을, 없으면 기본 시각을 서버가 정해서 내려준다. 프론트가
+  둘 중 무엇이 이기는지 계산하지 않는다.
+- `notifyTime`은 `RoutineSummary`에도 실린다. `"HH:mm"`이고, 정하지 않았으면 `null` 키가 남는다.
+
 #### `DELETE /routines/{id}`
 
 시안 23의 "내 목표 삭제". `204`. 확인 모달(시안 00)을 거친다.

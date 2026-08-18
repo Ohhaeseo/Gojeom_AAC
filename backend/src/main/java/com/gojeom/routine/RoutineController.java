@@ -6,6 +6,7 @@ import com.gojeom.routine.dto.RoutineDtos.RoutineCreateRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineCreateResponse;
 import com.gojeom.routine.dto.RoutineDtos.RoutineDetailResponse;
 import com.gojeom.routine.dto.RoutineDtos.RoutineListResponse;
+import com.gojeom.routine.dto.RoutineDtos.RoutineNotifyTimeRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineOrderRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineRenameRequest;
 import com.gojeom.routine.dto.RoutineDtos.RoutineSummary;
@@ -80,6 +81,20 @@ public class RoutineController {
             @PathVariable UUID routineId,
             @Valid @RequestBody RoutineRenameRequest request) {
         return ApiResponse.ok(routineService.rename(me.id(), routineId, request));
+    }
+
+    /**
+     * 목표별 알림 시각 변경. 갱신된 요약을 돌려준다.
+     *
+     * <p>{@code notifyTime}을 {@code null}로 보내면 사용자 기본 시각을 따르도록
+     * 되돌린다. 켜고 끄는 것은 {@code /notifications/settings}가 갖는다.
+     */
+    @PatchMapping("/{routineId}/notification")
+    public ApiResponse<RoutineSummary> changeNotifyTime(
+            @AuthenticationPrincipal UserPrincipal me,
+            @PathVariable UUID routineId,
+            @Valid @RequestBody RoutineNotifyTimeRequest request) {
+        return ApiResponse.ok(routineService.changeNotifyTime(me.id(), routineId, request));
     }
 
     @DeleteMapping("/{routineId}")

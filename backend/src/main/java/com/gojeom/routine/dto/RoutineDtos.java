@@ -143,7 +143,28 @@ public final class RoutineDtos {
             /** 체형 목표에서만 값을 갖는다. (V10) */
             BigDecimal targetWeightKg,
             /** 식사 방향. <b>일반 가이드다.</b> 관련이 옅은 목표는 null이다. (V11) */
-            String dietGuide) {
+            String dietGuide,
+            /**
+             * 이 목표의 알림 시각 {@code HH:mm}. <b>정하지 않았으면 null</b>이고,
+             * 그때 화면은 {@code /notifications/settings}의 {@code defaultTime}을 쓴다. (V12)
+             */
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
+            LocalTime notifyTime) {
+    }
+
+    /**
+     * 목표별 알림 시각 변경. ({@code PATCH /routines/{id}/notification})
+     *
+     * <p><b>{@code null}은 "기본 시각을 따른다"는 뜻이다.</b> 지우는 것과 정하지 않은
+     * 것을 따로 표현할 필요가 없어 같은 값으로 둔다. 그래서 필수가 아니다.
+     *
+     * <p>켜고 끄는 것은 여기 없다. 알림 on/off는 사용자 단위로
+     * {@code /notifications/settings}가 갖는다 — 목표마다 두면 "전체는 껐는데
+     * 목표는 켜져 있다"는 상태가 생긴다.
+     */
+    public record RoutineNotifyTimeRequest(
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
+            LocalTime notifyTime) {
     }
 
     /**

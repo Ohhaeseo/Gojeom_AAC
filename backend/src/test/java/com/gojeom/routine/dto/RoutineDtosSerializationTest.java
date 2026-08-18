@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.gojeom.common.enums.Category;
 import com.gojeom.common.enums.RoutineSourceType;
 import com.gojeom.drawer.dto.SavedResultDtos.DrawerItem;
 import com.gojeom.routine.dto.RoutineDtos.NotificationView;
@@ -47,14 +48,29 @@ class RoutineDtosSerializationTest {
     @DisplayName("경로 A 목표의 null 필드가 응답에서 사라지지 않는다")
     void 목표_요약의_null_키가_남는다() throws Exception {
         RoutineSummary summary = new RoutineSummary(UUID.randomUUID(),
-                RoutineSourceType.FROM_ANALYSIS, null, "제목", null, LocalDate.now(), null, 5, null, null, null);
+                RoutineSourceType.FROM_ANALYSIS, null, "제목", null, LocalDate.now(), null, 5, null, null, null, null);
 
         String json = mapper.writeValueAsString(summary);
 
         // 프론트가 "값이 null"과 "필드가 없음"을 따로 다루지 않아도 되게 한다.
         assertThat(json).contains("\"category\":null")
                 .contains("\"durationWeeks\":null")
-                .contains("\"endDate\":null");
+                .contains("\"endDate\":null")
+                // 알림 시각을 정하지 않은 목표. 키가 사라지면 프론트가 "기본 시각을
+                // 따른다"와 "필드가 없다"를 구분하지 못한다. (V12)
+                .contains("\"notifyTime\":null");
+    }
+
+    @Test
+    @DisplayName("목표별 알림 시각도 초 없이 HH:mm으로 나간다 (V12)")
+    void 목표별_알림_시각_형식() throws Exception {
+        RoutineSummary summary = new RoutineSummary(UUID.randomUUID(),
+                RoutineSourceType.STANDALONE, Category.SKIN, "제목", (short) 4,
+                LocalDate.now(), LocalDate.now(), 5, null, null, null, LocalTime.of(7, 30));
+
+        String json = mapper.writeValueAsString(summary);
+
+        assertThat(json).contains("\"notifyTime\":\"07:30\"").doesNotContain("07:30:00");
     }
 
     @Test

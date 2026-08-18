@@ -187,7 +187,8 @@ public class RoutineTxService {
     private RoutineSummary summary(Routine routine, long taskCount) {
         return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
                 routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(),
-                routine.getEndDate(), taskCount, routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide());
+                routine.getEndDate(), taskCount, routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide(),
+                routine.getNotifyTime());
     }
 
 }
