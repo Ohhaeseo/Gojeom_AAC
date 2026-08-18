@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class TaskTimingSplitterTest {
 
     private static PlannedTask task(String timing) {
-        return new PlannedTask(Category.SKIN, "자외선 차단제 바르기", timing, "약 2분", "4ml");
+        return new PlannedTask(Category.SKIN, "자외선 차단제 바르기", timing, "약 2분", "4ml", 7);
     }
 
     @Nested

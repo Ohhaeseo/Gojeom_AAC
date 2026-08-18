@@ -62,6 +62,23 @@ public class RoutineTask {
     @Column(name = "amount_label", length = 20)
     private String amountLabel;
 
+    /**
+     * 이 배정이 속한 주의 첫날. 주 N회의 "그 주"를 세는 기준이다. (V15)
+     *
+     * <p>ISO 월요일이 아니라 <b>목표 시작일 기준</b>이다 — {@link com.gojeom.routine.TaskScheduleExpander}.
+     */
+    @Column(name = "week_start", nullable = false)
+    private LocalDate weekStart;
+
+    /**
+     * 그 주에 몇 번 하면 되는지. <b>null이면 매일 하는 일</b>이라 그날 한 번으로 끝난다.
+     *
+     * <p>값이 있으면 그 주의 모든 날에 행이 있고, 그중 이 수만큼 체크하면 채워진 것이다.
+     * 어느 요일에 할지는 서버가 정하지 않는다 — 정해 주면 그날 못 한 사람이 회차를 잃는다.
+     */
+    @Column(name = "weekly_target")
+    private Short weeklyTarget;
+
     @Column(name = "scheduled_date", nullable = false)
     private LocalDate scheduledDate;
 
@@ -77,7 +94,8 @@ public class RoutineTask {
     private OffsetDateTime completedAt;
 
     private RoutineTask(UUID routineId, Category category, String title, String timing,
-                        String durationLabel, String amountLabel, LocalDate scheduledDate) {
+                        String durationLabel, String amountLabel, LocalDate scheduledDate,
+                        LocalDate weekStart, Integer weeklyTarget) {
         this.routineId = routineId;
         this.category = category;
         this.title = title;
@@ -85,13 +103,17 @@ public class RoutineTask {
         this.durationLabel = durationLabel;
         this.amountLabel = amountLabel;
         this.scheduledDate = scheduledDate;
+        this.weekStart = weekStart;
+        // DB는 SMALLINT다. 호출부는 AI가 준 int를 그대로 넘기고 여기서 좁힌다.
+        this.weeklyTarget = weeklyTarget == null ? null : weeklyTarget.shortValue();
         this.status = TaskStatus.PENDING;
     }
 
     public static RoutineTask of(UUID routineId, Category category, String title, String timing,
-                                 String durationLabel, String amountLabel, LocalDate scheduledDate) {
+                                 String durationLabel, String amountLabel, LocalDate scheduledDate,
+                                 LocalDate weekStart, Integer weeklyTarget) {
         return new RoutineTask(routineId, category, title, timing,
-                durationLabel, amountLabel, scheduledDate);
+                durationLabel, amountLabel, scheduledDate, weekStart, weeklyTarget);
     }
 
     /**

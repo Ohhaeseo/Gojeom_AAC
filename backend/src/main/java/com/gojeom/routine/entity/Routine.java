@@ -127,11 +127,16 @@ public class Routine extends BaseCreatedEntity {
         this.targetWeightKg = targetWeightKg;
     }
 
-    /** 경로 A — 여러 카테고리에 걸친 목표 1개. {@code category}·{@code durationWeeks}는 NULL이다. */
+    /**
+     * 경로 A — 여러 카테고리에 걸친 목표 1개. {@code category}는 NULL이다.
+     *
+     * <p><b>{@code durationWeeks}는 AI가 정한다.</b> 예전에는 NULL이었고 스키마가
+     * 그것을 강제했다 — 끝이 없는 목표라 태스크가 시작일 하루에만 놓였다. (V15)
+     */
     public static Routine fromAnalysis(UUID userId, UUID analysisResultId, String title,
-                                       LocalDate startDate) {
+                                       int durationWeeks, LocalDate startDate, LocalDate endDate) {
         return new Routine(userId, RoutineSourceType.FROM_ANALYSIS, analysisResultId,
-                null, null, title, startDate, null, null, null);
+                null, (short) durationWeeks, title, startDate, endDate, null, null);
     }
 
     /**

@@ -158,21 +158,23 @@ public class JsonSchemas {
               "strict": true,
               "schema": {
                 "type": "object", "additionalProperties": false,
-                "required": ["title", "dietGuide", "tasks"],
+                "required": ["title", "dietGuide", "durationWeeks", "tasks"],
                 "properties": {
                   "title": { "type": "string", "maxLength": 60 },
                   "dietGuide": { "type": ["string", "null"], "maxLength": 160 },
+                  "durationWeeks": { "type": "integer", "minimum": 4, "maximum": 52 },
                   "tasks": {
                     "type": "array", "minItems": 4, "maxItems": 6,
                     "items": {
                       "type": "object", "additionalProperties": false,
-                      "required": ["category", "title", "timing", "durationLabel", "amountLabel"],
+                      "required": ["category", "title", "timing", "durationLabel", "amountLabel", "frequencyPerWeek"],
                       "properties": {
                         "category":      { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
                         "title":         { "type": "string", "maxLength": 30 },
                         "timing":        { "type": "string", "maxLength": 20 },
                         "durationLabel": { "type": ["string", "null"], "maxLength": 12 },
-                        "amountLabel":   { "type": ["string", "null"], "maxLength": 12 }
+                        "amountLabel":   { "type": ["string", "null"], "maxLength": 12 },
+                        "frequencyPerWeek": { "type": "integer", "minimum": 1, "maximum": 7 }
                       }
                     }
                   }
@@ -208,13 +210,14 @@ public class JsonSchemas {
                           "type": "array", "minItems": 4, "maxItems": 6,
                           "items": {
                             "type": "object", "additionalProperties": false,
-                            "required": ["category", "title", "timing", "durationLabel", "amountLabel"],
+                            "required": ["category", "title", "timing", "durationLabel", "amountLabel", "frequencyPerWeek"],
                             "properties": {
                               "category":      { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
                               "title":         { "type": "string", "maxLength": 30 },
                               "timing":        { "type": "string", "maxLength": 20 },
                               "durationLabel": { "type": ["string", "null"], "maxLength": 12 },
-                              "amountLabel":   { "type": ["string", "null"], "maxLength": 12 }
+                              "amountLabel":   { "type": ["string", "null"], "maxLength": 12 },
+                        "frequencyPerWeek": { "type": "integer", "minimum": 1, "maximum": 7 }
                             }
                           }
                         }

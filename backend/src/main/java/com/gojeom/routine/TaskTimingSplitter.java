@@ -55,9 +55,11 @@ public final class TaskTimingSplitter {
             return List.of(task);
         }
         return timings.stream()
+                // 빈도는 시점마다 그대로 물려준다. "주 3회 아침, 저녁"을 나누면
+                // 아침도 주 3회, 저녁도 주 3회다 — 나눈다고 빈도가 줄지 않는다.
                 .map(timing -> new PlannedTask(
                         task.category(), task.title(), timing,
-                        task.durationLabel(), task.amountLabel()))
+                        task.durationLabel(), task.amountLabel(), task.frequencyPerWeek()))
                 .toList();
     }
 

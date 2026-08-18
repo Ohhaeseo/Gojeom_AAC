@@ -84,9 +84,15 @@ public final class AiPayloads {
 
     // ------------------------------------------------------ ROUTINE_GENERATION
 
-    /** 경로 A — 여러 카테고리에 걸친 목표 1개. */
+    /**
+     * 경로 A — 여러 카테고리에 걸친 목표 1개.
+     *
+     * <p>{@code durationWeeks}는 <b>AI가 정한다.</b> 예전에는 분석 기반 목표에 기간이
+     * 없어(스키마가 NULL을 강제했다) 태스크가 시작일 하루에만 놓였다. (V15)
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record RoutinePlan(String title, String dietGuide, List<PlannedTask> tasks) {
+    public record RoutinePlan(String title, String dietGuide, Integer durationWeeks,
+                              List<PlannedTask> tasks) {
 
         @JsonIgnore
         public String userFacingText() {
@@ -123,6 +129,10 @@ public final class AiPayloads {
      *
      * <p>{@code durationLabel}·{@code amountLabel}은 null일 수 있다. 분량 개념이 없는
      * 태스크가 있고, 억지로 채우면 "1회" 같은 값이 화면에 붙는다.
+     *
+     * <p>🔴 <b>{@code frequencyPerWeek}가 일정을 정한다.</b> {@code timing}은 사용자가
+     * 읽는 말이고, 실제 배정은 이 숫자로 만든다 — "주 3회"를 한글에서 파싱하지 않는다.
+     * 7이면 매일, 3이면 그 주에 3번이다. (V15)
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record PlannedTask(
@@ -130,7 +140,15 @@ public final class AiPayloads {
             String title,
             String timing,
             String durationLabel,
-            String amountLabel) {
+            String amountLabel,
+            Integer frequencyPerWeek) {
+
+        /** 값이 없거나 범위를 벗어나면 매일로 본다. 덜 배정하는 쪽이 더 나쁘다. */
+        @JsonIgnore
+        public int weeklyCount() {
+            return frequencyPerWeek == null || frequencyPerWeek < 1 || frequencyPerWeek > 7
+                    ? 7 : frequencyPerWeek;
+        }
 
         @JsonIgnore
         static String joinText(List<PlannedTask> tasks) {

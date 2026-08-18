@@ -14,6 +14,8 @@ import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
+import com.gojeom.routine.TaskScheduleExpander;
+import com.gojeom.routine.TaskScheduleExpander.Slot;
 import com.gojeom.routine.TaskTimingSplitter;
 import com.gojeom.routine.dto.RoutineDtos.RoutineItem;
 import com.gojeom.routine.dto.RoutineDtos.RoutineSummary;
@@ -115,36 +117,45 @@ public class RoutineTxService {
     /**
      * 경로 A 저장 — 목표 1개 + 태스크.
      *
-     * <p><b>모든 태스크를 {@code startDate} 하루에 배치한다.</b> 경로 A에는 기간
-     * 개념이 없기 때문이다(ERD.md E-3 미결). ERD가 제시한 "AI 출력 태스크를
-     * start_date 기준으로 배치"를 그대로 따랐고, API.md §6.6의 예시
-     * ({@code progress: {done: 2, total: 5}})와도 개수가 맞는다.
+     * <p><b>예전에는 모든 태스크를 {@code startDate} 하루에 몰아 놓았다.</b> 경로 A에
+     * 기간 개념이 없었기 때문이다(스키마가 {@code duration_weeks IS NULL}을 강제했다).
+     * 그래서 캘린더를 열면 시작일 하루에만 점이 찍혔다.
+     *
+     * <p>이제 <b>AI가 기간을 정하고</b>(V15) 기간 안의 날짜로 펼친다.
+     * 기간이 없으면 만들지 않는다 — 끝이 없는 목표는 달력에 그릴 수 없다.
      */
     @Transactional
     public RoutineSummary persistFromAnalysis(UUID userId, UUID analysisResultId, String title,
-                                              String dietGuide, List<PlannedTask> tasks,
-                                              LocalDate startDate) {
-        Routine routine = routineRepository.save(
-                Routine.fromAnalysis(userId, analysisResultId, title, startDate));
+                                              String dietGuide, int durationWeeks,
+                                              List<PlannedTask> tasks, LocalDate startDate) {
+        Routine routine = routineRepository.save(Routine.fromAnalysis(
+                userId, analysisResultId, title, durationWeeks, startDate,
+                TaskScheduleExpander.endDateOf(startDate, durationWeeks)));
         routine.applyDietGuide(dietGuide);
 
         // 시점이 여러 개인 태스크는 시점마다 하나씩으로 나눈다. 완료 체크가 태스크
         // 단위라, "아침, 저녁"이 한 줄이면 아침만 한 상태를 표현할 수 없다.
-        List<PlannedTask> expanded = TaskTimingSplitter.expand(tasks);
+        // **펼치기 전에** 나눈다 — 나중에 나누면 같은 일이 날짜 수만큼 늘어난다.
+        List<PlannedTask> split = TaskTimingSplitter.expand(tasks);
 
-        for (PlannedTask task : expanded) {
+        long count = 0;
+        for (Slot slot : TaskScheduleExpander.expand(split, startDate, durationWeeks)) {
+            PlannedTask task = slot.task();
             routineTaskRepository.save(RoutineTask.of(routine.getId(), task.category(),
-                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(), startDate));
+                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                    slot.date(), slot.weekStart(), slot.weeklyTarget()));
+            count++;
         }
-        return summary(routine, expanded.size());
+        return summary(routine, count);
     }
 
     /**
      * 경로 B 저장 — 카테고리당 목표 1개.
      *
-     * <p><b>태스크 묶음을 주 단위로 반복 배치한다.</b> {@code taskCount = 태스크 수 ×
-     * durationWeeks}가 되며, API.md §6.6 예시(4주 · {@code taskCount: 24})가 주당 6건
-     * 구성과 정확히 맞아떨어진다. 매일 반복하면 4주에 168건이 되어 화면이 무너진다.
+     * <p><b>기간 안의 날짜마다 배치한다.</b> 예전에는 주 단위로 한 행씩만 놓아
+     * "매일"이라고 써 놓고도 4주에 체크박스가 4개였다. 화면이 무너질까 봐 그렇게
+     * 두었지만, 홈은 그날 것만 보여주고 캘린더는 날짜별로 나눠 보여주므로
+     * 행이 늘어도 한 화면에 쏟아지지 않는다. (V15)
      *
      * <p>태스크의 {@code category}는 AI 출력을 믿지 않고 <b>목표의 카테고리로 덮어쓴다.</b>
      * {@code routine_tasks.category}가 목표와 어긋나면 목표 화면의 분류가 깨진다.
@@ -165,19 +176,16 @@ public class RoutineTxService {
                     item.goalText(), item.targetWeightKg()));
             routine.applyDietGuide(plan.dietGuide());
 
-            // 주 단위로 복제하기 **전에** 나눈다. 복제 후에 나누면 같은 일을
-            // durationWeeks번 반복해서 하게 된다.
-            List<PlannedTask> expanded = TaskTimingSplitter.expand(plan.tasks());
+            // 펼치기 **전에** 나눈다. 나중에 나누면 같은 일이 날짜 수만큼 늘어난다.
+            List<PlannedTask> split = TaskTimingSplitter.expand(plan.tasks());
 
             long count = 0;
-            for (int week = 0; week < weeks; week++) {
-                LocalDate scheduled = startDate.plusWeeks(week);
-                for (PlannedTask task : expanded) {
-                    routineTaskRepository.save(RoutineTask.of(routine.getId(), plan.category(),
-                            task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
-                            scheduled));
-                    count++;
-                }
+            for (Slot slot : TaskScheduleExpander.expand(split, startDate, weeks)) {
+                PlannedTask task = slot.task();
+                routineTaskRepository.save(RoutineTask.of(routine.getId(), plan.category(),
+                        task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                        slot.date(), slot.weekStart(), slot.weeklyTarget()));
+                count++;
             }
             summaries.add(summary(routine, count));
         }

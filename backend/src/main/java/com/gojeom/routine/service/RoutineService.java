@@ -77,6 +77,14 @@ public class RoutineService {
     /** {@code startDate}는 사용자가 보는 날짜다. 서버 시간대가 아니라 KST로 판정한다. */
     private static final ZoneId USER_ZONE = ZoneId.of("Asia/Seoul");
 
+    /**
+     * 경로 A 기간의 허용 범위. AI 스키마의 {@code durationWeeks}와 같은 값이고,
+     * DB의 {@code ck_routine_duration_weeks}(1~52) 안에 든다. (V15)
+     */
+    private static final int MIN_DURATION_WEEKS = 4;
+    private static final int MAX_DURATION_WEEKS = 52;
+    private static final int DEFAULT_DURATION_WEEKS = 12;
+
     private final RoutineTxService routineTx;
     private final AiTextService aiTextService;
     private final RoutineGenerationPrompt prompt;
@@ -107,9 +115,22 @@ public class RoutineService {
                 p -> requireTasks(p.tasks().size())));
 
         RoutineSummary summary = routineTx.persistFromAnalysis(userId, context.analysisResultId(),
-                plan.title(), plan.dietGuide(), plan.tasks(), request.startDate());
+                plan.title(), plan.dietGuide(), durationOf(plan), plan.tasks(), request.startDate());
 
         return new RoutineCreateResponse(List.of(summary));
+    }
+
+    /**
+     * 경로 A의 기간. <b>AI가 정하지만 서버가 범위를 지킨다.</b> (V15)
+     *
+     * <p>스키마가 4~52주를 강제하지만 값이 비거나 범위를 벗어나 오면 목표가 통째로
+     * 실패한다. 기간 하나 때문에 결과지를 버릴 이유가 없어 기본값으로 떨어뜨린다.
+     * 12주는 화면이 개월로 환산할 때 3개월로, 너무 짧지도 길지도 않은 자리다.
+     */
+    private static int durationOf(RoutinePlan plan) {
+        Integer weeks = plan.durationWeeks();
+        return weeks != null && weeks >= MIN_DURATION_WEEKS && weeks <= MAX_DURATION_WEEKS
+                ? weeks : DEFAULT_DURATION_WEEKS;
     }
 
     /** 경로 B — 카테고리당 목표 1개. 한 번의 AI 호출로 최대 3개를 함께 만든다. */
