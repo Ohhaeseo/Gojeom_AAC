@@ -1,4 +1,3 @@
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
@@ -13,12 +12,38 @@ export type GoogleSignInButtonProps = {
   onError: (message: string) => void;
 };
 
+type GoogleSigninModule = typeof import('@react-native-google-signin/google-signin');
+
+/**
+ * 🔴 네이티브 모듈을 <b>최상단에서 import하지 않는다.</b>
+ *
+ * <p>이 모듈은 불러오는 순간 {@code TurboModuleRegistry.getEnforcing('RNGoogleSignin')}을
+ * 실행하고, 네이티브 바이너리에 없으면 <b>그 자리에서 던진다.</b> 최상단 import는
+ * 그 예외를 파일 로딩 시점에 터뜨려 <b>{@code login.tsx}·{@code signup.tsx}를 통째로
+ * 죽인다</b> — 로그인 화면이 아예 뜨지 않고 expo-router는 "default export가 없다"고
+ * 말한다. 실제로 그렇게 물렸다.
+ *
+ * <p>Expo Go만의 이야기가 아니다. 실제 앱에서도 링크가 어긋나면 <b>이메일 로그인까지
+ * 못 쓰게 된다.</b> Google 버튼 하나가 안 되는 것과 로그인 화면 전체가 없는 것은
+ * 전혀 다른 사고다.
+ *
+ * <p>그래서 <b>누를 때</b> 불러오고, 없으면 문구로 알린다.
+ */
+function loadGoogleSignin(): GoogleSigninModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@react-native-google-signin/google-signin') as GoogleSigninModule;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 네이티브(Android·iOS)용 Google 로그인 버튼.
  *
  * <p>웹은 {@code GoogleSignInButton.web.tsx}가 Google Identity Services로 처리한다.
  * 네이티브는 네이티브 모듈이라 <b>Expo Go에서 돌지 않는다</b> — 개발 빌드나
- * EAS 빌드가 있어야 한다. Expo Go로 열면 모듈이 없어 안내 문구가 뜬다.
+ * EAS 빌드가 있어야 한다.
  *
  * <p>🔴 <b>`webClientId`에 웹 클라이언트 ID를 넘기는 것이 핵심이다.</b> 안드로이드
  * 클라이언트 ID를 넣으면 ID 토큰의 `aud`가 안드로이드 클라이언트로 발급되는데,
@@ -35,6 +60,12 @@ export function GoogleSignInButton({ onToken, onError }: GoogleSignInButtonProps
 
   const signIn = async () => {
     if (busy) return;
+
+    const google = loadGoogleSignin();
+    if (!google) {
+      handlers.current.onError('이 방식은 설치한 앱에서만 동작해요. 웹에서는 Google 로그인을 쓸 수 있어요.');
+      return;
+    }
     if (!googleWebClientId) {
       handlers.current.onError('Google 로그인이 아직 설정되지 않았어요.');
       return;
@@ -42,6 +73,7 @@ export function GoogleSignInButton({ onToken, onError }: GoogleSignInButtonProps
 
     setBusy(true);
     try {
+      const { GoogleSignin } = google;
       GoogleSignin.configure({ webClientId: googleWebClientId });
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
@@ -58,7 +90,8 @@ export function GoogleSignInButton({ onToken, onError }: GoogleSignInButtonProps
       }
       handlers.current.onToken(idToken);
     } catch (error) {
-      handlers.current.onError(messageOf(error));
+      const message = messageOf(error, google.statusCodes);
+      if (message) handlers.current.onError(message);
     } finally {
       setBusy(false);
     }
@@ -78,22 +111,18 @@ export function GoogleSignInButton({ onToken, onError }: GoogleSignInButtonProps
 }
 
 /**
- * 사용자에게 보일 말로 옮긴다.
+ * 사용자에게 보일 말로 옮긴다. 빈 문자열이면 아무 말도 하지 않는다.
  *
  * <p><b>원문 오류를 그대로 띄우지 않는다.</b> 영어인 데다 클라이언트 ID 같은 설정값이
  * 섞여 나올 수 있다. 사용자가 할 수 있는 일만 말한다.
  */
-function messageOf(error: unknown): string {
+function messageOf(error: unknown, statusCodes: GoogleSigninModule['statusCodes']): string {
   const code = (error as { code?: string })?.code;
 
   if (code === statusCodes.SIGN_IN_CANCELLED) return '';
   if (code === statusCodes.IN_PROGRESS) return '로그인을 진행하고 있어요. 잠시만 기다려주세요.';
   if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
     return 'Google Play 서비스가 필요해요. 업데이트한 뒤 다시 시도해주세요.';
-  }
-  // 네이티브 모듈이 없는 경우 — Expo Go로 열었다는 뜻이다.
-  if (error instanceof Error && /RNGoogleSignin|native module/i.test(error.message)) {
-    return '이 방식은 설치한 앱에서만 동작해요. 웹에서는 Google 로그인을 쓸 수 있어요.';
   }
   return 'Google 로그인에 실패했어요. 잠시 후 다시 시도해주세요.';
 }
