@@ -138,4 +138,19 @@ public class Profile extends BaseTimeEntity {
     public void removePhoto() {
         this.photoKey = null;
     }
+
+    /**
+     * 사진만 바꾼다. 우선순위·키·체중·수면은 그대로다.
+     *
+     * <p>🔴 <b>새 프로필 행을 만들지 않는다.</b> 사진을 바꾸려고 키·체중·수면을
+     * 다시 입력하게 만들던 것이 문제였다({@code POST /profiles}는 전부를 요구한다).
+     * 제자리 수정은 {@code updateBody}가 이미 쓰는 방식이라 결이 같다.
+     *
+     * @return 교체되어 <b>지워야 할</b> 이전 사진 key. 없었으면 null
+     */
+    public String replacePhoto(String photoKey) {
+        String previous = this.photoKey;
+        this.photoKey = photoKey;
+        return previous;
+    }
 }

@@ -1,5 +1,7 @@
 package com.gojeom.profile;
 
+import com.gojeom.common.exception.BusinessException;
+import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.profile.entity.ProfileAnalysisSummary;
 import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
 import com.gojeom.profile.entity.Profile;
@@ -47,6 +49,25 @@ public class ProfileTxService {
                 request.inbody()));
         eventPublisher.publishEvent(new ProfileCreatedEvent(profile.getId()));
         return profile;
+    }
+
+    /**
+     * 사진만 교체한다. 얼굴 검증이 끝난 뒤 DB 변경만 짧은 트랜잭션으로.
+     *
+     * <p>{@code replaceActive}와 달리 <b>새 행을 만들지 않는다</b> — 사진 한 장을
+     * 바꾸려고 우선순위·키·체중·수면을 다시 받을 이유가 없다.
+     */
+    @Transactional
+    public PhotoReplacement replacePhoto(UUID userId, String photoKey) {
+        Profile profile = profileRepository.findByUserIdAndIsActiveTrue(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROFILE_REQUIRED));
+        String previous = profile.replacePhoto(photoKey);
+        eventPublisher.publishEvent(new ProfilePhotoChangedEvent(profile.getId()));
+        return new PhotoReplacement(profile, previous);
+    }
+
+    /** @param previousPhotoKey 스토리지에서 지워야 할 이전 사진. 없었으면 null */
+    public record PhotoReplacement(Profile profile, String previousPhotoKey) {
     }
 
     /** 프로필이 이미 비활성화·삭제됐을 수 있으므로 {@code Optional}이다. */

@@ -3,6 +3,7 @@ package com.gojeom.profile;
 import com.gojeom.common.enums.Category;
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.profile.dto.ProfileDtos.PhotoUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.PrioritiesUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileResponse;
@@ -83,6 +84,33 @@ public class ProfileService {
         Profile profile = findActive(userId);
         profile.changePriorities(List.copyOf(request.priorities()));
         return toResponse(profile);
+    }
+
+    /**
+     * 사진만 교체. (시안 11의 "사진 변경")
+     *
+     * <p>🔴 <b>{@code POST /profiles}로 보내면 안 되는 이유</b> — 그것은 우선순위·키·
+     * 체중·수면을 모두 요구한다. 사진 한 장을 바꾸려고 신체 정보를 처음부터 다시
+     * 입력해야 했다. 여기서는 사진만 받는다.
+     *
+     * <p>등록과 <b>같은 검증을 거친다</b> — 남의 경로 key인지, 실제로 얼굴이 있는지.
+     * 건너뛰면 촬영 품질 게이트를 우회하는 뒷문이 된다.
+     *
+     * <p>이전 사진은 <b>즉시</b> 지운다. (PRD §10)
+     */
+    public ProfileResponse replacePhoto(UUID userId, PhotoUpdateRequest request) {
+        storageService.validateUploadedImage(
+                request.photoKey(), UploadPurpose.PROFILE_PHOTO, userId);
+        // 스토리지 I/O와 CPU 얼굴 탐지는 DB 트랜잭션을 열기 전에 끝낸다. (create와 같다)
+        profilePhotoValidator.validate(storageService.download(request.photoKey()));
+
+        ProfileTxService.PhotoReplacement replaced =
+                profileTxService.replacePhoto(userId, request.photoKey());
+        // 이전 사진은 즉시 지운다. 남겨 두면 얼굴 사진이 쓰이지 않는 채 쌓인다. (PRD §10)
+        if (replaced.previousPhotoKey() != null) {
+            storageDeletionService.enqueue(replaced.previousPhotoKey());
+        }
+        return toResponse(replaced.profile());
     }
 
     /**

@@ -63,6 +63,17 @@ public final class ProfileDtos {
             Inbody inbody) {
     }
 
+    /**
+     * 사진만 교체. (시안 11의 "사진 변경")
+     *
+     * <p>신체 정보를 함께 받지 않는다 — 사진 한 장 바꾸자고 키·체중·수면을 다시
+     * 입력하게 만들지 않으려는 것이 이 요청이 있는 이유다.
+     */
+    public record PhotoUpdateRequest(
+            @NotBlank(message = "사진을 먼저 등록해주세요.")
+            String photoKey) {
+    }
+
     public record PrioritiesUpdateRequest(
             @Priorities
             List<Category> priorities) {

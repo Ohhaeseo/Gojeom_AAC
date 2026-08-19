@@ -44,6 +44,12 @@ public enum ErrorCode {
     CONTENT_POLICY_BLOCKED(HttpStatus.UNPROCESSABLE_ENTITY, "분석할 수 없는 내용이 포함되어 있어요.", false),
     AI_PROVIDER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "분석 중 문제가 생겼어요. 다시 시도해주세요."),
     ANALYSIS_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "분석이 지연되고 있어요. 다시 시도해주세요.", false),
+    /**
+     * 사용자가 진행 중인 분석을 버렸다. <b>HTTP 응답으로 나가지 않는다</b> —
+     * {@code analyses.failure_code}에만 실려 화면 문구가 된다.
+     * ({@code ANALYSIS_TIMEOUT}을 좀비 스위퍼가 쓰는 것과 같은 방식)
+     */
+    ANALYSIS_CANCELED(HttpStatus.OK, "이전 분석을 버렸어요. 새로 시작할 수 있어요.", false),
 
     // --- 인바디 ---
     INBODY_SCAN_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "서류를 읽지 못했어요. 직접 입력해주세요.", false),

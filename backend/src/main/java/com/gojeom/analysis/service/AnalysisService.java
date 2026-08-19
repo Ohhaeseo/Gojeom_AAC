@@ -256,6 +256,29 @@ public class AnalysisService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
     }
 
+    // ------------------------------------------------------------ 취소
+
+    /**
+     * 진행 중인 분석 버리기.
+     *
+     * <p>🔴 <b>없으면 빠져나갈 길이 없다.</b> 키워드를 고르다 화면을 벗어나면 분석이
+     * {@code KEYWORDS_READY}로 남는데, 좀비 스위퍼는 이 상태를 <b>일부러 건드리지
+     * 않는다</b>(고르는 중일 수 있다 · {@code AnalysisRepository.failStale}).
+     * 그래서 그 행이 영영 남고, 이후 <b>모든 분석 생성이 409로 막힌다.</b>
+     *
+     * <p>지우지 않고 {@code FAILED}로 내린다. 기록이 남아야 무슨 일이 있었는지 볼 수
+     * 있고, 이미 있는 상태 기계를 그대로 쓴다.
+     *
+     * <p><b>분석권은 차감하지 않는다</b> — 결과를 받지 못했다. (PRD §8.3)
+     *
+     * <p>이미 끝난 분석을 취소하는 것은 오류가 아니다. 두 번 눌러도 같은 결과다.
+     */
+    @Transactional
+    public void cancel(UUID userId, UUID analysisId) {
+        Analysis analysis = findOwned(userId, analysisId);
+        analysis.markFailed(ErrorCode.ANALYSIS_CANCELED);
+    }
+
     // ------------------------------------------------------------ 공통
 
     /**

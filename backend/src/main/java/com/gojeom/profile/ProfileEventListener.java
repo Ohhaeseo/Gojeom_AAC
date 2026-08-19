@@ -36,4 +36,16 @@ public class ProfileEventListener {
     public void onProfileBodyChanged(ProfileBodyChangedEvent event) {
         pipeline.run(event.profileId());
     }
+
+    /**
+     * 사진이 바뀌면 요약을 다시 만든다.
+     *
+     * <p>이번에는 {@code faceImpression}·{@code capture}가 <b>실제로 달라진다</b> —
+     * 다른 사진을 보고 쓰는 것이라, 다시 돌리지 않으면 새 사진 옆에 옛 사진을
+     * 설명하는 문장이 남는다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onProfilePhotoChanged(ProfilePhotoChangedEvent event) {
+        pipeline.run(event.profileId());
+    }
 }

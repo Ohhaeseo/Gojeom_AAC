@@ -95,6 +95,21 @@ public class AnalysisController {
     }
 
     /**
+     * 진행 중인 분석 버리기. (API.md §6.4)
+     *
+     * <p>키워드 선택을 남겨 둔 분석이 있으면 새 분석을 시작할 수 없다
+     * ({@code ANALYSIS_INVALID_STATE}). 그것을 버리는 유일한 길이다.
+     * <b>사진과 결과는 지우지 않는다</b> — 전체 삭제는 아래 {@code deleteAll}이다.
+     */
+    @DeleteMapping("/{analysisId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancel(
+            @AuthenticationPrincipal UserPrincipal me,
+            @PathVariable UUID analysisId) {
+        analysisService.cancel(me.id(), analysisId);
+    }
+
+    /**
      * 시안 11의 "내 분석 전체 삭제". 확인 모달을 거친 뒤 호출한다. (API.md §6.4 · F-13)
      *
      * <p>사진 객체를 <b>즉시</b> 지운다. 서랍 항목도 함께 정리된다.
