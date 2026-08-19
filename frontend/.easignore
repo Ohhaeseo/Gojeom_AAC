@@ -12,3 +12,10 @@
 # 로컬 산출물
 /dist
 /.expo
+
+# 🔴 `google-services.json`을 여기 넣지 않는다.
+#
+# 그 파일은 `.gitignore` 대상이지만(저장소가 공개다) **빌드 머신에는 있어야 한다** —
+# `expo-notifications`가 FCM에 등록하려면 필요하다. `.easignore`가 있으면 EAS는
+# `.gitignore` 대신 이 파일을 보므로, 여기 적지 않는 한 그대로 올라간다.
+# (docs/PUSH_FCM.md)

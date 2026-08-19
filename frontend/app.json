@@ -29,6 +29,12 @@
         }
       ],
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#6BBDA6"
+        }
+      ],
       "./plugins/withCropImageTheme",
       "@react-native-google-signin/google-signin"
     ],
