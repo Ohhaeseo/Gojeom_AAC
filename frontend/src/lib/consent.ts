@@ -55,7 +55,16 @@ export function ageOn(birth: Date, today: Date): number {
 }
 
 /** 서버가 받는 `YYYY-MM-DD`. */
-export function toIsoBirthDate(digits: string): string {
+export function toIsoBirthDate(digits: string): string | undefined {
+  // 🔴 **8자리가 아니면 만들지 않는다.**
+  //
+  // 예전에는 자르고 붙이기만 해서 빈 문자열이 `"--"`가 됐다. 그것이 그대로
+  // 서버로 가 `LocalDate` 파싱에 실패하고 **400**이 났다 — 생년월일을 비운 채
+  // Google 버튼을 누르면 매번 걸리던 자리다. 화면에는 아무 사유도 뜨지 않아
+  // "구글 로그인이 안 된다"로만 보였다.
+  //
+  // 반쯤 만든 값을 서버로 보내느니 **아무것도 보내지 않는 편이 낫다.**
+  if (digits.length !== 8) return undefined;
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 

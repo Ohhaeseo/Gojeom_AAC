@@ -82,10 +82,11 @@ export default function SignupScreen() {
     setSubmitted(true); setError(''); setFields({});
     // Google도 신규 계정이면 나이·동의가 필요하다. 없이 보내면 서버가 막는데,
     // **무엇이 빠졌는지는 여기서 이미 안다.** 왕복하지 않고 바로 말해 준다.
-    if (!birthCheck.ok || !requiredOk) return;
+    const birthDate = toIsoBirthDate(birth);
+    if (!birthDate || !birthCheck.ok || !requiredOk) return;
 
     setPending(true);
-    const result = await loginWithGoogle(idToken, toIsoBirthDate(birth), agreed);
+    const result = await loginWithGoogle(idToken, birthDate, agreed);
     setPending(false);
     if (!result.ok) return report(result, 'Google 로그인에 실패했어요.');
     router.replace('/home');
@@ -98,10 +99,11 @@ export default function SignupScreen() {
   */
   const submit = async () => {
     setSubmitted(true); setError(''); setFields({});
-    if (!emailCheck.ok || !passwordCheck.ok || !confirmOk || !birthCheck.ok || !requiredOk) return;
+    const birthDate = toIsoBirthDate(birth);
+    if (!emailCheck.ok || !passwordCheck.ok || !confirmOk || !birthDate || !birthCheck.ok || !requiredOk) return;
 
     setPending(true);
-    const result = await register(email, password, toIsoBirthDate(birth), agreed);
+    const result = await register(email, password, birthDate, agreed);
     setPending(false);
     if (!result.ok) return report(result, '회원가입에 실패했어요.');
     router.replace('/name');
