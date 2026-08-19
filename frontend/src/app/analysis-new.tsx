@@ -1,12 +1,14 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 
 import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
+import { SubscribeModal } from '@/components/subscription/SubscribeModal';
+import { useAppState } from '@/state/AppState';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
 
 const MAX_IMAGES = 4;
@@ -14,10 +16,28 @@ const MAX_IMAGES = 4;
 export default function AnalysisNewScreen() {
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const [planOpen, setPlanOpen] = useState(false);
   const { width } = useWindowDimensions();
   const thumbnailSize = Math.round(Math.max(116, Math.min(150, (width - 58) * 0.375)));
 
+  /**
+   * 분석권 상태를 **들어올 때 미리** 확인한다.
+   *
+   * 예전에는 사진과 글을 다 채우고 `진단하기`를 누른 뒤에야 402로 막혔다.
+   * 두 번째 분석을 하려던 사람이 공들여 입력한 것을 잃는 자리였다.
+   * 여기서 미리 알면 바로 요금제로 갈 수 있다.
+   */
+  const { subscription, loadSubscription } = useAppState();
+  useFocusEffect(useCallback(() => { void loadSubscription(); }, [loadSubscription]));
+
+  const blocked = subscription?.canAnalyze === false;
+
+  // 못 하는 상태로 들어왔으면 폼을 채우기 전에 알린다.
+  useEffect(() => { if (blocked) setPlanOpen(true); }, [blocked]);
+
   const startAnalysis = () => {
+    // 서버가 최종 판단이지만, 여기서 먼저 막아 헛수고를 없앤다.
+    if (blocked) { setPlanOpen(true); return; }
     if (!text.trim()) {
       Alert.alert('추구하는 모습을 적어주세요', '짧은 문장이나 단어로도 시작할 수 있어요.');
       return;
@@ -83,7 +103,13 @@ export default function AnalysisNewScreen() {
         {images.length ? (
           <>
             {/* **마지막에 추가한 사진**을 보여준다. 방금 고른 것이 큰 자리에 떠야 자연스럽다. */}
-            <Image source={{ uri: images[images.length - 1] }} contentFit="cover" style={styles.uploadPreview} />
+            {/*
+              🔴 `cover`가 아니라 `contain`이다. 패널이 4:3 가로인데 폰 사진은 대개
+              세로라, `cover`로 채우면 폭에 맞춰 확대되며 **위아래가 잘린다.**
+              얼굴은 사진 위쪽에 있으니 머리가 날아간다 — 헤어를 참고하려고 올린
+              사진에서 헤어가 안 보이는 셈이다. 남는 여백은 패널 배경색이 받는다.
+            */}
+            <Image source={{ uri: images[images.length - 1] }} contentFit="contain" style={styles.uploadPreview} />
             <View style={styles.uploadBadge}>
               <Text style={styles.uploadBadgeText}>{images.length < MAX_IMAGES ? `${images.length}/${MAX_IMAGES} · 눌러서 더 추가` : `${MAX_IMAGES}장 모두 채웠어요 · 아래에서 삭제`}</Text>
             </View>
@@ -110,18 +136,42 @@ export default function AnalysisNewScreen() {
               onPress={uri ? () => setImages((current) => current.filter((_, imageIndex) => imageIndex !== index)) : pickImages}
               style={[styles.thumbnail, { width: thumbnailSize, height: thumbnailSize }]}
             >
-              {uri ? <Image source={{ uri }} contentFit="cover" style={styles.thumbnailImage} /> : <OfficialFaceLogo size={thumbnailSize * 0.68} showCircle={false} />}
+              {/* 썸네일도 정사각형이라 `cover`면 세로 사진의 머리가 잘린다. */}
+              {uri ? <Image source={{ uri }} contentFit="contain" style={styles.thumbnailImage} /> : <OfficialFaceLogo size={thumbnailSize * 0.68} showCircle={false} />}
             </Pressable>
           );
         })}
       </ScrollView>
 
-      <AppButton label="진단하기" onPress={startAnalysis} style={styles.submit} />
+      {/* 막힌 상태를 버튼에도 적는다. 눌러 보고 알게 하지 않는다. */}
+      {blocked ? (
+        <View style={styles.blockedNote}>
+          <Text style={styles.blockedTitle}>분석권을 모두 사용했어요</Text>
+          <Text style={styles.blockedBody}>구독하면 고점 분석을 횟수 제한 없이 이용할 수 있어요.</Text>
+          <Text accessibilityRole="button" accessibilityLabel="요금제 보기" onPress={() => router.push('/plan')} style={styles.blockedLink}>요금제 보기 〉</Text>
+        </View>
+      ) : null}
+
+      <AppButton
+        label={blocked ? '구독하고 분석하기' : '진단하기'}
+        onPress={startAnalysis}
+        style={styles.submit}
+      />
+
+      <SubscribeModal
+        visible={planOpen}
+        onClose={() => setPlanOpen(false)}
+        onSubscribed={() => { setPlanOpen(false); void loadSubscription(); }}
+      />
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  blockedNote: { gap: 4, marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.primaryBg },
+  blockedTitle: { ...typography.label, color: colors.text },
+  blockedBody: { ...typography.caption, color: colors.textTertiary },
+  blockedLink: { ...typography.caption, color: colors.primaryPressed, marginTop: 2 },
   content: { paddingHorizontal: 29, paddingTop: 8, gap: 0 },
   heading: { gap: 3 },
   title: { ...typography.h1, color: colors.text },

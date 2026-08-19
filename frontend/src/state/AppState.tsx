@@ -8,7 +8,7 @@ import { ApiError, isMockMode, onSessionExpired } from '@/services/api';
 import * as backend from '@/services/backend';
 import { pushMessage, registerForPush } from '@/services/push';
 import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
-import type { AnalysisResult, Category, Inbody, Profile, RoutineTask } from '@/types/api';
+import type { AnalysisResult, Category, Inbody, Profile, RoutineTask, SubscriptionPlan, SubscriptionState } from '@/types/api';
 
 export type { DrawerItem, InbodyScan } from '@/services/backend';
 
@@ -104,6 +104,16 @@ type AppStateValue = {
   analysisKeywords: KeywordChoice[];
   startAnalysis: (inputText: string, imageUris: string[]) => Promise<ActionResult>;
   confirmKeywords: (keywordIds: string[]) => Promise<ActionResult>;
+
+  // ---- 구독 (PRD §11)
+  /** 아직 안 불러왔으면 `undefined`. 잔여 횟수를 지어내지 않는다. */
+  subscription?: SubscriptionState;
+  loadSubscription: () => Promise<SubscriptionState | undefined>;
+  /**
+   * 유료 구독으로 전환한다. **결제가 없어 누르면 바로 된다.**
+   * 성공하면 `subscription`이 갱신되어 이후 분석이 무제한이 된다.
+   */
+  subscribeToPlan: (plan: SubscriptionPlan) => Promise<ActionResult>;
 
   result?: AnalysisResult;
   hasAnalysis: boolean;
@@ -297,6 +307,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [analysisPercent, setAnalysisPercent] = useState<number>();
   // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
+  const [subscription, setSubscription] = useState<SubscriptionState>();
   const [routines, setRoutines] = useState<backend.RoutineSummary[]>([]);
   // ref가 아니라 state다. 화면이 "지금 어느 목표를 보고 있는지" 알아야 한다.
   // **배열이다** — 홈에서 목표를 여러 개 골라 한 번에 볼 수 있다. (피드백 7번)
@@ -615,7 +626,37 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       return { ok: true };
     } catch (error) {
       setAnalysisStatusText('');
-      return { ok: false, message: messageOf(error, '분석을 시작하지 못했어요.') };
+      // 분석권이 없으면 `NO_ANALYSIS_CREDIT`(402)이 온다. 화면이 이것을 알아야
+      // "실패했어요" 대신 구독 안내를 띄울 수 있다. 두 번째 분석에서 여기 걸린다.
+      return {
+        ok: false,
+        message: messageOf(error, '분석을 시작하지 못했어요.'),
+        code: error instanceof ApiError ? error.code : undefined,
+      };
+    }
+  }, [mode]);
+
+  // ---------------------------------------------------------------- 구독
+
+  const loadSubscription = useCallback(async () => {
+    if (mode === 'mock') return undefined;
+    try {
+      const next = await backend.getSubscription();
+      setSubscription(next);
+      return next;
+    } catch {
+      // 구독을 못 읽는다고 화면을 막지 않는다. 분석 자체는 서버가 다시 검사한다.
+      return undefined;
+    }
+  }, [mode]);
+
+  const subscribeToPlan = useCallback(async (plan: SubscriptionPlan): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      setSubscription(await backend.subscribe(plan));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '구독하지 못했어요.') };
     }
   }, [mode]);
 
@@ -1002,6 +1043,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     analysisKeywords,
     startAnalysis,
     confirmKeywords,
+    subscription,
+    loadSubscription,
+    subscribeToPlan,
     result: serverMode ? result : (account.hasAnalysis ? demoResult : undefined),
     hasAnalysis: serverMode ? Boolean(result) : account.hasAnalysis,
     saved: serverMode ? saved : account.saved,
@@ -1038,7 +1082,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     openRoutine, openRoutines, openSavedResult, peekSavedResult, photoUri, setRoutineNotifyTime, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
     result, routineDraft, routines, updateRoutineDraft,
     saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
-    startAnalysis, tasks, toggleTask, updateNotificationSettings,
+    startAnalysis, subscribeToPlan, subscription, loadSubscription, tasks, toggleTask, updateNotificationSettings,
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

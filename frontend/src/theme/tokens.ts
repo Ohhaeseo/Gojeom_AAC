@@ -11,6 +11,8 @@ export const fonts = {
 export const colors = {
   primary: '#6BBDA6',
   primaryLight: '#A1D9C6',
+  /** 칩·선택된 카드의 연한 민트 배경. (design.md §4 `primary-bg`) */
+  primaryBg: '#E5FAF1',
   point: '#FC9EA0',
   danger: '#DE6569',
   error: '#DE6569',

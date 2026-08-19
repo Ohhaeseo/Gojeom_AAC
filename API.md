@@ -162,7 +162,8 @@
 | 31 | POST | `/notifications/device-tokens` | ✔ | 푸시 토큰 등록 | F-11 | ✅ |
 | 32 | DELETE | `/analyses` | ✔ | **내 분석 전체 삭제** | F-13 | ✅ |
 | 32-1 | GET | `/results/{id}/product-recommendation` | ✔ | **어울리는 상품 추천** (V14) | F-07 | ✅ |
-| 33 | GET | `/subscriptions/me` | ✔ | 구독·분석권 상태 | F-12 | 🚧 |
+| 33 | GET | `/subscriptions/me` | ✔ | 구독·분석권 상태 | F-12 | ✅ |
+| 33-1 | POST | `/subscriptions/subscribe` | ✔ | **유료 전환 (결제 없음 · 즉시 활성화)** | F-12 | ✅ |
 | 34 | POST | `/subscriptions/checkout` | ✔ | 결제 시작 | F-12 | 🚧 |
 | 35 | POST | `/subscriptions/webhook` | — | PG 웹훅 (서버 전용) | F-12 | 🚧 |
 | 36 | GET | `/consents/terms` | — | 약관 목록 | §10 | 🚧 |
@@ -170,8 +171,12 @@
 ✅ 구현됨 · 🚧 **아직 구현되지 않음** — 문서에만 있다.
 
 > **🚧를 표에서 지우지 않은 이유** — 지우면 계획이 사라진다. 다만 그대로 두면
-> 문서가 없는 것을 약속하는 꼴이라 표시를 붙였다. 구독·결제(33~35)는 범위 밖이고,
+> 문서가 없는 것을 약속하는 꼴이라 표시를 붙였다. **결제(34~35)는 여전히 범위 밖**이고,
 > 약관 전문(36)은 지금 화면에 체크박스와 한 줄 설명만 있다.
+>
+> 🔴 **33-1은 결제를 거치지 않는다.** 누르면 그 자리에서 유료로 바뀐다. PG가 붙으면
+> 이 엔드포인트를 없애고 34 → PG → 35에서 같은 전환을 부르게 옮긴다.
+> (AGENTS.md §4 · 2026-08-19 결정)
 
 ---
 
@@ -961,6 +966,7 @@
   "data": {
     "plan": "TRIAL", "status": "ACTIVE",
     "analysisCredits": 1,
+    "unlimited": false,
     "expiresAt": "2026-09-10T00:00:00Z",
     "canAnalyze": true,
     "canCreateRoutine": true,
@@ -974,7 +980,29 @@
 
 프론트는 `canAnalyze` / `canCreateRoutine`만 보고 게이팅한다. 만료·잔여 계산을 프론트에서 하지 않는다.
 
-> 관련 화면이 미설계다(PRD O-3). API는 정의해두되 UI 연결은 보류한다.
+🔴 **`analysisCredits`는 무료 체험에서만 의미가 있다.** 유료 구독은 횟수를 세지 않으므로
+`unlimited`를 봐야 한다 — 이 값을 안 보고 잔여 횟수를 그리면 **결제한 사용자에게
+"0회 남음"**이 뜬다. 실제로 유료 전환 후에도 `analysisCredits`는 0인 채로 남는다.
+
+#### `POST /subscriptions/subscribe`
+
+```json
+{ "plan": "MONTHLY" }
+```
+
+응답은 `GET /subscriptions/me`와 같은 형태다.
+
+🔴 **결제를 거치지 않는다.** 부르면 그 자리에서 `plan`·`status`·`expiresAt`이 바뀌고
+이후 분석이 무제한이 된다. 목업이 아니라 실제 상태 변경이다. `TRIAL`을 보내면
+`VALIDATION_ERROR` — 무료 체험은 가입 시 자동 발급이지 고르는 값이 아니다.
+
+| 요청 `plan` | 만료 |
+| --- | --- |
+| `MONTHLY` | 지금부터 1개월 |
+| `YEARLY` | 지금부터 1년 |
+
+> PG가 붙으면 이 엔드포인트를 없애고 34번(`/checkout`) → PG → 35번(`/webhook`)에서
+> 같은 전환을 부르게 옮긴다. (AGENTS.md §4 · 2026-08-19 결정)
 
 ---
 

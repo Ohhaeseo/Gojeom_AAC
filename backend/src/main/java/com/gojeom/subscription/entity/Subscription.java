@@ -82,10 +82,31 @@ public class Subscription {
                 now.plusMonths(TRIAL_MONTHS));
     }
 
-    /** 분석을 시작할 수 있는지. 만료됐거나 분석권이 없으면 false. */
+    /**
+     * 유료 구독으로 전환한다. 결제는 붙어 있지 않다 — 누르면 바로 활성화된다.
+     *
+     * <p>분석권은 건드리지 않는다. 유료 구간에서는 {@link SubscriptionPlan#isUnlimited()}가
+     * 참이라 세지 않고, 나중에 만료돼 TRIAL로 돌아가는 일도 없기 때문이다.
+     */
+    public void subscribe(SubscriptionPlan paidPlan, OffsetDateTime now) {
+        if (!paidPlan.isUnlimited()) {
+            throw new IllegalArgumentException("유료 요금제가 아니다: " + paidPlan);
+        }
+        this.plan = paidPlan;
+        this.status = SubscriptionStatus.ACTIVE;
+        this.startedAt = now;
+        this.expiresAt = paidPlan == SubscriptionPlan.YEARLY ? now.plusYears(1) : now.plusMonths(1);
+    }
+
+    /**
+     * 분석을 시작할 수 있는지. 만료됐으면 false.
+     *
+     * <p>유료 구독은 <b>횟수를 보지 않는다.</b> 분석권은 무료 체험 1회를 세는 값이라
+     * (PRD F-12 · §11) 유료 구간까지 끌고 가면 8,900원을 내고도 한 번만 되는 꼴이 된다.
+     */
     public boolean canAnalyze(OffsetDateTime now) {
         return status == SubscriptionStatus.ACTIVE
-                && analysisCredits > 0
+                && (plan.isUnlimited() || analysisCredits > 0)
                 && (expiresAt == null || expiresAt.isAfter(now));
     }
 

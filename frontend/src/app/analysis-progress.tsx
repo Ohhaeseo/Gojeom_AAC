@@ -8,6 +8,7 @@ import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { ProgressGauge } from '@/components/analysis/ProgressGauge';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
+import { SubscribeModal } from '@/components/subscription/SubscribeModal';
 import { useAppState } from '@/state/AppState';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
@@ -23,6 +24,9 @@ export default function AnalysisProgressScreen() {
   const [phase, setPhase] = useState<Phase>('extracting');
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState('');
+  /** 분석권이 없어 막힌 상태. 실패와 구분해야 구독 안내를 띄울 수 있다. */
+  const [needsPlan, setNeedsPlan] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const started = useRef(false);
 
   const inputText = params.input ?? '';
@@ -30,16 +34,24 @@ export default function AnalysisProgressScreen() {
     try { return params.images ? (JSON.parse(params.images) as string[]) : []; } catch { return []; }
   })();
 
+  const run = useCallback(async () => {
+    setError('');
+    setNeedsPlan(false);
+    setPhase('extracting');
+    const result = await startAnalysis(inputText, imageUris);
+    if (result.ok) { setPhase('keywords'); return; }
+    // 분석권 소진은 "실패"가 아니라 구독하면 풀리는 상태다. 두 번째 분석에서 여기 온다.
+    if (result.code === 'NO_ANALYSIS_CREDIT') { setNeedsPlan(true); setPhase('failed'); return; }
+    setError(result.message ?? '분석을 시작하지 못했어요.');
+    setPhase('failed');
+  }, [imageUris, inputText, startAnalysis]);
+
   // 키워드 추출까지 진행한다. StrictMode의 이중 실행을 ref로 막는다.
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void (async () => {
-      const result = await startAnalysis(inputText, imageUris);
-      if (!result.ok) { setError(result.message ?? '분석을 시작하지 못했어요.'); setPhase('failed'); return; }
-      setPhase('keywords');
-    })();
-  }, [imageUris, inputText, startAnalysis]);
+    void run();
+  }, [run]);
 
   const submitKeywords = useCallback(async () => {
     setPhase('generating');
@@ -58,12 +70,14 @@ export default function AnalysisProgressScreen() {
   const completed = phase === 'done';
   const failed = phase === 'failed';
 
-  const statusTitle = failed ? '분석에 실패했어요'
+  const statusTitle = needsPlan ? '분석권을 모두 사용했어요'
+    : failed ? '분석에 실패했어요'
     : completed ? '분석 완료!✓'
     : phase === 'generating' ? '분석 중...'
     : '키워드 추출 중...';
 
-  const statusDescription = failed ? error
+  const statusDescription = needsPlan ? '구독하면 고점 분석을 횟수 제한 없이 이용할 수 있어요.'
+    : failed ? error
     : completed ? '고점 분석을 완료했어요!\n5초 후 결과 화면으로 넘어가요.'
     : analysisStatusText || (mode === 'mock'
       ? '입력하신 정보에서 나를 표현하는\n키워드를 찾고 있어요.'
@@ -79,8 +93,9 @@ export default function AnalysisProgressScreen() {
           <Text style={styles.description}>{statusDescription}</Text>
           {/* 끝났거나 실패한 뒤에는 게이지를 치운다. 남겨두면 아직 도는 것처럼 보인다. */}
           {!completed && !failed ? <ProgressGauge percent={analysisPercent} label={statusTitle.replace('...', '')} /> : null}
-          {completed ? <AppButton label="바로 결과 확인하기" variant="secondary" onPress={() => router.replace('/analysis-result')} /> : null}
-          {failed ? <AppButton label="다시 시도하기" variant="secondary" onPress={() => router.replace('/analysis-new')} /> : null}
+          {completed ? <AppButton label="바로 결과 확인하기" onPress={() => router.replace('/analysis-result')} /> : null}
+          {failed && needsPlan ? <AppButton label="구독하고 계속하기" onPress={() => setPlanOpen(true)} /> : null}
+          {failed && !needsPlan ? <AppButton label="다시 시도하기" onPress={() => router.replace('/analysis-new')} /> : null}
         </View>
       </AnalysisPanel>
 
@@ -115,6 +130,11 @@ export default function AnalysisProgressScreen() {
           </View>
         </View>
       </Modal>
+      <SubscribeModal
+        visible={planOpen}
+        onClose={() => setPlanOpen(false)}
+        onSubscribed={() => { setPlanOpen(false); void run(); }}
+      />
     </AppScreen>
   );
 }

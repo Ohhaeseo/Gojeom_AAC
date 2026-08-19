@@ -14,6 +14,8 @@ import type {
   Provider,
   RoutineSourceType,
   RoutineTask,
+  SubscriptionPlan,
+  SubscriptionState,
   TaskStatus,
 } from '@/types/api';
 
@@ -426,3 +428,16 @@ export const registerDeviceToken = (token: string, platform: 'WEB' | 'IOS' | 'AN
  */
 export const getProductRecommendation = (resultId: string) =>
   request<{ productIds: string[]; reason: string | null }>(`/results/${resultId}/product-recommendation`);
+
+// ---------------------------------------------------------------- 구독
+
+export const getSubscription = () => request<SubscriptionState>('/subscriptions/me');
+
+/**
+ * 유료 구독으로 전환한다. **결제가 붙어 있지 않아 누르면 바로 활성화된다.**
+ *
+ * 가짜 응답이 아니라 서버의 구독 행이 실제로 바뀐다 — 이후 분석 무제한도
+ * 그 상태를 보고 동작한다. PG가 붙으면 이 자리에 결제 토큰이 추가된다.
+ */
+export const subscribe = (plan: SubscriptionPlan) =>
+  request<SubscriptionState>('/subscriptions/subscribe', { method: 'POST', body: { plan } });

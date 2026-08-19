@@ -111,3 +111,32 @@ export type RoutineTask = {
   weeklyTarget?: number | null;
   status: TaskStatus;
 };
+
+// ---------------------------------------------------------------- 구독
+
+export type SubscriptionPlan = 'TRIAL' | 'MONTHLY' | 'YEARLY';
+export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'CANCELED';
+
+/** 고를 수 있는 유료 요금제. 가격은 서버가 정본이라 화면에 상수로 박지 않는다. */
+export type SubscriptionProduct = {
+  plan: SubscriptionPlan;
+  /** 원 단위. */
+  amount: number;
+  label: string;
+};
+
+export type SubscriptionState = {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  /**
+   * 남은 분석권. **무료 체험에서만 의미가 있다.**
+   * 유료 구독은 횟수를 세지 않으므로 이 값 대신 `unlimited`를 봐야 한다 —
+   * 안 그러면 결제한 사용자에게 "0회 남음"이 뜬다.
+   */
+  analysisCredits: number;
+  unlimited: boolean;
+  expiresAt: string | null;
+  canAnalyze: boolean;
+  canCreateRoutine: boolean;
+  products: SubscriptionProduct[];
+};
