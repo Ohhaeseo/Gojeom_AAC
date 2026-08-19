@@ -101,7 +101,7 @@ export default function GoalScreen() {
               */}
               {overlay === 'done' ? null : <ProgressGauge label="맞춤 루틴 만드는 중" />}
             </View>
-            {overlay === 'done' ? <View style={styles.overlayButton}><AppButton label="바로 루틴 확인하기" variant="secondary" onPress={openRoutines} /></View> : null}
+            {overlay === 'done' ? <View style={styles.overlayButton}><AppButton label="바로 루틴 확인하기" onPress={openRoutines} /></View> : null}
           </View>
         </View>
       </Modal>

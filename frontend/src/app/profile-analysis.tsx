@@ -45,7 +45,7 @@ export default function ProfileAnalysisScreen() {
 
       <View style={styles.bottom}>
         {completed ? (
-          <AppButton label="바로 프로필 화면으로 이동하기" variant="secondary" onPress={() => router.replace('/profile')} />
+          <AppButton label="바로 프로필 화면으로 이동하기" onPress={() => router.replace('/profile')} />
         ) : (
           null
         )}
