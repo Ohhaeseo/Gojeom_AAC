@@ -148,8 +148,20 @@ public class AuthService {
     private User createGoogleUser(String email, GoogleTokenVerifier.GoogleAccount account,
                                   GoogleLoginRequest request) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        ConsentPolicy.validateAge(request.birthDate(), now.toLocalDate());
+        /*
+          🔴 <b>동의를 나이보다 먼저 본다.</b>
+
+          로그인 화면에서 온 요청에는 생년월일도 동의도 없다 — 그것이 설계다
+          ({@link GoogleLoginRequest} 주석 · API.md §6.1). 처음 쓰는 Google 계정이면
+          <b>가입 화면으로 보내야 한다</b>는 뜻이고, 프론트는 {@code CONSENT_REQUIRED}를
+          보고 그렇게 한다({@code login.tsx}).
+
+          나이를 먼저 보면 {@code birthDate == null}이 {@code VALIDATION_ERROR}(400)로
+          나가버려 <b>그 안내가 영영 뜨지 않는다.</b> 실제로 처음 쓰는 Google 계정이
+          전부 여기서 400으로 막혔다 — 웹·안드로이드 공통이었다.
+        */
         ConsentPolicy.validateConsents(request.agreedConsents());
+        ConsentPolicy.validateAge(request.birthDate(), now.toLocalDate());
 
         User user = userRepository.save(
                 User.ofGoogle(email, account.subject(), nicknameFrom(account, email), request.birthDate()));

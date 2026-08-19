@@ -7,6 +7,7 @@ import java.time.Period;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -47,8 +48,15 @@ public final class ConsentPolicy {
      *                           나이가 모자라면 {@code PROFILE_UNDERAGE}
      */
     public static void validateAge(LocalDate birthDate, LocalDate today) {
-        if (birthDate == null || birthDate.isAfter(today) || birthDate.isBefore(today.minusYears(MAX_AGE))) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        // 사유를 실어 보낸다. 없으면 화면이 "입력값을 다시 확인해주세요"만 띄워
+        // 어느 칸이 문제인지 알 수 없다.
+        if (birthDate == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    Map.of("birthDate", "생년월일을 입력해주세요."));
+        }
+        if (birthDate.isAfter(today) || birthDate.isBefore(today.minusYears(MAX_AGE))) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    Map.of("birthDate", "생년월일을 확인해주세요."));
         }
         if (Period.between(birthDate, today).getYears() < MIN_AGE) {
             throw new BusinessException(ErrorCode.PROFILE_UNDERAGE);
