@@ -32,7 +32,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://CHANGE-ME.example.com/api/v1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://1-201-117-65.nip.io/api/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "596614599472-hdlc4qdfojgioj6hskkplleqmk6g5equ.apps.googleusercontent.com"
       }
     },
@@ -42,7 +42,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://CHANGE-ME.example.com/api/v1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://1-201-117-65.nip.io/api/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "596614599472-hdlc4qdfojgioj6hskkplleqmk6g5equ.apps.googleusercontent.com"
       }
     }
