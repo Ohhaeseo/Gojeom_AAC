@@ -1,4 +1,4 @@
-import { frequencyRank, groupByTiming, timingRank, todayTasks, weeklyProgress } from '@/lib/tasks';
+import { frequencyRank, groupByTiming, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
 import type { RoutineTask } from '@/types/api';
 
 /**
@@ -220,5 +220,77 @@ describe('weeklyProgress', () => {
     // 넷째 날을 더 체크했다고 4/3이 되면 안 된다.
     const all = Array.from({ length: 5 }, () => weekly('플랭크 버티기', '2026-08-19', 'DONE'));
     expect(weeklyProgress(all[0]!, all)).toEqual({ done: 3, target: 3 });
+  });
+});
+
+/**
+ * 주 N회를 다 채우면 그 주의 남은 날에서 빠진다.
+ *
+ * <b>사용자가 짚은 문제다</b> — "주 3회 루틴을 월화수에 다 했으면 목요일에는 없어야
+ * 하는데 계속 있다". V15가 주 N회를 <b>그 주 모든 날에</b> 펼쳐 두는데(어느 날 할지는
+ * 사용자가 고른다) 화면이 "3/3 다 했어요"라고 말만 하고 목록에서 빼지 않았다.
+ */
+describe('주 N회 채운 뒤 감추기', () => {
+  /** 같은 주에 놓인 주 3회 태스크 7일치. `weekStart`가 같아야 한 주로 센다. */
+  const week = (weekStart: string, doneDays: number[]) =>
+    Array.from({ length: 7 }, (_, day) => ({
+      ...task('스쿼트 하기', '주 3회 저녁', iso(day)),
+      taskId: `squat-${day}`,
+      weekStart,
+      weeklyTarget: 3,
+      status: doneDays.includes(day) ? ('DONE' as const) : ('PENDING' as const),
+    }));
+
+  it('세 번 채우면 남은 날에서 빠진다', () => {
+    const tasks = week('week-1', [0, 1, 2]);
+    // 오늘(0일차)은 이미 완료된 줄이라 남고, 아직 안 한 3~6일차는 빠진다.
+    expect(visibleTasks(tasks, tasks, iso(0)).map((item) => item.taskId))
+      .toEqual(['squat-0', 'squat-1', 'squat-2']);
+  });
+
+  it('두 번만 했으면 아직 남는다', () => {
+    const tasks = week('week-1', [0, 1]);
+    expect(visibleTasks(tasks, tasks, iso(0))).toHaveLength(7);
+  });
+
+  /** 🔴 체크하는 순간 사라지면 되돌릴 수 없다. */
+  it('방금 체크한 줄은 사라지지 않는다', () => {
+    const tasks = week('week-1', [0, 1, 2]);
+    const justChecked = tasks.find((item) => item.taskId === 'squat-2');
+    expect(justChecked).toBeDefined();
+    expect(weeklyQuotaMet(justChecked!, tasks)).toBe(false);
+  });
+
+  /** 사용자가 정한 것 — 캘린더의 지난 날짜는 <b>기록</b>이라 남긴다. */
+  it('지난 날짜는 다 채웠어도 그대로 남는다', () => {
+    const tasks = Array.from({ length: 7 }, (_, day) => ({
+      ...task('스쿼트 하기', '주 3회 저녁', iso(day - 6)),
+      taskId: `squat-${day}`,
+      weekStart: 'week-1',
+      weeklyTarget: 3,
+      status: day < 3 ? ('DONE' as const) : ('PENDING' as const),
+    }));
+    // 오늘은 마지막 날(day 6). 앞의 여섯 날은 모두 과거라 그대로 보인다.
+    expect(visibleTasks(tasks, tasks, iso(0))).toHaveLength(6 + 0);
+  });
+
+  it('매일 루틴은 빈도 상한이 없어 영향을 받지 않는다', () => {
+    const daily = Array.from({ length: 3 }, (_, day) => ({
+      ...task('물 마시기', '매일 아침', iso(day)),
+      taskId: `water-${day}`,
+      status: 'DONE' as const,
+    }));
+    expect(visibleTasks(daily, daily, iso(0))).toHaveLength(3);
+  });
+
+  it('오늘 할 일에서도 빠진다', () => {
+    const tasks = week('week-1', [0, 1, 2]);
+    // 오늘 회차(0일차)는 이미 완료라 남는다. 아직 안 한 다른 날은 애초에 오늘 것이 아니다.
+    const today = todayTasks(tasks);
+    expect(titles(today.items)).toEqual(['스쿼트 하기']);
+
+    // 오늘 것을 아직 안 했는데 그 주에 이미 3번을 채웠다면 오늘 목록에서 빠진다.
+    const filled = week('week-1', [1, 2, 3]);
+    expect(todayTasks(filled).items).toHaveLength(0);
   });
 });

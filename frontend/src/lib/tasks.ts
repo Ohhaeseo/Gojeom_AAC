@@ -69,6 +69,41 @@ function pickRound(tasks: RoutineTask[]): { date?: string; items: RoutineTask[] 
 }
 
 /**
+ * 이번 주 몫을 **이미 채운** 주 N회 태스크인가.
+ *
+ * 🔴 V15는 주 N회짜리도 **그 주 모든 날에** 행을 만든다 — 어느 날 할지는 사용자가
+ * 그 주 안에서 고른다(월·수·금으로 박아 두면 월요일에 못 한 사람은 그 회차를 영영
+ * 잃는다). 그런데 화면이 "이번 주 3/3 · 다 했어요"라고 **말만 하고 목록에서 빼지
+ * 않아서**, 월·화·수에 세 번 채운 주 3회 루틴이 목·금·토·일에도 계속 떴다.
+ *
+ * **자기 자신이 완료된 줄은 남긴다.** 체크하는 순간 사라지면 되돌릴 수 없고,
+ * 오늘 해낸 일이 오늘 목록에서 없어지는 것도 이상하다.
+ */
+export function weeklyQuotaMet(task: RoutineTask, all: RoutineTask[]): boolean {
+  if (task.status === 'DONE') return false;
+  const week = weeklyProgress(task, all);
+  return week ? week.done >= week.target : false;
+}
+
+/**
+ * 화면에 남길 것만 고른다.
+ *
+ * 주 3회를 월·화·수에 채웠으면 목·금·토·일에는 뜨지 않아야 한다 — 그것이 "주 3회"다.
+ *
+ * **지난 날짜는 그대로 둔다.** 캘린더에서 지난 날은 <b>기록</b>이라, 빼 버리면
+ * 그날 무엇이 있었는지 볼 수 없게 된다. 오늘과 앞으로 남은 날에서만 덜어낸다.
+ *
+ * @param all 세는 기준. **거른 목록이 아니라 전체**를 넘겨야 주별 횟수가 맞는다
+ */
+export function visibleTasks(
+  tasks: RoutineTask[],
+  all: RoutineTask[],
+  today = toIsoDate(new Date()),
+): RoutineTask[] {
+  return tasks.filter((task) => task.scheduledDate < today || !weeklyQuotaMet(task, all));
+}
+
+/**
  * 오늘 할 일.
  *
  * <b>회차는 목표마다 따로 고른다.</b> 목표를 여러 개 골랐을 때 전체에서 날짜
@@ -77,6 +112,8 @@ function pickRound(tasks: RoutineTask[]): { date?: string; items: RoutineTask[] 
  *
  * <b>완료 체크는 날짜 단위다.</b> 주 N회짜리는 그 주의 모든 날에 배정이 있고
  * 그중 N개를 체크하면 채워진다 — 진행은 {@link weeklyProgress}가 센다. (V15)
+ *
+ * <b>이번 주 몫을 채운 것은 빠진다.</b> {@link visibleTasks} 참고.
  *
  * <p><b>홈과 루틴 화면이 이 함수를 함께 쓴다.</b> 각자 고르고 정렬하면 같은
  * 태스크가 두 화면에서 다른 순서로 나온다.
@@ -101,7 +138,9 @@ export function todayTasks(tasks: RoutineTask[]): { date?: string; items: Routin
     // 묶음이 하나면 그 회차 날짜가 곧 화면이 말하는 날짜다. 여럿이면 목표마다
     // 달라 하나로 말할 수 없으므로 비워 둔다.
     date = groups.size === 1 ? round.date : undefined;
-    items.push(...round.items);
+    // 세는 기준은 **전체 목록**이다. 회차만 넘기면 그 주의 다른 날 완료가 빠져
+    // 이미 채운 루틴이 다시 뜬다.
+    items.push(...visibleTasks(round.items, tasks));
   }
   return { date, items: items.sort(compareTasks) };
 }

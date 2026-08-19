@@ -7,7 +7,7 @@ import {
   dayLabel, groupByDate, monthGrid, monthLabel, monthsOf, nearestDate,
 } from '@/lib/calendar';
 import { toIsoDate } from '@/lib/date';
-import { groupByTiming, weeklyProgress } from '@/lib/tasks';
+import { groupByTiming, visibleTasks, weeklyProgress } from '@/lib/tasks';
 import * as backend from '@/services/backend';
 import type { RoutineDetail } from '@/services/backend';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -59,7 +59,15 @@ export default function RoutineCalendarScreen() {
     return () => { alive = false; };
   }, [routineId]);
 
-  const byDate = useMemo(() => groupByDate(tasks), [tasks]);
+  /*
+    이번 주 몫을 채운 주 N회는 **오늘과 남은 날에서 뺀다.** 주 3회를 월·화·수에
+    했으면 목·금·토·일에는 없어야 한다. 지난 날짜는 기록이라 그대로 둔다.
+
+    거른 뒤에 묶어야 **달력의 점과 날짜별 목록이 어긋나지 않는다** — 점은 있는데
+    눌러 보면 비어 있는 날이 생기면 사용자는 고장으로 읽는다.
+  */
+  const shown = useMemo(() => visibleTasks(tasks, tasks), [tasks]);
+  const byDate = useMemo(() => groupByDate(shown), [shown]);
   const dates = useMemo(() => [...byDate.keys()], [byDate]);
   const months = useMemo(() => monthsOf(tasks), [tasks]);
   const grid = useMemo(() => (month ? monthGrid(month, byDate) : []), [month, byDate]);
