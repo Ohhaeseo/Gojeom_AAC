@@ -116,7 +116,9 @@ export default function AnalysisNewScreen() {
           </>
         ) : (
           <>
-            <OfficialFaceLogo size={150} showCircle={false} />
+            {/* 로고가 **남은 높이만** 가져간다. 고정 크기로 두면 글꼴이 커질 때
+                `overflow: hidden`인 이 패널이 로고 위쪽을 잘라 낸다. */}
+            <View style={styles.uploadLogo}><OfficialFaceLogo size={150} showCircle={false} style={styles.fillLogo} /></View>
             <Text style={styles.photoTitle}>사진 추가</Text>
             <Text style={styles.photoDescription}>이곳을 눌러 파일을 업로드 하거나,{`\n`}촬영을 시작해 보세요.</Text>
           </>
@@ -182,7 +184,10 @@ const styles = StyleSheet.create({
   count: { position: 'absolute', right: 13, bottom: 12, ...typography.caption, color: colors.textMuted },
   photoHeading: { gap: 2, marginTop: 16 },
   sectionTitle: { ...typography.h1, color: colors.text },
-  uploadPanel: { aspectRatio: 4 / 3, marginTop: 8, alignItems: 'center', justifyContent: 'center', gap: 4, overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.textTertiary, backgroundColor: '#E1E8E7' },
+  uploadPanel: { aspectRatio: 4 / 3, marginTop: 8, alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 12, overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.textTertiary, backgroundColor: '#E1E8E7' },
+  // 원본 비율(164:126)을 지키며 남은 높이에 맞춰 줄어든다. 자세한 이유는 `AnalysisLogo`.
+  uploadLogo: { flex: 1, aspectRatio: 164 / 126, maxHeight: 115, minHeight: 40, alignSelf: 'center' },
+  fillLogo: { width: '100%', height: '100%' },
   uploadPreview: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   uploadBadge: { position: 'absolute', left: 12, bottom: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: 'rgba(18,29,45,0.62)' },
   uploadBadgeText: { ...typography.caption, color: colors.white },

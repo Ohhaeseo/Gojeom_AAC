@@ -56,7 +56,7 @@ export default function ProfileAnalysisScreen() {
 
 const styles = StyleSheet.create({
   container: { paddingTop: 8, gap: 12 }, heading: { gap: 3 }, headingTitle: { ...typography.h1, color: colors.text }, headingDescription: { ...typography.body, color: colors.textTertiary },
-  center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.md },
+  center: { flexGrow: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, paddingVertical: spacing.md, gap: spacing.md },
   title: { ...typography.title, color: colors.text, textAlign: 'center' },
   description: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
   bottom: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 42, gap: spacing.md },

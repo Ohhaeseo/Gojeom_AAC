@@ -29,6 +29,7 @@
         }
       ],
       "expo-font",
+      "./plugins/withCropImageTheme",
       "@react-native-google-signin/google-signin"
     ],
     "experiments": {
