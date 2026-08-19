@@ -5,6 +5,7 @@ import type { ConsentCode } from '@/lib/consent';
 import { router } from 'expo-router';
 
 import { ApiError, isMockMode, onSessionExpired } from '@/services/api';
+import { detailFields, messageOf } from '@/lib/errors';
 import * as backend from '@/services/backend';
 import { pushMessage, registerForPush } from '@/services/push';
 import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
@@ -19,7 +20,13 @@ export type { DrawerItem, InbodyScan } from '@/services/backend';
  * `CONSENT_REQUIRED`로 돌아올 때 로그인 화면이 가입 화면으로 보내는 데 쓴다.
  * 메시지 문자열로 분기하면 문구를 다듬는 순간 조용히 깨진다.
  */
-export type ActionResult = { ok: boolean; message?: string; code?: string };
+export type ActionResult = {
+  ok: boolean;
+  message?: string;
+  code?: string;
+  /** 서버가 지목한 필드별 사유. 화면이 해당 입력칸 밑에 붙인다. (`detailFields`) */
+  fields?: Record<string, string>;
+};
 
 /** 서랍 3섹션. (API.md §6.5) */
 export type DrawerSections = { inProgress: backend.DrawerItem[]; recent: backend.DrawerItem[]; all: backend.DrawerItem[] };
@@ -51,6 +58,18 @@ export type RoutinePlanItem = {
 
 /** 인바디 스캔 결과. 실패해도 화면은 직접 입력으로 계속 갈 수 있어야 한다. */
 export type InbodyScanResult = ActionResult & { scan?: backend.InbodyScan };
+
+/**
+ * 분석 시작 결과.
+ *
+ * 🔴 `pendingAnalysisId`가 요점이다. 진행 중인 분석이 남아 있으면 서버가 409로
+ * 막는데, **화면이 그 분석의 id를 알아야** "이어서 하기 / 버리고 새로 시작"을
+ * 물을 수 있다. 모르면 사용자는 "분석을 시작하지 못했어요"만 보고 영영 막힌다.
+ */
+export type StartAnalysisResult = ActionResult & { pendingAnalysisId?: string };
+
+/** 이어하기 결과. 어느 화면으로 갈지는 남아 있던 분석의 상태가 정한다. */
+export type ResumeAnalysisResult = ActionResult & { phase?: 'keywords' | 'done' };
 
 export type ProfileDraft = {
   priorities: Category[];
@@ -88,6 +107,8 @@ type AppStateValue = {
   setPriorities: (value: Category[]) => void;
   /** 우선순위만 서버에 저장한다. 배열 순서가 곧 1·2·3순위다. (AGENTS.md 규칙 3) */
   savePriorities: (value: Category[]) => Promise<ActionResult>;
+  /** 사진만 바꾼다. 키·체중·수면은 그대로 둔다. */
+  changePhoto: (uri: string) => Promise<ActionResult>;
   profile?: Profile;
   /** 사진 업로드 → 프로필 등록까지 한 번에 처리한다. */
   saveProfile: (draft: ProfileDraft) => Promise<ActionResult>;
@@ -102,7 +123,11 @@ type AppStateValue = {
    */
   analysisPercent?: number;
   analysisKeywords: KeywordChoice[];
-  startAnalysis: (inputText: string, imageUris: string[]) => Promise<ActionResult>;
+  startAnalysis: (inputText: string, imageUris: string[]) => Promise<StartAnalysisResult>;
+  /** 진행 중이던 분석을 이어서 진행한다. (`startAnalysis`의 `pendingAnalysisId`) */
+  resumeAnalysis: (analysisId: string) => Promise<ResumeAnalysisResult>;
+  /** 진행 중이던 분석을 버린다. 이것을 해야 새 분석을 시작할 수 있다. */
+  discardAnalysis: (analysisId: string) => Promise<ActionResult>;
   confirmKeywords: (keywordIds: string[]) => Promise<ActionResult>;
 
   // ---- 구독 (PRD §11)
@@ -281,8 +306,28 @@ const createAccountData = (password: string): AccountData => ({
 
 const signedOutData = createAccountData('');
 
-const messageOf = (error: unknown, fallback: string) =>
-  error instanceof ApiError ? error.message : fallback;
+/**
+ * 409가 지목한 "진행 중인 분석"의 id.
+ *
+ * `detailFields`는 사람이 읽을 한글 문구만 남기므로 UUID는 걸러진다. 화면 문구가
+ * 아니라 **동작에 쓸 값**이라 여기서 따로 읽는다.
+ */
+function pendingAnalysisIdOf(error: unknown): string | undefined {
+  if (!(error instanceof ApiError) || error.code !== 'ANALYSIS_INVALID_STATE') return undefined;
+  const details = error.details as { analysisId?: unknown } | undefined;
+  return typeof details?.analysisId === 'string' ? details.analysisId : undefined;
+}
+
+/** 실패 결과 한 벌. 화면이 입력칸 옆에 붙일 수 있게 `fields`도 함께 준다. */
+const failure = (error: unknown, fallback: string): ActionResult => {
+  const fields = detailFields(error instanceof ApiError ? error.details : undefined);
+  return {
+    ok: false,
+    message: messageOf(error, fallback),
+    code: error instanceof ApiError ? error.code : undefined,
+    fields: Object.keys(fields).length ? fields : undefined,
+  };
+};
 
 export function AppStateProvider({ children }: PropsWithChildren) {
   const mode = isMockMode ? 'mock' : 'server';
@@ -439,7 +484,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       setNicknameState(session.nickname);
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error, '회원가입에 실패했어요.') };
+      return failure(error, '회원가입에 실패했어요.');
     }
   }, [accounts, mode, resetServerState]);
 
@@ -469,7 +514,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     } catch (error) {
       // 서버는 "없는 계정"과 "비밀번호 틀림"을 구분해 알려주지 않는다.
       // 계정 존재 여부가 새어나가지 않게 하려는 의도다. (API.md §4)
-      return { ok: false, message: messageOf(error, '로그인에 실패했어요.') };
+      return failure(error, '로그인에 실패했어요.');
     }
   }, [accounts, adoptSession, mode]);
 
@@ -485,11 +530,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       // 처음 쓰는 Google 계정이면 서버가 `CONSENT_REQUIRED`로 돌려보낸다. 나이와
       // 동의를 받아야 계정을 만들 수 있기 때문이다. 화면이 그것을 알아야
       // "실패"가 아니라 가입 화면으로 안내할 수 있다.
-      return {
-        ok: false,
-        message: messageOf(error, 'Google 로그인에 실패했어요.'),
-        code: error instanceof ApiError ? error.code : undefined,
-      };
+      return failure(error, 'Google 로그인에 실패했어요.');
     }
   }, [adoptSession, mode]);
 
@@ -558,9 +599,32 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       setPhotoUri(created.photoUrl ?? undefined);
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error, '프로필을 저장하지 못했어요.') };
+      return failure(error, '프로필을 저장하지 못했어요.');
     }
   }, [mode, photoUri, updateAccount]);
+
+  /**
+   * 사진만 바꾼다.
+   *
+   * 🔴 예전에는 사진을 바꾸려면 `/photo` → `/priority` → `/body-info` → `/optional-info`를
+   * 다시 걸어 **프로필 전체를 새로 만들어야** 했다(`POST /profiles`가 전부를 요구한다).
+   * 사진 한 장 바꾸자고 키·체중·수면을 처음부터 다시 입력하던 이유다.
+   *
+   * 얼굴 인식 같은 검증은 등록과 똑같이 서버가 한다 — 여기가 뒷문이 되면 안 된다.
+   */
+  const changePhoto = useCallback(async (uri: string): Promise<ActionResult> => {
+    if (mode === 'mock') { setPhotoUri(uri); return { ok: true }; }
+    try {
+      const photoKey = await backend.uploadImage('PROFILE_PHOTO', uri);
+      const updated = await backend.replaceProfilePhoto(photoKey);
+      setProfileState(updated);
+      setPriorities(updated.priorities);
+      setPhotoUri(updated.photoUrl ?? undefined);
+      return { ok: true };
+    } catch (error) {
+      return failure(error, '사진을 바꾸지 못했어요.');
+    }
+  }, [mode]);
 
   /**
    * 우선순위만 바꾼다. 사진·신체 정보는 건드리지 않는다.
@@ -600,7 +664,20 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   // ---------------------------------------------------------------- 고점 분석
 
-  const startAnalysis = useCallback(async (inputText: string, imageUris: string[]): Promise<ActionResult> => {
+  /** 진행 상황을 화면에 옮긴다. 시작·이어하기·키워드 확정이 함께 쓴다. */
+  const onProgress = useCallback((progress: backend.AnalysisProgress) => {
+    setAnalysisStatusText(progress.message);
+    setAnalysisPercent(progress.progress);
+  }, []);
+
+  /** 키워드가 준비될 때까지 기다렸다가 목록을 받아 둔다. */
+  const awaitKeywords = useCallback(async (id: string) => {
+    await backend.pollAnalysis(id, (progress) => progress.status === 'KEYWORDS_READY', onProgress);
+    const keywords = await backend.getKeywords(id);
+    setAnalysisKeywords(keywords.keywords.map((keyword) => ({ id: keyword.id, label: keyword.label })));
+  }, [onProgress]);
+
+  const startAnalysis = useCallback(async (inputText: string, imageUris: string[]): Promise<StartAnalysisResult> => {
     if (mode === 'mock') {
       setAnalysisKeywords(mockKeywords);
       setAnalysisStatusText('키워드를 찾고 있어요.');
@@ -615,26 +692,20 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       analysisId.current = accepted.analysisId;
       setAnalysisKeywords([]);
 
-      await backend.pollAnalysis(
-        accepted.analysisId,
-        (progress) => progress.status === 'KEYWORDS_READY',
-        (progress) => { setAnalysisStatusText(progress.message); setAnalysisPercent(progress.progress); },
-      );
-
-      const keywords = await backend.getKeywords(accepted.analysisId);
-      setAnalysisKeywords(keywords.keywords.map((keyword) => ({ id: keyword.id, label: keyword.label })));
+      await awaitKeywords(accepted.analysisId);
       return { ok: true };
     } catch (error) {
       setAnalysisStatusText('');
-      // 분석권이 없으면 `NO_ANALYSIS_CREDIT`(402)이 온다. 화면이 이것을 알아야
-      // "실패했어요" 대신 구독 안내를 띄울 수 있다. 두 번째 분석에서 여기 걸린다.
-      return {
-        ok: false,
-        message: messageOf(error, '분석을 시작하지 못했어요.'),
-        code: error instanceof ApiError ? error.code : undefined,
-      };
+      /*
+        화면이 코드를 보고 분기한다.
+
+        - `NO_ANALYSIS_CREDIT`(402) — "실패했어요" 대신 구독 안내를 띄운다.
+        - `ANALYSIS_INVALID_STATE`(409) — 진행 중인 분석이 남아 있다. 그 id를
+          함께 실어 보내야 "이어서 하기 / 버리고 새로 시작"을 물을 수 있다.
+      */
+      return { ...failure(error, '분석을 시작하지 못했어요.'), pendingAnalysisId: pendingAnalysisIdOf(error) };
     }
-  }, [mode]);
+  }, [awaitKeywords, mode]);
 
   // ---------------------------------------------------------------- 구독
 
@@ -680,6 +751,18 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  /** 결과가 나올 때까지 기다렸다가 화면에 올린다. 키워드 확정과 이어하기가 함께 쓴다. */
+  const awaitResult = useCallback(async (id: string) => {
+    await backend.pollAnalysis(id, (progress) => progress.status === 'DONE', onProgress);
+    const loaded = await backend.getResult(id);
+    setResult(loaded);
+    setSaved(loaded.saved);
+
+    // 텍스트 결과는 나왔지만 비교 이미지는 아직 만들어지는 중일 수 있다.
+    // 결과 화면을 먼저 띄우고, 이미지가 도착하면 조용히 교체한다. (API.md §6.4)
+    if (loaded.comparisonImage.status === 'PENDING') void watchImage(id);
+  }, [onProgress, watchImage]);
+
   const confirmKeywords = useCallback(async (keywordIds: string[]): Promise<ActionResult> => {
     if (mode === 'mock') {
       setResult(demoResult); setSaved(false); setTasks(mockTasks.map((task) => ({ ...task })));
@@ -691,23 +774,56 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
     try {
       await backend.selectKeywords(id, keywordIds);
-      await backend.pollAnalysis(
-        id,
-        (progress) => progress.status === 'DONE',
-        (progress) => { setAnalysisStatusText(progress.message); setAnalysisPercent(progress.progress); },
-      );
-      const loaded = await backend.getResult(id);
-      setResult(loaded);
-      setSaved(loaded.saved);
-
-      // 텍스트 결과는 나왔지만 비교 이미지는 아직 만들어지는 중일 수 있다.
-      // 결과 화면을 먼저 띄우고, 이미지가 도착하면 조용히 교체한다. (API.md §6.4)
-      if (loaded.comparisonImage.status === 'PENDING') void watchImage(id);
+      await awaitResult(id);
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '결과를 만들지 못했어요.') };
     }
-  }, [mode, updateAccount, watchImage]);
+  }, [awaitResult, mode, updateAccount]);
+
+  /**
+   * 진행 중이던 분석을 이어서 진행한다.
+   *
+   * <b>어디로 갈지는 남아 있던 분석의 상태가 정한다.</b> 키워드를 고르다 만 것이면
+   * 다시 고르게 하고, 이미 결과를 만들고 있었다면 기다렸다가 결과로 보낸다 —
+   * 그 경우 키워드를 다시 묻는 것은 틀린 화면이다(서버가 409로 막는다).
+   */
+  const resumeAnalysis = useCallback(async (id: string): Promise<ResumeAnalysisResult> => {
+    if (mode === 'mock') return { ok: true, phase: 'keywords' };
+    try {
+      analysisId.current = id;
+      setAnalysisKeywords([]);
+
+      const current = await backend.getAnalysisProgress(id);
+      onProgress(current);
+      if (current.status === 'GENERATING' || current.status === 'DONE') {
+        await awaitResult(id);
+        return { ok: true, phase: 'done' };
+      }
+      await awaitKeywords(id);
+      return { ok: true, phase: 'keywords' };
+    } catch (error) {
+      setAnalysisStatusText('');
+      return failure(error, '이전 분석을 이어가지 못했어요.');
+    }
+  }, [awaitKeywords, awaitResult, mode, onProgress]);
+
+  /**
+   * 진행 중이던 분석을 버린다.
+   *
+   * 이것을 해야 새 분석을 시작할 수 있다 — 서버가 사용자당 진행 중 분석을 하나로
+   * 묶어 두기 때문이다. <b>분석권은 차감되지 않는다</b>(결과를 받지 못했다).
+   */
+  const discardAnalysis = useCallback(async (id: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      await backend.cancelAnalysis(id);
+      if (analysisId.current === id) analysisId.current = undefined;
+      return { ok: true };
+    } catch (error) {
+      return failure(error, '이전 분석을 버리지 못했어요.');
+    }
+  }, [mode]);
 
   const saveToDrawer = useCallback(async (): Promise<ActionResult> => {
     if (mode === 'mock') { setSaved(true); updateAccount((current) => ({ ...current, saved: true })); return { ok: true }; }
@@ -1035,6 +1151,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     priorities: serverMode ? priorities : account.priorities,
     setPriorities,
     savePriorities,
+    changePhoto,
     profile: serverMode ? profile : account.profile,
     saveProfile,
     scanInbody,
@@ -1042,6 +1159,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     analysisPercent,
     analysisKeywords,
     startAnalysis,
+    resumeAnalysis,
+    discardAnalysis,
     confirmKeywords,
     subscription,
     loadSubscription,
@@ -1081,8 +1200,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
     openRoutine, openRoutines, openSavedResult, peekSavedResult, photoUri, setRoutineNotifyTime, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
     result, routineDraft, routines, updateRoutineDraft,
-    saveProfile, savePriorities, saveToDrawer, saved, scanInbody, serverMode, setNickname,
-    startAnalysis, subscribeToPlan, subscription, loadSubscription, tasks, toggleTask, updateNotificationSettings,
+    saveProfile, savePriorities, changePhoto, saveToDrawer, saved, scanInbody, serverMode, setNickname,
+    startAnalysis, resumeAnalysis, discardAnalysis, subscribeToPlan, subscription, loadSubscription, tasks, toggleTask, updateNotificationSettings,
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

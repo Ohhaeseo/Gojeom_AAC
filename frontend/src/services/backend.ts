@@ -144,7 +144,24 @@ function contentTypeOf(uri: string): string {
  * 스토리지로 직접 PUT한다. (ARCHITECTURE.md A-1)
  */
 export async function uploadImage(purpose: UploadPurpose, uri: string): Promise<string> {
-  const blob = await (await fetch(uri)).blob();
+  /*
+    🔴 **읽기 실패와 올리기 실패를 구분한다.** 예전에는 여기서 난 예외가 그대로
+    올라가 화면이 "프로필을 저장하지 못했어요"로 뭉갰다. 고른 사진을 못 읽는 것과
+    네트워크가 안 되는 것은 사용자가 할 일이 전혀 다르다 — 앞은 다시 고르는 것이고
+    뒤는 잠시 뒤 다시 누르는 것이다.
+
+    웹에서 `blob:` 주소는 **탭을 새로 고치면 죽는다.** 그때 여기로 온다.
+  */
+  let blob: Blob;
+  try {
+    blob = await (await fetch(uri)).blob();
+  } catch {
+    throw new ApiError('고른 사진을 읽지 못했어요. 사진을 다시 선택해주세요.', undefined, 'IMAGE_READ_FAILED');
+  }
+  if (!blob.size) {
+    // 0바이트를 올리면 업로드는 성공하고 **나중에 얼굴 인식에서** 엉뚱하게 막힌다.
+    throw new ApiError('사진 파일이 비어 있어요. 다른 사진을 선택해주세요.', undefined, 'IMAGE_EMPTY');
+  }
 
   // **Blob 자신의 type이 정본이다.** 웹 picker가 주는 `blob:` URI에는 확장자가 없어
   // URI만 보면 무엇을 골랐든 image/jpeg로 단정하게 된다. 그러면 PNG·HEIC를 고른
@@ -165,7 +182,12 @@ export async function uploadImage(purpose: UploadPurpose, uri: string): Promise<
     body: blob,
   });
   if (!uploaded.ok) {
-    throw new ApiError('사진을 올리지 못했어요. 잠시 후 다시 시도해주세요.', uploaded.status, 'UPLOAD_FAILED');
+    // 403은 서명이 어긋났거나 만료된 것이다(`expiresIn`). 사용자가 사진 고르기를
+    // 오래 붙잡고 있었을 때 실제로 난다 — 다시 시도하면 새 서명을 받아 풀린다.
+    const message = uploaded.status === 403
+      ? '사진 업로드 권한이 만료됐어요. 다시 시도해주세요.'
+      : `사진을 올리지 못했어요. 잠시 후 다시 시도해주세요. (오류 ${uploaded.status})`;
+    throw new ApiError(message, uploaded.status, 'UPLOAD_FAILED');
   }
   return presigned.objectKey;
 }
@@ -187,6 +209,16 @@ export const createProfile = (input: ProfileInput) =>
   request<ProfileResponse>('/profiles', { method: 'POST', body: input });
 
 export const getProfile = () => request<ProfileResponse>('/profiles/me');
+
+/**
+ * 사진만 바꾼다.
+ *
+ * 🔴 `createProfile`(`POST /profiles`)은 우선순위·키·체중·수면을 **모두** 요구한다.
+ * 사진 한 장을 바꾸려고 그것을 전부 다시 입력하게 만들지 않으려고 따로 있다.
+ * 얼굴 인식 같은 검증은 등록과 똑같이 거친다.
+ */
+export const replaceProfilePhoto = (photoKey: string) =>
+  request<Profile>('/profiles/me/photo', { method: 'PUT', body: { photoKey } });
 
 export const updateProfileBody = (input: { weightKg?: number; sleepHours?: number | null; inbody?: Inbody | null }) =>
   request<ProfileResponse>('/profiles/me', { method: 'PATCH', body: input });
@@ -257,6 +289,16 @@ export const deleteAllAnalyses = () => request<void>('/analyses', { method: 'DEL
  * 서버가 내려주는 `pollAfterMs`를 그대로 따르고, null이면 종료 상태라는 뜻이므로
  * 멈춘다. 간격을 프론트가 임의로 정하지 않는다. (API.md C-4)
  */
+/**
+ * 진행 중인 분석 버리기.
+ *
+ * 🔴 키워드를 고르다 화면을 벗어난 분석은 `KEYWORDS_READY`로 **영영 남는다**
+ * (좀비 스위퍼가 이 상태를 일부러 건드리지 않는다). 그 뒤로는 새 분석이 모두
+ * 409로 막히므로, 이것이 빠져나가는 유일한 길이다.
+ */
+export const cancelAnalysis = (analysisId: string) =>
+  request<void>(`/analyses/${analysisId}`, { method: 'DELETE' });
+
 export async function pollAnalysis(
   analysisId: string,
   until: (progress: AnalysisProgress) => boolean,

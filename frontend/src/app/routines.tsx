@@ -139,6 +139,12 @@ export default function RoutinesScreen() {
   /** 목록을 **못 불러온** 상태. 빈 목록과 구분해야 한다. */
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
+  /*
+    🔴 **안내와 실패를 한 자리에 쓰지 않는다.** 알림을 켜면 설정은 저장되지만
+    이 기기로는 못 받는 경우가 있는데(웹·권한 거절), 그 문구가 빨간 오류 자리에
+    찍혀 껐다 켤 때마다 "오류가 난다"로 읽혔다. (`settings.tsx`와 같은 규칙)
+  */
+  const [notice, setNotice] = useState('');
   const [renaming, setRenaming] = useState<RoutineSummary>();
   const [removing, setRemoving] = useState<RoutineSummary>();
   const [nameDraft, setNameDraft] = useState('');
@@ -258,8 +264,11 @@ export default function RoutinesScreen() {
   const done = tasks.filter((task) => task.status === 'DONE').length;
   /** 켜는 데는 성공했지만 이 기기로는 못 받을 수 있다. 그 사유를 그대로 띄운다. */
   const applyNotify = async (enabled: boolean) => {
+    setError(''); setNotice('');
     const outcome = await updateNotificationSettings({ enabled });
-    setError(outcome.ok ? (outcome.message ?? '') : (outcome.message ?? '알림 설정을 저장하지 못했어요.'));
+    // 저장 자체가 실패한 것만 오류다. 저장은 됐는데 이 기기로 못 받는 것은 안내다.
+    if (!outcome.ok) return setError(outcome.message ?? '알림 설정을 저장하지 못했어요.');
+    setNotice(outcome.message ?? '');
   };
 
   const timeCheck = checkTime(timeDraft);
@@ -274,6 +283,7 @@ export default function RoutinesScreen() {
         <Pressable onPress={() => router.push('/routine-new')} style={styles.addBtn}><Text style={styles.addText}>+ 새 목표</Text></Pressable>
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
 
       {/*
         카테고리로 묶어 보여준다. 목표가 여러 개면 피부·체형·건강이 뒤섞여
@@ -499,4 +509,5 @@ const styles = StyleSheet.create({
   pathText: { ...typography.caption, color: colors.textMuted },
   pathTextOn: { color: colors.primaryLight },
   errorText: { ...typography.caption, color: colors.danger },
+  noticeText: { ...typography.caption, color: colors.textTertiary },
 });

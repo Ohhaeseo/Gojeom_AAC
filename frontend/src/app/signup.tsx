@@ -10,6 +10,7 @@ import {
   CONSENT_CODES, CONSENT_DETAIL, CONSENT_LABEL, REQUIRED_CONSENTS,
   checkBirth, formatBirthInput, toIsoBirthDate, type ConsentCode,
 } from '@/lib/consent';
+import { authErrorFields, checkEmail, checkPassword } from '@/lib/credentials';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { FormField } from '@/components/ui/FormField';
@@ -24,6 +25,13 @@ export default function SignupScreen() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [confirm, setConfirm] = useState('');
   const [error, setError] = useState(''); const { register, loginWithGoogle } = useAppState();
   const [pending, setPending] = useState(false);
+  /** 서버가 지목한 입력칸별 사유. 해당 칸 밑에 붙는다. */
+  const [fields, setFields] = useState<Record<string, string>>({});
+  /*
+    한 번 눌러 보기 전에는 형식을 지적하지 않는다. 세 글자 쳤을 때 "8자 이상"이
+    뜨면 안내가 아니라 잔소리로 읽힌다. 누른 뒤부터는 고칠 때마다 바로 갱신된다.
+  */
+  const [submitted, setSubmitted] = useState(false);
 
   // 숫자 8자리로만 들고 있다가 보낼 때 YYYY-MM-DD로 바꾼다. 화면에는 점을 찍어 보여준다.
   const [birth, setBirth] = useState('');
@@ -37,35 +45,66 @@ export default function SignupScreen() {
   const { reason } = useLocalSearchParams<{ reason?: string }>();
 
   const birthCheck = checkBirth(birth);
+  const emailCheck = checkEmail(email);
+  const passwordCheck = checkPassword(password);
+  const confirmOk = password === confirm;
   const requiredOk = REQUIRED_CONSENTS.every((code) => agreed.includes(code));
+
+  // 서버가 지목한 사유가 우선이다 — 형식은 통과했는데 서버가 막은 경우다
+  // ("이미 가입된 이메일이에요.").
+  const show = (check: { ok: boolean; message?: string }) => (submitted && !check.ok ? check.message : undefined);
+  const emailError = fields.email ?? show(emailCheck);
+  const passwordError = fields.password ?? show(passwordCheck);
+  const confirmError = (confirm || submitted) && !confirmOk ? '비밀번호가 일치하지 않아요.' : undefined;
+  const birthError = fields.birthDate ?? birthCheck.message ?? (submitted && !birth ? '생년월일을 입력해주세요.' : undefined);
+  const consentError = fields.consent ?? (submitted && !requiredOk ? '필수 약관에 모두 동의해주세요.' : undefined);
   const allChecked = CONSENT_CODES.every((code) => agreed.includes(code));
 
   const toggle = (code: ConsentCode) => {
-    setError('');
+    setError(''); setFields({});
     setAgreed((current) => (current.includes(code) ? current.filter((item) => item !== code) : [...current, code]));
   };
   const toggleAll = () => {
-    setError('');
+    setError(''); setFields({});
     setAgreed(allChecked ? [] : [...CONSENT_CODES]);
   };
 
   // Google은 가입과 로그인이 같은 엔드포인트다. 처음이면 서버가 계정을 만드는데,
   // **그때도 나이와 동의가 필요하다.** 가입 화면에서는 이미 받았으니 함께 보낸다.
+  /** 실패 사유를 붙일 곳이 있으면 그 칸 밑에, 없으면 위쪽 한 줄로. */
+  const report = (result: { code?: string; message?: string; fields?: Record<string, string> }, fallback: string) => {
+    const placed = authErrorFields(result);
+    setFields(placed);
+    setError(Object.keys(placed).length ? '' : (result.message ?? fallback));
+  };
+
   const submitGoogle = async (idToken: string) => {
+    setSubmitted(true); setError(''); setFields({});
+    // Google도 신규 계정이면 나이·동의가 필요하다. 없이 보내면 서버가 막는데,
+    // **무엇이 빠졌는지는 여기서 이미 안다.** 왕복하지 않고 바로 말해 준다.
+    if (!birthCheck.ok || !requiredOk) return;
+
     setPending(true);
     const result = await loginWithGoogle(idToken, toIsoBirthDate(birth), agreed);
     setPending(false);
-    if (!result.ok) return setError(result.message ?? 'Google 로그인에 실패했어요.');
-    setError(''); router.replace('/home');
+    if (!result.ok) return report(result, 'Google 로그인에 실패했어요.');
+    router.replace('/home');
   };
 
-  const valid = Boolean(email && password && password === confirm && birthCheck.ok && requiredOk);
+  /*
+    🔴 **형식이 틀렸다고 버튼을 잠그지 않는다.** 잠가 두면 사용자는 왜 안 눌리는지
+    모른 채 화면을 노려보게 된다 — 안 되는 이유를 말하는 것이 이 화면의 일이다.
+    눌렀을 때 어디가 왜 틀렸는지 칸마다 붙여 주고, 서버까지 가지는 않는다.
+  */
   const submit = async () => {
+    setSubmitted(true); setError(''); setFields({});
+    if (!emailCheck.ok || !passwordCheck.ok || !confirmOk || !birthCheck.ok || !requiredOk) return;
+
     setPending(true);
     const result = await register(email, password, toIsoBirthDate(birth), agreed);
     setPending(false);
-    if (!result.ok) return setError(result.message ?? '회원가입에 실패했어요.');
-    setError(''); router.replace('/name');
+    if (!result.ok) return report(result, '회원가입에 실패했어요.');
+    router.replace('/name');
   };
   return (
     <AppScreen title="회원가입" headerLogo={false} contentStyle={styles.content}>
@@ -74,9 +113,9 @@ export default function SignupScreen() {
         <Text style={styles.notice}>처음 오신 Google 계정이에요. 생년월일과 동의를 받은 뒤 Google 버튼을 다시 눌러주세요.</Text>
       ) : null}
       <View style={styles.form}>
-        <FormField label="이메일" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" keyboardType="email-address" placeholder="이메일을 입력해 주세요." error={error || undefined} />
-        <FormField label="비밀번호" required value={password} onChangeText={setPassword} secureTextEntry placeholder="비밀번호를 입력해 주세요." />
-        <FormField label="비밀번호 확인" required value={confirm} onChangeText={setConfirm} secureTextEntry placeholder="비밀번호를 다시 입력해 주세요." error={confirm && password !== confirm ? '비밀번호가 일치하지 않아요.' : undefined} />
+        <FormField label="이메일" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" keyboardType="email-address" placeholder="이메일을 입력해 주세요." error={emailError} />
+        <FormField label="비밀번호" required value={password} onChangeText={(value) => { setPassword(value); setFields({}); }} secureTextEntry placeholder="비밀번호를 입력해 주세요." error={passwordError} />
+        <FormField label="비밀번호 확인" required value={confirm} onChangeText={setConfirm} secureTextEntry placeholder="비밀번호를 다시 입력해 주세요." error={confirmError} />
         <FormField
           label="생년월일"
           required
@@ -84,7 +123,7 @@ export default function SignupScreen() {
           onChangeText={(value) => { setBirth(value.replace(/\D/g, '').slice(0, 8)); setError(''); }}
           keyboardType="number-pad"
           placeholder="YYYYMMDD (예: 20000131)"
-          error={birthCheck.message}
+          error={birthError}
         />
       </View>
 
@@ -106,9 +145,12 @@ export default function SignupScreen() {
             onToggle={() => toggle(code)}
           />
         ))}
+        {consentError ? <Text style={styles.fieldError}>{consentError}</Text> : null}
       </View>
+      {/* 어느 칸에도 붙지 않는 사유(네트워크·서버 오류 등)만 여기 뜬다. */}
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
       <View style={styles.linkRow}><Text style={styles.muted}>이미 고점 회원이신가요?</Text><Pressable onPress={() => router.replace('/login')}><Text style={styles.link}>로그인 하기</Text></Pressable></View>
-      <AppButton label={pending ? '가입 중...' : '회원가입 하기'} disabled={!valid || pending} onPress={submit} />
+      <AppButton label={pending ? '가입 중...' : '회원가입 하기'} disabled={pending} onPress={submit} />
       <View style={styles.social}>
         <Pressable accessibilityRole="button" accessibilityLabel="네이버 가입 준비 중" style={styles.socialButton} onPress={() => setError('네이버 가입은 준비 중이에요.')}><Image source={naver} contentFit="contain" style={styles.socialIcon} /></Pressable>
         <GoogleSignInButton onToken={submitGoogle} onError={setError} />
@@ -119,4 +161,4 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({ content: { paddingTop: 40 }, notice: { ...typography.body, color: colors.primary, textAlign: 'center' }, logo: { alignSelf: 'center', width: 145, height: 98 }, form: { gap: 12 }, consents: { padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface }, divider: { height: 1, marginVertical: 6, backgroundColor: colors.divider }, linkRow: { alignItems: 'center', gap: 4 }, muted: { ...typography.body, color: colors.textMuted }, link: { ...typography.label, color: colors.primary }, social: { flexDirection: 'row', justifyContent: 'center', gap: 28, alignItems: 'center' }, socialButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }, socialIcon: { width: 38, height: 38 }, privacy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' } });
+const styles = StyleSheet.create({ content: { paddingTop: 40 }, notice: { ...typography.body, color: colors.primary, textAlign: 'center' }, logo: { alignSelf: 'center', width: 145, height: 98 }, form: { gap: 12 }, consents: { padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface }, divider: { height: 1, marginVertical: 6, backgroundColor: colors.divider }, fieldError: { marginTop: 8, ...typography.caption, color: colors.danger }, formError: { ...typography.caption, color: colors.danger, textAlign: 'center' }, linkRow: { alignItems: 'center', gap: 4 }, muted: { ...typography.body, color: colors.textMuted }, link: { ...typography.label, color: colors.primary }, social: { flexDirection: 'row', justifyContent: 'center', gap: 28, alignItems: 'center' }, socialButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }, socialIcon: { width: 38, height: 38 }, privacy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' } });

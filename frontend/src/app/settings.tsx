@@ -16,6 +16,16 @@ export default function SettingsScreen() {
   const { notificationSettings, loadNotificationSettings, updateNotificationSettings, logout, deleteAccount, deleteAllAnalyses } = useAppState();
   const [exit, setExit] = useState(false); const [remove, setRemove] = useState(false); const [withdraw, setWithdraw] = useState(false);
   const [open, setOpen] = useState(false); const [error, setError] = useState(''); const [pending, setPending] = useState(false);
+  /*
+    🔴 **안내와 실패를 한 자리에 쓰지 않는다.**
+
+    알림을 켜면 설정은 저장되지만 **이 기기로는 못 받는** 경우가 있다(웹·권한 거절·
+    시뮬레이터). 그때 오는 문구를 빨간 오류 자리에 찍고 있어서, 껐다 켤 때마다
+    "오류가 난다"로 읽혔다. 권한 확인 성공 문구까지 빨갛게 나왔다.
+
+    저장에 실패한 것만 `error`, 저장은 됐고 알려줄 것이 있으면 `notice`다.
+  */
+  const [notice, setNotice] = useState('');
 
   useFocusEffect(useCallback(() => { void loadNotificationSettings(); }, [loadNotificationSettings]));
 
@@ -43,18 +53,20 @@ export default function SettingsScreen() {
    * 않고 잘 되고 있다고 말한다. (`services/push`)
    */
   const checkPermission = async () => {
-    setError('');
+    setError(''); setNotice('');
     const result = await registerForPush();
-    setError(result.ok ? '알림을 받을 수 있어요. 기기가 등록됐어요.' : (pushMessage(result) ?? ''));
+    if (result.ok) return setNotice('알림을 받을 수 있어요. 기기가 등록됐어요.');
+    // 권한 거절만 사용자가 고칠 수 있는 '오류'다. 웹·빌드 문제는 안내에 가깝다.
+    const message = pushMessage(result) ?? '';
+    if (result.reason === 'DENIED') setError(message); else setNotice(message);
   };
 
   const apply = async (patch: { enabled?: boolean; defaultTime?: string }) => {
-    setError('');
+    setError(''); setNotice('');
     const outcome = await updateNotificationSettings(patch);
-    // 설정은 저장됐지만 **이 기기로는 못 받는** 경우가 있다(웹·권한 거절 등).
-    // 저장 실패와 구분해서 알려주지 않으면 "켰는데 왜 안 오지"가 된다.
+    // 저장 자체가 실패한 것만 오류다. 저장은 됐는데 이 기기로 못 받는 것은 안내다.
     if (!outcome.ok) return setError(outcome.message ?? '알림 설정을 저장하지 못했어요.');
-    setError(outcome.message ?? '');
+    setNotice(outcome.message ?? '');
   };
 
   return (
@@ -74,6 +86,7 @@ export default function SettingsScreen() {
         {open ? <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.options}>{times.map((time) => <Pressable key={time} onPress={() => { setOpen(false); void apply({ defaultTime: time }); }} style={styles.option}><Text style={styles.optionText}>{time}</Text></Pressable>)}</ScrollView> : null}
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
       <View style={styles.card}><Text style={styles.label}>알림 권한 설정</Text><Text style={styles.description}>알림을 받으려면 기기에서 GO.의 알림 권한을 허용해야 해요.{`\n`}권한을 허용하지 않으면 알림이 전송되지 않아요.</Text><Text accessibilityRole="button" accessibilityLabel="알림 권한 확인하기" onPress={checkPermission} style={styles.underline}>알림 권한 확인하기</Text></View>
       <View style={styles.card}><Text style={styles.label}>개인정보 보호 안내</Text><Text style={styles.description}>얼굴 사진과 건강 정보는 분석 및 개인화 결과 제공 목적으로만 사용되며, 다른 사용자나 공개 영역에 노출되지 않습니다.</Text></View>
       <Text accessibilityRole="button" accessibilityLabel="원본 사진과 분석 정보 삭제" onPress={() => setRemove(true)} style={styles.danger}>원본 사진, 분석 정보 삭제</Text>
@@ -95,4 +108,4 @@ export default function SettingsScreen() {
     </AppScreen>
   );
 }
-const styles = StyleSheet.create({ content: { gap: spacing.md }, title: { ...typography.h1, color: colors.text }, lead: { ...typography.body, color: colors.textTertiary }, row: { minHeight: 96, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, rowCopy: { flex: 1, gap: 4 }, card: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }, timeSelect: { width: 120, height: 50, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 18, borderRadius: radius.md, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, timeSelectOff: { opacity: 0.45 }, timeText: { ...typography.body, color: colors.textTertiary }, options: { maxHeight: 220, borderRadius: radius.md, backgroundColor: colors.surfaceSunken, overflow: 'hidden' }, option: { padding: 12 }, optionText: { ...typography.body, color: colors.textTertiary }, label: { ...typography.label, color: colors.text }, chevron: { ...typography.title, color: colors.textMuted }, description: { ...typography.caption, color: colors.textMuted }, underline: { ...typography.caption, color: colors.text, textDecorationLine: 'underline' }, accountRow: { flexDirection: 'row', gap: spacing.sm }, action: { flex: 1, ...typography.body, color: colors.text, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface }, withdraw: { flex: 1, ...typography.body, color: colors.textMuted, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.divider }, danger: { ...typography.body, color: colors.danger, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger }, errorText: { ...typography.caption, color: colors.danger } });
+const styles = StyleSheet.create({ content: { gap: spacing.md }, title: { ...typography.h1, color: colors.text }, lead: { ...typography.body, color: colors.textTertiary }, row: { minHeight: 96, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, rowCopy: { flex: 1, gap: 4 }, card: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface }, timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }, timeSelect: { width: 120, height: 50, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 18, borderRadius: radius.md, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, timeSelectOff: { opacity: 0.45 }, timeText: { ...typography.body, color: colors.textTertiary }, options: { maxHeight: 220, borderRadius: radius.md, backgroundColor: colors.surfaceSunken, overflow: 'hidden' }, option: { padding: 12 }, optionText: { ...typography.body, color: colors.textTertiary }, label: { ...typography.label, color: colors.text }, chevron: { ...typography.title, color: colors.textMuted }, description: { ...typography.caption, color: colors.textMuted }, underline: { ...typography.caption, color: colors.text, textDecorationLine: 'underline' }, accountRow: { flexDirection: 'row', gap: spacing.sm }, action: { flex: 1, ...typography.body, color: colors.text, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface }, withdraw: { flex: 1, ...typography.body, color: colors.textMuted, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.divider }, danger: { ...typography.body, color: colors.danger, textAlign: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger }, errorText: { ...typography.caption, color: colors.danger }, noticeText: { ...typography.caption, color: colors.textTertiary } });

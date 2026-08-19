@@ -1,4 +1,5 @@
 import type { ApiResponse } from '@/types/api';
+import { ApiError } from '@/services/apiError';
 import { clearSession, currentSession, updateTokens } from '@/services/session';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
@@ -9,20 +10,11 @@ export const isMockMode = !API_BASE_URL;
 /** 요청이 영영 매달려 있지 않게 한다. AI 단계는 서버에서 최대 60초까지 걸린다. */
 const TIMEOUT_MS = 70_000;
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status?: number,
-    public readonly code = 'UNKNOWN_ERROR',
-    public readonly details?: unknown,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
+// 정의는 `services/apiError`에 있다. 기존 import 경로를 지키려고 여기서 다시 내보낸다.
+export { ApiError };
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** false면 Authorization 헤더를 붙이지 않는다 (로그인·회원가입). */
   auth?: boolean;
