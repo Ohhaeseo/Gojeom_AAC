@@ -1,4 +1,3 @@
-import { BlurView } from 'expo-blur';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -11,6 +10,7 @@ import { AppScreen } from '@/components/layout/AppScreen';
 import { ProductRecommendation } from '@/components/product/ProductRecommendation';
 import { ProductShelf } from '@/components/product/ProductShelf';
 import { AppButton } from '@/components/ui/AppButton';
+import { Frost } from '@/components/ui/Frost';
 import { formatAnalyzedDate } from '@/lib/date';
 import { groupByTiming, routineProgress, taskMeta, todayTasks, weeklyProgress } from '@/lib/tasks';
 import { useAppState, type DrawerItem } from '@/state/AppState';
@@ -284,7 +284,7 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>최근 분석 결과 ›</Text><View style={styles.resultCard}><OfficialFaceLogo size={112} /><View style={styles.resultCopy}><Text style={styles.date}>최근 분석</Text><Text style={styles.resultTitle}>나만의 고점 분석 결과</Text></View></View>
           </View>
           <View style={styles.lockOverlay}>
-            <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
+            <Frost />
             <View style={styles.registrationModal}>
               <Text style={styles.emptyTitle}>{hasAnyProgress ? '프로필 준비 현황' : '아직 프로필이 없어요...'}</Text><Text style={styles.emptyText}>{hasAnyProgress ? '분석을 시작하려면 아래 정보를 완성해주세요.' : '여기를 눌러 맞춤형 분석이 담긴 프로필을 등록해 보세요.'}</Text>
               {hasAnyProgress ? <View style={styles.checkList}><CheckRow label="내 사진 등록하기" done={Boolean(photoUri)} /><CheckRow label="우선 순위 설정하기" done={priorities.length === 3} /><CheckRow label="신장, 체중 입력하기" done={Boolean(profile)} /><CheckRow label="고점 등록하기" done={saved} /></View> : null}
