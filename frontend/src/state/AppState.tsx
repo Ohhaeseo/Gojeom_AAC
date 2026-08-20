@@ -1121,17 +1121,36 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     }
   }, [mode]);
 
+  /**
+   * 목표 삭제.
+   *
+   * 🔴 <b>보고 있던 목록에서도 빼야 한다.</b> 예전에는 지운 것이 <b>첫 번째로 고른
+   * 목표일 때만</b> 정리했다({@code routineId.current === id}). 홈에서 목표를 둘
+   * 골라 놓고 두 번째를 지우면, 목록에서는 사라지는데 <b>태스크는 그대로 남아</b>
+   * 진행도의 총 갯수가 줄지 않았다. 지운 목표의 할 일을 계속 세고 있었던 셈이다.
+   *
+   * 남은 것이 없으면 통째로 비운다. 태스크의 {@code routineId}는 여러 목표를 합쳐
+   * 올릴 때만 붙어서({@code openRoutines}), 하나만 보고 있었으면 걸러낼 수가 없다.
+   * 비워 두면 홈이 남은 목표를 다시 읽어 채운다.
+   */
   const deleteRoutine = useCallback(async (id: string): Promise<ActionResult> => {
     if (mode === 'mock') return { ok: true };
     try {
       await backend.deleteRoutine(id);
       setRoutines((current) => current.filter((item) => item.routineId !== id));
-      if (routineId.current === id) { setActiveRoutineId(undefined); setTasks([]); }
+
+      const remaining = activeRoutineIds.filter((item) => item !== id);
+      // 보고 있던 목표가 아니면 태스크를 건드릴 이유가 없다.
+      if (remaining.length === activeRoutineIds.length) return { ok: true };
+
+      setActiveRoutineIds(remaining);
+      if (remaining.length) setTasks((current) => current.filter((task) => task.routineId !== id));
+      else setTasks([]);
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error, '목표를 삭제하지 못했어요.') };
     }
-  }, [mode, setActiveRoutineId]);
+  }, [activeRoutineIds, mode, setActiveRoutineIds]);
 
   const toggleTask = useCallback((taskId: string) => {
     if (mode === 'mock') {
