@@ -6,6 +6,7 @@ import { BlurView } from 'expo-blur';
 import { AnalysisLogo } from '@/components/brand/AnalysisLogo';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
 import { ProgressGauge } from '@/components/analysis/ProgressGauge';
+import { Icon } from '@/components/ui/Icon';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { SubscribeModal } from '@/components/subscription/SubscribeModal';
@@ -111,7 +112,7 @@ export default function AnalysisProgressScreen() {
   const statusTitle = pendingId ? '아직 끝나지 않은 분석이 있어요'
     : needsPlan ? '분석권을 모두 사용했어요'
     : failed ? '분석에 실패했어요'
-    : completed ? '분석 완료!✓'
+    : completed ? '분석 완료!'
     : phase === 'generating' ? '분석 중...'
     : '키워드 추출 중...';
 
@@ -163,7 +164,7 @@ export default function AnalysisProgressScreen() {
                       : current.length < MAX_SELECT ? [...current, keyword.id] : current)}
                     style={styles.keyword}
                   >
-                    <View style={[styles.checkbox, active && styles.checkboxActive]}><Text style={styles.check}>{active ? '✓' : ''}</Text></View>
+                    <View style={[styles.checkbox, active && styles.checkboxActive]}>{active ? <Icon name="check" size={13} color={colors.white} /> : null}</View>
                     <Text style={styles.keywordText}>{keyword.label}</Text>
                   </Pressable>
                 );

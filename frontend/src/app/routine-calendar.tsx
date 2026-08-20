@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Icon } from '@/components/ui/Icon';
 import { AppScreen } from '@/components/layout/AppScreen';
 import {
   dayLabel, groupByDate, monthGrid, monthLabel, monthsOf, nearestDate,
@@ -213,7 +214,7 @@ export default function RoutineCalendarScreen() {
                       })()}
                     </View>
                     <View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}>
-                      <Text style={styles.check}>{task.status === 'DONE' ? '✓' : ''}</Text>
+                      {task.status === 'DONE' ? <Icon name="check" size={13} color={colors.white} /> : null}
                     </View>
                   </Pressable>
                 ))}

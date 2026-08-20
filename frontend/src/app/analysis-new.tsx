@@ -150,7 +150,7 @@ export default function AnalysisNewScreen() {
         <View style={styles.blockedNote}>
           <Text style={styles.blockedTitle}>분석권을 모두 사용했어요</Text>
           <Text style={styles.blockedBody}>구독하면 고점 분석을 횟수 제한 없이 이용할 수 있어요.</Text>
-          <Text accessibilityRole="button" accessibilityLabel="요금제 보기" onPress={() => router.push('/plan')} style={styles.blockedLink}>요금제 보기 〉</Text>
+          <Text accessibilityRole="button" accessibilityLabel="요금제 보기" onPress={() => router.push('/plan')} style={styles.blockedLink}>요금제 보기 ›</Text>
         </View>
       ) : null}
 

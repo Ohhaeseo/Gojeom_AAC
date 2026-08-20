@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Icon } from '@/components/ui/Icon';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
@@ -47,7 +48,7 @@ export default function ProfileScreen() {
   };
   return (
     <AppScreen navigation contentStyle={styles.content}>
-      <View style={styles.header}><Text style={styles.title}>내 프로필</Text><Pressable onPress={() => router.push('/settings')}><Text style={styles.settings}>⚙</Text></Pressable></View>
+      <View style={styles.header}><Text style={styles.title}>내 프로필</Text><Pressable accessibilityRole="button" accessibilityLabel="설정 열기" onPress={() => router.push('/settings')}><Icon name="gear" size={24} color={colors.textMuted} /></Pressable></View>
       <View style={styles.profileCard}><Pressable accessibilityRole="button" accessibilityLabel="프로필 사진 변경" onPress={() => router.push({ pathname: '/photo', params: { edit: '1' } })} style={{ alignItems: 'center', gap: 4 }}>{profile?.photoUrl ? <Image source={{ uri: profile.photoUrl }} contentFit="cover" style={styles.avatar} /> : <OfficialFaceLogo size={100} />}<Text style={styles.caption}>사진 변경</Text></Pressable><View style={styles.identity}><Text style={styles.name}>{nickname}</Text><Text style={styles.caption}>{joinedLabel(me?.joinedAt)}</Text><Text style={styles.caption}>{me ? providerLabel[me.provider] : ''}</Text></View><AppButton label="이름 수정" variant="secondary" onPress={openNameEditor} /></View>
       {capture ? (
         <View style={[styles.captureCard, capture.tone === 'warn' && styles.captureCardWarn]}>

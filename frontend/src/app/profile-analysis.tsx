@@ -30,7 +30,7 @@ export default function ProfileAnalysisScreen() {
         <AnalysisLogo completed={completed} />
         {completed ? (
           <>
-            <Text style={styles.title}>분석 완료!✓</Text>
+            <Text style={styles.title}>분석 완료!</Text>
             <Text style={styles.description}>프로필이 생성되었어요!{`\n`}5초 후 프로필 화면으로 넘어가요.</Text>
           </>
         ) : (

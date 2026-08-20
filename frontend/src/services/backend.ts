@@ -138,6 +138,47 @@ function contentTypeOf(uri: string): string {
 }
 
 /**
+ * 너무 큰 사진을 **올리기 전에** 줄인다.
+ *
+ * 🔴 서버 상한은 10MB인데 요즘 폰 사진은 그것을 쉽게 넘는다. 네이티브는 picker가
+ * `quality`로 다시 인코딩해 주지만 **웹은 고른 파일을 원본 그대로 올린다** —
+ * 그래서 웹에서만 `FILE_TOO_LARGE`가 났다. 운영 로그에서 실제로 잡혔다.
+ *
+ * 캔버스로 긴 변을 2048px까지 줄이고 JPEG로 다시 굽는다. 얼굴 인식(서버는 1600px로
+ * 낮춰 본다)에도 충분한 크기다. **캔버스가 없는 환경(네이티브)에서는 그대로 둔다.**
+ *
+ * 줄이다 실패하면 원본을 그대로 돌려준다 — 줄이기에 실패했다고 업로드까지 막을
+ * 이유는 없다. 크면 서버가 사유를 정확히 말해 준다.
+ */
+const MAX_UPLOAD_BYTES = 9_500_000;   // 서버 상한 10MB보다 살짝 낮게 잡는다
+const MAX_UPLOAD_SIDE = 2048;
+
+async function shrinkForUpload(blob: Blob): Promise<Blob> {
+  if (blob.size <= MAX_UPLOAD_BYTES) return blob;
+  if (typeof document === 'undefined' || typeof createImageBitmap !== 'function') return blob;
+
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, MAX_UPLOAD_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+
+    const context = canvas.getContext('2d');
+    if (!context) return blob;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    const shrunk = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    // 줄인 것이 더 크면(이미 잘 압축된 사진) 원본을 쓴다.
+    return shrunk && shrunk.size < blob.size ? shrunk : blob;
+  } catch {
+    return blob;
+  }
+}
+
+/**
  * 이미지 1장을 스토리지에 올리고 objectKey를 돌려준다.
  *
  * **바이트가 백엔드를 통과하지 않는다.** presigned URL을 받아 클라이언트가
@@ -154,7 +195,7 @@ export async function uploadImage(purpose: UploadPurpose, uri: string): Promise<
   */
   let blob: Blob;
   try {
-    blob = await (await fetch(uri)).blob();
+    blob = await shrinkForUpload(await (await fetch(uri)).blob());
   } catch {
     throw new ApiError('고른 사진을 읽지 못했어요. 사진을 다시 선택해주세요.', undefined, 'IMAGE_READ_FAILED');
   }

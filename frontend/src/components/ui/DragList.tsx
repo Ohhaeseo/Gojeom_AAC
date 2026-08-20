@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Icon } from '@/components/ui/Icon';
 import { colors, typography } from '@/theme/tokens';
 
 type Props<T> = {
@@ -119,13 +120,13 @@ export function DragList<T>({ data, keyOf, renderItem, onReorder, gap = 12 }: Pr
         const controls = (
           <View style={styles.controls}>
             <Pressable accessibilityRole="button" accessibilityLabel="위로 옮기기" disabled={index === 0} onPress={() => step(-1)} hitSlop={4} style={styles.stepBtn}>
-              <Text style={[styles.stepIcon, index === 0 && styles.stepOff]}>▲</Text>
+              <View style={index === 0 ? styles.stepOff : undefined}><Icon name="caretUp" size={12} color={colors.textTertiary} /></View>
             </Pressable>
             <View {...responderFor(index).panHandlers} accessibilityRole="adjustable" accessibilityLabel="끌어서 순서 바꾸기" style={styles.handle}>
               <Text style={styles.handleIcon}>⋮⋮</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="아래로 옮기기" disabled={index === data.length - 1} onPress={() => step(1)} hitSlop={4} style={styles.stepBtn}>
-              <Text style={[styles.stepIcon, index === data.length - 1 && styles.stepOff]}>▼</Text>
+              <View style={index === data.length - 1 ? styles.stepOff : undefined}><Icon name="caretDown" size={12} color={colors.textTertiary} /></View>
             </Pressable>
           </View>
         );

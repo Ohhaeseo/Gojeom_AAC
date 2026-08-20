@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Icon } from '@/components/ui/Icon';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { endDateOf, formatDate } from '@/lib/date';
@@ -109,7 +110,7 @@ export default function RoutineNewScreen() {
                 </View>
                 <Text style={styles.hint}>{item.hint}</Text>
               </View>
-              <View style={[styles.check, on && styles.checkOn]}><Text style={styles.checkMark}>{on ? '✓' : ''}</Text></View>
+              <View style={[styles.check, on && styles.checkOn]}>{on ? <Icon name="check" size={12} color={colors.white} /> : null}</View>
             </Pressable>
 
             {on ? (

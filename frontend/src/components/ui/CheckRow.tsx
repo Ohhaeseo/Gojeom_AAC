@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Icon } from '@/components/ui/Icon';
 import { colors, radius, typography } from '@/theme/tokens';
 
 type Props = {
@@ -29,7 +30,7 @@ export function CheckRow({ label, detail, checked, onToggle, required, emphasis 
       style={styles.row}
     >
       <View style={[styles.box, checked && styles.boxOn]}>
-        <Text style={styles.check}>{checked ? '✓' : ''}</Text>
+        {checked ? <Icon name="check" size={13} color={colors.white} /> : null}
       </View>
       <View style={styles.copy}>
         <Text style={[styles.label, emphasis && styles.labelStrong]}>

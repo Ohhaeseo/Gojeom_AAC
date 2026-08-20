@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
+import { Icon } from '@/components/ui/Icon';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { AnalysisResult } from '@/types/api';
 
@@ -152,7 +153,10 @@ function CompareSlider({ currentUrl, peakUrl, aspectRatio }: { currentUrl: strin
         </Animated.View>
         <Animated.View style={[styles.handle, { left: percent }]} pointerEvents="none">
           <View style={styles.handleLine} />
-          <View style={styles.handleKnob}><Text style={styles.handleKnobText}>◀ ▶</Text></View>
+          <View style={styles.handleKnob}>
+            <Icon name="caretLeft" size={10} color={colors.white} />
+            <Icon name="caretRight" size={10} color={colors.white} />
+          </View>
         </Animated.View>
       </View>
       <View style={styles.captions}>

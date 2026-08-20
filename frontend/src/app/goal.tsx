@@ -92,7 +92,7 @@ export default function GoalScreen() {
           <View style={[styles.overlayColumn, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.overlayCenter}>
               <AnalysisLogo completed={overlay === 'done'} />
-              <Text style={styles.overlayTitle}>{overlay === 'done' ? '목표 설계 완료!✓' : '목표 설계 중...'}</Text>
+              <Text style={styles.overlayTitle}>{overlay === 'done' ? '목표 설계 완료!' : '목표 설계 중...'}</Text>
               <Text style={styles.overlayDescription}>{overlay === 'done' ? '맞춤 루틴을 만들었어요.\n5초 후 루틴 화면으로 넘어가요.' : '분석 결과를 바탕으로\n맞춤 루틴을 만들고 있어요.'}</Text>
               {/*
                 목표 생성은 폴링이 없는 동기 호출이라 **서버가 진행률을 주지 않는다.**

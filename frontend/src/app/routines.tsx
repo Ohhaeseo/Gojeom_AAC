@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 
 
+import { Icon } from '@/components/ui/Icon';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { AnimatedSwitch } from '@/components/ui/AnimatedSwitch';
 import { FormField } from '@/components/ui/FormField';
@@ -299,7 +300,7 @@ export default function RoutinesScreen() {
           <View key={group.key ?? 'ANALYSIS'} style={styles.group}>
             <View style={styles.groupHead}>
               <Text style={styles.groupTitle}>{group.label}<Text style={styles.groupCount}> {items.length}</Text></Text>
-              {items.length > 1 ? <Text style={styles.groupHint}>끌거나 ▲▼로 순서 변경</Text> : null}
+              {items.length > 1 ? <Text style={styles.groupHint}>끌거나 위아래 화살표로 순서 변경</Text> : null}
             </View>
             {/*
               **묶음 안에서만 순서를 바꾼다.** 카테고리를 넘나들면 목표의 카테고리가
@@ -344,7 +345,7 @@ export default function RoutinesScreen() {
                 {/* 소요 시간(durationLabel)은 빼고 시점과 분량만 남긴다. */}
                 <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
               </View>
-              <View style={styles.completeRow}><View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}><Text style={styles.check}>{task.status === 'DONE' ? '✓' : ''}</Text></View><Text style={styles.completeText}>완료</Text></View>
+              <View style={styles.completeRow}><View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}>{task.status === 'DONE' ? <Icon name="check" size={13} color={colors.white} /> : null}</View><Text style={styles.completeText}>완료</Text></View>
             </Pressable>
           ))}
         </View>

@@ -6,6 +6,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { VectorWordmark } from '@/components/brand/VectorWordmark';
 import { OfficialFaceLogo } from '@/components/brand/OfficialLogos';
+import { Icon } from '@/components/ui/Icon';
 import { AppScreen } from '@/components/layout/AppScreen';
 import { ProductRecommendation } from '@/components/product/ProductRecommendation';
 import { ProductShelf } from '@/components/product/ProductShelf';
@@ -139,8 +140,8 @@ export default function HomeScreen() {
       <Text style={styles.title}>안녕하세요, {nickname}님</Text><Text style={styles.sub}>오늘도 당신의 고점을 향해 GO!</Text>
       {hasProfile ? (
         <>
-          {/* 제목 끝의 〉가 "누를 수 있다"고 약속한다. 실제로 눌리게 한다. */}
-          <Pressable accessibilityRole="button" accessibilityLabel="설정한 목표 진행도 보기" onPress={() => router.push('/routines')}><Text style={styles.sectionTitle}>설정한 목표 진행도 〉</Text></Pressable>
+          {/* 제목 끝의 ›가 "누를 수 있다"고 약속한다. 실제로 눌리게 한다. */}
+          <Pressable accessibilityRole="button" accessibilityLabel="설정한 목표 진행도 보기" onPress={() => router.push('/routines')}><Text style={styles.sectionTitle}>설정한 목표 진행도 ›</Text></Pressable>
           {/*
             목표가 둘 이상일 수 있다 — 진단으로 만든 것과 진단 없이 만든 것(경로 B).
             **어느 목표의 진행도인지 밝히고, 여기서 바로 갈아탈 수 있게 한다.**
@@ -185,7 +186,7 @@ export default function HomeScreen() {
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="루틴 화면으로 이동" onPress={() => router.push('/routines')} style={styles.progressBody}>
                 <GoalProgressRing completed={scope === 'TODAY' ? todayDone : done} total={scope === 'TODAY' ? today.length : tasks.length} />
-                <Text style={styles.progressText}>{ordered.slice(0, 3).map((task) => `${task.status === 'DONE' ? '✓ ' : ''}${task.title}`).join('\n')}</Text>
+                <Text style={styles.progressText}>{ordered.slice(0, 3).map((task) => `${task.status === 'DONE' ? '완료 · ' : ''}${task.title}`).join('\n')}</Text>
               </Pressable>
             </View>
           ) : <Pressable accessibilityRole="button" accessibilityLabel="목표 만들러 가기" onPress={() => router.push('/routines')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 설정한 목표가 없어요.</Text><Text style={styles.emptyText}>진단 결과로 만들거나, 진단 없이 바로 만들 수도 있어요.</Text></Pressable>}
@@ -212,7 +213,7 @@ export default function HomeScreen() {
                   <Text style={styles.groupLabel}>{group.label}</Text>
                   {group.items.map((task) => (
                 <Pressable key={task.taskId} accessibilityRole="checkbox" accessibilityState={{ checked: task.status === 'DONE' }} accessibilityLabel={task.title} onPress={() => toggleTask(task.taskId)} style={styles.todayRow}>
-                  <View style={[styles.todayBox, task.status === 'DONE' && styles.todayBoxOn]}><Text style={styles.todayCheck}>{task.status === 'DONE' ? '✓' : ''}</Text></View>
+                  <View style={[styles.todayBox, task.status === 'DONE' && styles.todayBoxOn]}>{task.status === 'DONE' ? <Icon name="check" size={13} color={colors.white} /> : null}</View>
                   <View style={styles.todayCopy}>
                     <Text style={[styles.todayTitle, task.status === 'DONE' && styles.todayDone]} numberOfLines={1}>{task.title}</Text>
                     {/*
@@ -240,7 +241,7 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          <Pressable accessibilityRole="button" accessibilityLabel="최근 분석 결과 보기" onPress={() => router.push('/drawer')}><Text style={styles.sectionTitle}>최근 분석 결과 〉</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="최근 분석 결과 보기" onPress={() => router.push('/drawer')}><Text style={styles.sectionTitle}>최근 분석 결과 ›</Text></Pressable>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           {recent ? <Pressable accessibilityRole="button" accessibilityLabel={`${recent.title} 결과 보기`} onPress={recent.open} style={styles.resultCard}>{recent.thumbnailUrl ? <Image source={{ uri: recent.thumbnailUrl }} style={styles.thumb} accessibilityLabel={`${recent.title} 비교 이미지`} /> : <OfficialFaceLogo size={112} />}<View style={styles.resultCopy}><Text style={styles.date}>{formatAnalyzedDate(recent.analyzedAt)} 분석</Text><Text style={styles.resultTitle} numberOfLines={1}>{recent.title}</Text>{tasks.length ? <View style={styles.track}><View style={[styles.fill, { width: `${Math.round((done / tasks.length) * 100)}%` }]} /></View> : null}</View></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="서랍에서 저장한 결과 보기" onPress={() => router.push('/drawer')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 분석 결과가 없어요.</Text><Text style={styles.emptyText}>새로 진단을 완료하면 이곳에 결과가 표시돼요.{`\n`}저장한 결과는 서랍에서 볼 수 있어요.</Text></Pressable>}
 
@@ -277,8 +278,8 @@ export default function HomeScreen() {
           <View pointerEvents="none" style={styles.previewContent}>
             <View style={styles.chips}><View style={styles.chip}><Text style={styles.chipText}>피부</Text></View><View style={[styles.chip, styles.inactiveChip]}><Text style={styles.chipText}>체형</Text></View><View style={[styles.chip, styles.inactiveChip]}><Text style={styles.chipText}>건강</Text></View></View>
             <View style={styles.card}><Text style={styles.cardTitle}>나의 현재 피부 상태</Text><View style={styles.dashboard}><Text style={styles.changeText}>{previewChange}</Text><OfficialFaceLogo size={150} /></View></View>
-            <Text style={styles.sectionTitle}>설정한 목표 진행도 〉</Text><View style={styles.progressCard}><View style={styles.progressBody}><GoalProgressRing completed={2} total={5} /><Text style={styles.progressText}>오늘의 루틴과 목표 진행 상황을 확인해보세요.</Text></View></View>
-            <Text style={styles.sectionTitle}>최근 분석 결과 〉</Text><View style={styles.resultCard}><OfficialFaceLogo size={112} /><View style={styles.resultCopy}><Text style={styles.date}>최근 분석</Text><Text style={styles.resultTitle}>나만의 고점 분석 결과</Text></View></View>
+            <Text style={styles.sectionTitle}>설정한 목표 진행도 ›</Text><View style={styles.progressCard}><View style={styles.progressBody}><GoalProgressRing completed={2} total={5} /><Text style={styles.progressText}>오늘의 루틴과 목표 진행 상황을 확인해보세요.</Text></View></View>
+            <Text style={styles.sectionTitle}>최근 분석 결과 ›</Text><View style={styles.resultCard}><OfficialFaceLogo size={112} /><View style={styles.resultCopy}><Text style={styles.date}>최근 분석</Text><Text style={styles.resultTitle}>나만의 고점 분석 결과</Text></View></View>
           </View>
           <View style={styles.lockOverlay}>
             <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
@@ -302,7 +303,7 @@ function GoalProgressRing({ completed, total }: { completed: number; total: numb
 }
 
 function CheckRow({ label: text, done }: { label: string; done: boolean }) {
-  return <View style={styles.checkRow}><View style={[styles.checkbox, done && styles.checkboxDone]}><Text style={styles.checkmark}>{done ? '✓' : ''}</Text></View><Text style={styles.checkLabel}>{text}</Text></View>;
+  return <View style={styles.checkRow}><View style={[styles.checkbox, done && styles.checkboxDone]}>{done ? <Icon name="check" size={12} color={colors.white} /> : null}</View><Text style={styles.checkLabel}>{text}</Text></View>;
 }
 
 const styles = StyleSheet.create({ content: { paddingTop: 28 }, title: { ...typography.h1, color: colors.text }, sub: { ...typography.body, color: colors.textMuted }, chips: { flexDirection: 'row', gap: 12 }, chip: { minWidth: 78, paddingVertical: 9, alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.primary }, inactiveChip: { backgroundColor: '#C8C9C9' }, chipText: { ...typography.label, color: colors.white }, card: { borderRadius: radius.lg, padding: spacing.md, backgroundColor: colors.surface, gap: spacing.md, ...shadow }, cardTitle: { ...typography.title, color: colors.text }, dashboard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md }, changeText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 26 }, track: { height: 10, borderRadius: 5, backgroundColor: colors.disabled, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 5, backgroundColor: colors.primaryLight }, face: { width: 150, height: 180, borderRadius: radius.md }, sectionTitle: { ...typography.title, color: colors.text, marginTop: 4 }, scopeTabs: { flexDirection: 'row', gap: 6, alignSelf: 'flex-start' }, scopeTab: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface }, scopeTabOn: { borderColor: colors.primary, backgroundColor: colors.primary }, scopeTabText: { ...typography.caption, color: colors.textMuted }, scopeTabTextOn: { color: colors.white, fontWeight: '700' }, progressCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, progressBody: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg }, progressText: { flex: 1, ...typography.body, color: colors.textTertiary, lineHeight: 28 }, ringWrap: { width: 104, height: 126, alignItems: 'center', justifyContent: 'center' }, ringCaption: { ...typography.label, color: colors.danger, marginTop: -4 }, emptyAnalysis: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSunken }, resultCard: { flexDirection: 'row', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.surface, ...shadow }, thumb: { width: 112, height: 112, borderRadius: radius.md }, resultCopy: { flex: 1, justifyContent: 'center', gap: 8 }, date: { ...typography.caption, color: colors.textMuted }, resultTitle: { ...typography.label, color: colors.text }, lockedArea: { minHeight: 760, marginTop: spacing.sm, position: 'relative' }, previewContent: { gap: spacing.md }, lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md }, registrationModal: { width: '100%', gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, emptyTitle: { ...typography.title, color: colors.text, textAlign: 'center' }, emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' }, errorText: { ...typography.caption, color: colors.danger }, routineTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -4 }, routineTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface }, routineTabOn: { borderColor: colors.primary, backgroundColor: colors.primary }, routineTabText: { ...typography.caption, color: colors.textMuted }, routineTabTextOn: { color: colors.white, fontWeight: '700' }, routineName: { ...typography.caption, color: colors.textMuted, marginTop: -4 }, checkList: { gap: 10, paddingVertical: 4 }, checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, checkbox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, checkboxDone: { borderColor: colors.primary, backgroundColor: colors.primary }, checkmark: { color: colors.white, fontSize: 14, fontWeight: '700' }, checkLabel: { ...typography.body, color: colors.text }, todayCard: { gap: 2, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surface, ...shadow }, todayHead: { ...typography.label, color: colors.text, marginBottom: 6 }, groupLabel: { ...typography.caption, fontFamily: fonts.semibold, fontWeight: '700', fontSize: 13, color: colors.text, marginTop: 14, marginBottom: 2 }, todayCount: { color: colors.primary }, todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 }, todayBox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 1, borderColor: colors.disabled, backgroundColor: colors.surface }, todayBoxOn: { borderColor: colors.primary, backgroundColor: colors.primary }, todayCheck: { color: colors.white, fontSize: 13, fontWeight: '700' }, todayCopy: { flex: 1, gap: 2 }, todayTitle: { ...typography.body, color: colors.text }, todayDone: { color: colors.textMuted, textDecorationLine: 'line-through' }, todayMeta: { ...typography.caption, color: colors.textTertiary }, todayWeekly: { ...typography.caption, color: colors.primaryPressed }, todayWeeklyDone: { color: colors.textMuted } });
