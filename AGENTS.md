@@ -36,34 +36,45 @@
 ```text
 .
 ├─ AGENTS.md              이 파일
-├─ README.md
+├─ README.md              서비스 소개 · 기술 스택 · 실행 · 배포
 ├─ PRD.md                 제품 요구사항
 ├─ design.md              디자인 시스템
 ├─ API.md                 FE ⇄ BE 계약
 ├─ ERD.md                 데이터 모델
+├─ docs/                  배포 절차 · 푸시 설정 · 날짜별 인수인계
 ├─ assets/images/UI/      Figma export (원본 폭 458px) — 디자인 정본 · gitignore 대상
 │
-├─ frontend/              React · TypeScript · Vite
+├─ frontend/              Expo SDK 54 · React Native · TypeScript
 │  ├─ ARCHITECTURE.md
+│  ├─ app.json app.config.js eas.json   Expo · EAS 설정
+│  ├─ assets/             로고 · 아이콘 · Pretendard 폰트 (버전 관리 대상)
 │  └─ src/
-│     ├─ app/             라우터 · 프로바이더
-│     ├─ pages/           라우트 = 시안 화면과 1:1
-│     ├─ features/        도메인 로직 (auth · profile · analysis · drawer · routine)
-│     └─ shared/          api · ui · layout · hooks · lib · styles
+│     ├─ app/             Expo Router 화면 — 파일 = 라우트, 시안과 1:1
+│     ├─ components/      재사용 UI · 브랜드 모션 · 네비게이션
+│     ├─ services/        api · backend · mockApi · session · push · googleClient
+│     ├─ state/           AppState — 세션 · 화면 상태
+│     ├─ lib/             calendar · capture · consent · date · errors · tasks
+│     ├─ data/ mocks/     상품 카탈로그 · 데모 fixture
+│     ├─ theme/           디자인 토큰
+│     └─ types/           API · 도메인 타입
 │
 └─ backend/               Spring Boot 3.3 · Java 21 · Gradle
    ├─ ARCHITECTURE.md
    ├─ docker-compose.yml  로컬 PostgreSQL
    └─ src/main/
       ├─ java/com/gojeom/
-      │  ├─ common/       응답 봉투 · 에러 코드 · 설정
-      │  ├─ auth/ user/ profile/
+      │  ├─ common/       응답 봉투 · 에러 코드 · 설정 · enum
+      │  ├─ auth/ user/ consent/
+      │  ├─ profile/      사진 검증 · 인바디 OCR · 프로필 요약
       │  ├─ analysis/     ★ 고점 분석 파이프라인
-      │  ├─ drawer/ routine/ notification/ subscription/
-      │  ├─ ai/           ★ OpenAI 연동 · 프롬프트 · 가드레일
-      │  └─ storage/      presigned URL
+      │  ├─ drawer/ routine/ notification/ subscription/ product/
+      │  ├─ ai/           ★ OpenAI 연동 · 프롬프트 · 스키마 · 가드레일
+      │  └─ storage/      presigned URL · 삭제 큐
       └─ resources/db/migration/   Flyway
 ```
+
+> **프론트는 Expo React Native다.** 초기 React·Vite 웹 초안은 대체되었다.
+> 화면은 `src/app/`의 Expo Router 파일이고, `pages/` · `features/` · `shared/`는 없다.
 
 ---
 
