@@ -280,6 +280,16 @@ public class RoutineService {
         }
         for (PlannedRoutine routine : plan.routines()) {
             requireTasks(routine.tasks().size());
+            /*
+              🔴 <b>목표의 카테고리로 검사한다.</b> 경로 B는 태스크의 category를
+              AI 출력이 아니라 <b>목표의 카테고리로 덮어쓴다</b>({@code persistStandalone}).
+              그래서 AI가 준 category로 검사하면 통과해 놓고, 저장된 뒤에는 체형 목표에
+              건강 문제 코드가 붙어 있게 된다.
+
+              실측에서 그렇게 나왔다 — "물 마시기"에 HYDRATION_GAP(건강)이 붙은 채
+              체형 목표로 저장됐다.
+            */
+            requireGroundedTasks(routine.tasks(), routine.category());
         }
     }
 
@@ -309,12 +319,20 @@ public class RoutineService {
      * 통과시킨다 — 근거를 요구해 놓고 빈칸을 받으면 요구하지 않은 것과 같다.
      */
     private static void requireGroundedTasks(List<PlannedTask> tasks) {
+        requireGroundedTasks(tasks, null);
+    }
+
+    /**
+     * @param forced 저장될 때 덮어쓰는 카테고리. null이면 태스크가 스스로 말한 것을 쓴다
+     */
+    private static void requireGroundedTasks(List<PlannedTask> tasks, Category forced) {
         for (PlannedTask task : tasks) {
             ProblemCode code = task.problemCode();
-            if (code != null && !code.belongsTo(task.category())) {
+            Category effective = forced == null ? task.category() : forced;
+            if (code != null && !code.belongsTo(effective)) {
                 throw new GuardrailViolation(
-                        "'%s'는 %s 태스크인데 문제 코드가 %s(%s)다. 그 카테고리의 문제 코드를 골라라."
-                                .formatted(task.title(), task.category(), code, code.category()));
+                        "'%s'는 %s 목표의 태스크인데 문제 코드가 %s(%s)다. %s 문제 코드만 골라라."
+                                .formatted(task.title(), effective, code, code.category(), effective));
             }
             if (task.reason() == null || task.reason().isBlank()) {
                 throw new GuardrailViolation(
