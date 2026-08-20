@@ -33,10 +33,21 @@ public final class TaskScheduleExpander {
 
     private static final int DAYS_PER_WEEK = 7;
 
+    /** 날짜로 펼치지 않는 것들. 호출부가 시작일에 한 행씩만 저장한다. */
+    public static List<PlannedTask> unscheduled(List<PlannedTask> tasks) {
+        return tasks == null ? List.of()
+                : tasks.stream().filter(task -> !task.importanceOrCore().isScheduled()).toList();
+    }
+
     private TaskScheduleExpander() {
     }
 
     /**
+     * <p>🔴 <b>{@code OPTIONAL}은 펼치지 않는다.</b> "원할 때 추가하는 행동"은 날마다
+     * 체크할 대상이 아니고, 무엇보다 여기서 태스크 하나가 기간만큼 늘어난다 —
+     * 52주면 364행이다. 선택 항목까지 펼치면 목표 하나가 4천 행을 넘긴다.
+     * 선택 항목은 호출부가 시작일에 한 행만 저장한다. (docs/ROUTINE_UPGRADE_PLAN.md §2)
+     *
      * @param weeks 목표 기간. 0 이하면 빈 목록이다 — 기간 없는 목표를 만들지 않는다
      * @return 태스크 × 기간의 모든 날. 날짜 오름차순, 같은 날 안에서는 입력 순서
      */
@@ -51,6 +62,9 @@ public final class TaskScheduleExpander {
             for (int day = 0; day < DAYS_PER_WEEK; day++) {
                 LocalDate date = weekStart.plusDays(day);
                 for (PlannedTask task : tasks) {
+                    if (!task.importanceOrCore().isScheduled()) {
+                        continue;
+                    }
                     int perWeek = task.weeklyCount();
                     // 매일 하는 것은 목표 횟수를 두지 않는다. 그날 하면 그날 끝이다.
                     Integer target = perWeek >= DAYS_PER_WEEK ? null : perWeek;

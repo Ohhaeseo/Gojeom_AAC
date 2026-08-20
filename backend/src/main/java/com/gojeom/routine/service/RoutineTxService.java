@@ -135,17 +135,8 @@ public class RoutineTxService {
 
         // 시점이 여러 개인 태스크는 시점마다 하나씩으로 나눈다. 완료 체크가 태스크
         // 단위라, "아침, 저녁"이 한 줄이면 아침만 한 상태를 표현할 수 없다.
-        // **펼치기 전에** 나눈다 — 나중에 나누면 같은 일이 날짜 수만큼 늘어난다.
-        List<PlannedTask> split = TaskTimingSplitter.expand(tasks);
-
-        long count = 0;
-        for (Slot slot : TaskScheduleExpander.expand(split, startDate, durationWeeks)) {
-            PlannedTask task = slot.task();
-            routineTaskRepository.save(RoutineTask.of(routine.getId(), task.category(),
-                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
-                    slot.date(), slot.weekStart(), slot.weeklyTarget()));
-            count++;
-        }
+        // 경로 A는 태스크마다 카테고리가 달라 AI가 준 값을 그대로 쓴다.
+        long count = persistTasks(routine.getId(), tasks, null, startDate, durationWeeks);
         return summary(routine, count);
     }
 
@@ -176,20 +167,49 @@ public class RoutineTxService {
                     item.goalText(), item.targetWeightKg()));
             routine.applyDietGuide(plan.dietGuide());
 
-            // 펼치기 **전에** 나눈다. 나중에 나누면 같은 일이 날짜 수만큼 늘어난다.
-            List<PlannedTask> split = TaskTimingSplitter.expand(plan.tasks());
-
-            long count = 0;
-            for (Slot slot : TaskScheduleExpander.expand(split, startDate, weeks)) {
-                PlannedTask task = slot.task();
-                routineTaskRepository.save(RoutineTask.of(routine.getId(), plan.category(),
-                        task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
-                        slot.date(), slot.weekStart(), slot.weeklyTarget()));
-                count++;
-            }
+            long count = persistTasks(routine.getId(), plan.tasks(), plan.category(), startDate, weeks);
             summaries.add(summary(routine, count));
         }
         return summaries;
+    }
+
+    /**
+     * 날짜별 배정 + <b>선택 항목 한 행</b>을 저장한다.
+     *
+     * <p>🔴 {@code OPTIONAL}은 {@code TaskScheduleExpander}가 펼치지 않는다. 그렇다고
+     * 버리면 화면에 보여 줄 것이 없으므로 <b>시작일에 한 행씩만</b> 남긴다.
+     * 날마다 체크할 대상이 아니라 "해보면 좋은 것" 목록이다.
+     *
+     * @param category 태스크에 새길 카테고리. 경로 B는 목표의 카테고리로 덮어쓴다
+     * @return 진행률에 세는 행 수. <b>선택 항목은 세지 않는다</b> — 목표 완료의 일부가 아니다
+     */
+    private long persistTasks(UUID routineId, List<PlannedTask> tasks, Category category,
+                              LocalDate startDate, int weeks) {
+        // 펼치기 **전에** 시점을 나눈다. 나중에 나누면 같은 일이 날짜 수만큼 늘어난다.
+        List<PlannedTask> split = TaskTimingSplitter.expand(tasks);
+
+        long count = 0;
+        for (Slot slot : TaskScheduleExpander.expand(split, startDate, weeks)) {
+            PlannedTask task = slot.task();
+            routineTaskRepository.save(RoutineTask.of(routineId,
+                    category == null ? task.category() : category,
+                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                    slot.date(), slot.weekStart(), slot.weeklyTarget(), detailOf(task)));
+            count++;
+        }
+
+        for (PlannedTask task : TaskScheduleExpander.unscheduled(split)) {
+            routineTaskRepository.save(RoutineTask.of(routineId,
+                    category == null ? task.category() : category,
+                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                    startDate, startDate, null, detailOf(task)));
+        }
+        return count;
+    }
+
+    private static RoutineTask.Detail detailOf(PlannedTask task) {
+        return new RoutineTask.Detail(task.importanceOrCore(), task.problemCode(),
+                task.reason(), task.expectedEffect());
     }
 
     private RoutineSummary summary(Routine routine, long taskCount) {

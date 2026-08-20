@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gojeom.ai.dto.AiPayloads.PlannedTask;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.RoutineImportance;
 import com.gojeom.routine.TaskScheduleExpander.Slot;
 import java.time.LocalDate;
 import java.util.List;
@@ -23,7 +24,9 @@ class TaskScheduleExpanderTest {
     private static final LocalDate WED = LocalDate.of(2026, 8, 19);   // 수요일
 
     private static PlannedTask task(String title, Integer perWeek) {
-        return new PlannedTask(Category.BODY, title, "매일 아침", null, "15회", perWeek);
+        // 중요도·근거는 이 테스트의 관심사가 아니다. 펼치기 대상이 되도록 CORE 로 둔다.
+        return new PlannedTask(Category.BODY, RoutineImportance.CORE, null,
+                title, "매일 아침", null, "15회", perWeek, null, null);
     }
 
     @Test

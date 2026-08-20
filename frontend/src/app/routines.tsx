@@ -12,7 +12,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
 import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits } from '@/lib/date';
-import { groupByTiming, todayTasks } from '@/lib/tasks';
+import { groupByTiming, optionalTasks, todayTasks } from '@/lib/tasks';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -341,15 +341,42 @@ export default function RoutinesScreen() {
           {group.items.map((task) => (
             <Pressable key={task.taskId} onPress={() => toggleTask(task.taskId)} style={[styles.task, task.status === 'DONE' && styles.taskDone]}>
               <View style={styles.taskCopy}>
-                <Text style={[styles.taskTitle, task.status === 'DONE' && styles.doneText]}>{task.title}</Text>
+                <View style={styles.taskTitleRow}>
+                  <Text style={[styles.taskTitle, task.status === 'DONE' && styles.doneText]}>{task.title}</Text>
+                  {/* 필수는 배지를 달지 않는다 — 대부분이 필수라 온통 배지가 된다. */}
+                  {task.importance === 'SUPPORT' ? <Text style={styles.supportBadge}>보조</Text> : null}
+                </View>
                 {/* 소요 시간(durationLabel)은 빼고 시점과 분량만 남긴다. */}
                 <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+                {/*
+                  🔴 **없으면 그리지 않는다.** V16 이전 태스크에는 근거가 없고,
+                  "정보 없음" 같은 문구를 넣으면 지어내지 않기로 한 것을 스스로 어긴다.
+                */}
+                {task.reason ? <Text style={styles.reason}>{task.reason}</Text> : null}
               </View>
               <View style={styles.completeRow}><View style={[styles.checkbox, task.status === 'DONE' && styles.checkboxDone]}>{task.status === 'DONE' ? <Icon name="check" size={13} color={colors.white} /> : null}</View><Text style={styles.completeText}>완료</Text></View>
             </Pressable>
           ))}
         </View>
       )) : <Text style={styles.description}>태스크를 불러오는 중이에요.</Text>}
+
+      {/*
+        선택 항목. **날짜로 펼쳐지지 않아** 오늘 할 일에는 나오지 않는다.
+        여력이 있을 때 더하는 것이라 목록으로만 둔다. (docs/ROUTINE_UPGRADE_PLAN.md §2)
+      */}
+      {optionalTasks(tasks).length ? (
+        <>
+          <Text style={styles.sectionTitle}>해보면 좋은 것</Text>
+          <Text style={styles.description}>꼭 해야 하는 것은 아니에요. 여유가 있을 때 더해보세요.</Text>
+          {optionalTasks(tasks).map((task) => (
+            <View key={task.taskId} style={styles.optionalCard}>
+              <Text style={styles.taskTitle}>{task.title}</Text>
+              <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+              {task.reason ? <Text style={styles.reason}>{task.reason}</Text> : null}
+            </View>
+          ))}
+        </>
+      ) : null}
 
       <Text style={styles.sectionTitle}>알림 설정</Text>
       <Text style={styles.description}>설정한 시간에 루틴 알림을 받을게요.</Text>
@@ -509,6 +536,10 @@ const styles = StyleSheet.create({
   pathArrow: { fontSize: 24, color: colors.textMuted },
   pathText: { ...typography.caption, color: colors.textMuted },
   pathTextOn: { color: colors.primaryLight },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  supportBadge: { ...typography.caption, color: colors.textTertiary, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill, backgroundColor: colors.surfaceSunken },
+  reason: { marginTop: 3, ...typography.caption, color: colors.textTertiary, lineHeight: 17 },
+  optionalCard: { gap: 2, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface },
   errorText: { ...typography.caption, color: colors.danger },
   noticeText: { ...typography.caption, color: colors.textTertiary },
 });

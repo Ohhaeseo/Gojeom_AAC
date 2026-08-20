@@ -11,6 +11,7 @@ import type { RoutineTask } from '@/types/api';
 const task = (scheduledDate: string, status: RoutineTask['status'] = 'PENDING'): RoutineTask => ({
   taskId: scheduledDate + status,
   category: 'BODY',
+  importance: 'CORE',
   title: '스쿼트 하기',
   timing: '매일 아침',
   durationLabel: '',

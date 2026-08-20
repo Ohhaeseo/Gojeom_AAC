@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gojeom.ai.dto.AiPayloads.PlannedTask;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.RoutineImportance;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,7 +19,8 @@ import org.junit.jupiter.api.Test;
 class TaskTimingSplitterTest {
 
     private static PlannedTask task(String timing) {
-        return new PlannedTask(Category.SKIN, "자외선 차단제 바르기", timing, "약 2분", "4ml", 7);
+        return new PlannedTask(Category.SKIN, RoutineImportance.CORE, null,
+                "자외선 차단제 바르기", timing, "약 2분", "4ml", 7, null, null);
     }
 
     @Nested

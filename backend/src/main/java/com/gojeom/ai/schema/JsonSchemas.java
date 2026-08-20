@@ -1,5 +1,8 @@
 package com.gojeom.ai.schema;
 
+import com.gojeom.common.enums.ProblemCode;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
@@ -164,17 +167,23 @@ public class JsonSchemas {
                   "dietGuide": { "type": ["string", "null"], "maxLength": 160 },
                   "durationWeeks": { "type": "integer", "minimum": 4, "maximum": 52 },
                   "tasks": {
-                    "type": "array", "minItems": 4, "maxItems": 6,
+                    "type": "array", "minItems": 6, "maxItems": 10,
                     "items": {
                       "type": "object", "additionalProperties": false,
-                      "required": ["category", "title", "timing", "durationLabel", "amountLabel", "frequencyPerWeek"],
+                      "required": ["category", "importance", "problemCode", "title", "timing",
+                                   "durationLabel", "amountLabel", "frequencyPerWeek",
+                                   "reason", "expectedEffect"],
                       "properties": {
                         "category":      { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
+                        "importance":    { "type": "string", "enum": ["CORE", "SUPPORT", "OPTIONAL"] },
+                        "problemCode":   { "type": "string", "enum": [__PROBLEM_CODES__] },
                         "title":         { "type": "string", "maxLength": 30 },
                         "timing":        { "type": "string", "maxLength": 20 },
                         "durationLabel": { "type": ["string", "null"], "maxLength": 12 },
                         "amountLabel":   { "type": ["string", "null"], "maxLength": 12 },
-                        "frequencyPerWeek": { "type": "integer", "minimum": 1, "maximum": 7 }
+                        "frequencyPerWeek": { "type": "integer", "minimum": 1, "maximum": 7 },
+                        "reason":         { "type": "string", "maxLength": 200 },
+                        "expectedEffect": { "type": "string", "maxLength": 200 }
                       }
                     }
                   }
@@ -207,17 +216,23 @@ public class JsonSchemas {
                         "title":     { "type": "string", "maxLength": 60 },
                         "dietGuide": { "type": ["string", "null"], "maxLength": 160 },
                         "tasks": {
-                          "type": "array", "minItems": 4, "maxItems": 6,
+                          "type": "array", "minItems": 6, "maxItems": 10,
                           "items": {
                             "type": "object", "additionalProperties": false,
-                            "required": ["category", "title", "timing", "durationLabel", "amountLabel", "frequencyPerWeek"],
+                            "required": ["category", "importance", "problemCode", "title", "timing",
+                                         "durationLabel", "amountLabel", "frequencyPerWeek",
+                                         "reason", "expectedEffect"],
                             "properties": {
                               "category":      { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
+                              "importance":    { "type": "string", "enum": ["CORE", "SUPPORT", "OPTIONAL"] },
+                              "problemCode":   { "type": "string", "enum": [__PROBLEM_CODES__] },
                               "title":         { "type": "string", "maxLength": 30 },
                               "timing":        { "type": "string", "maxLength": 20 },
                               "durationLabel": { "type": ["string", "null"], "maxLength": 12 },
                               "amountLabel":   { "type": ["string", "null"], "maxLength": 12 },
-                        "frequencyPerWeek": { "type": "integer", "minimum": 1, "maximum": 7 }
+                        "frequencyPerWeek": { "type": "integer", "minimum": 1, "maximum": 7 },
+                        "reason":         { "type": "string", "maxLength": 200 },
+                        "expectedEffect": { "type": "string", "maxLength": 200 }
                             }
                           }
                         }
@@ -264,6 +279,20 @@ public class JsonSchemas {
     private final JsonNode productRecommendation;
 
     /**
+     * 문제 코드 목록을 <b>enum에서 만들어</b> 스키마에 끼운다.
+     *
+     * <p>🔴 <b>손으로 적지 않는 이유</b> — 스키마에 적어 두면 {@link ProblemCode}에
+     * 코드를 더할 때 여기를 같이 고쳐야 하는데, 잊으면 <b>모델이 새 코드를 고를 수
+     * 없게 되고 그 사실이 조용히 지나간다.</b> 한쪽만 고쳐도 어긋나지 않게 한다.
+     */
+    private static String withProblemCodes(String schema) {
+        String codes = Arrays.stream(ProblemCode.values())
+                .map(code -> '"' + code.name() + '"')
+                .collect(Collectors.joining(", "));
+        return schema.replace("__PROBLEM_CODES__", codes);
+    }
+
+    /**
      * 스키마를 <b>기동 시점에</b> 파싱한다. 오타가 있으면 첫 AI 호출이 아니라
      * 애플리케이션 기동에서 즉시 드러난다.
      */
@@ -271,8 +300,8 @@ public class JsonSchemas {
         this.keywordExtraction = parse(objectMapper, KEYWORD_EXTRACTION);
         this.resultGeneration = parse(objectMapper, RESULT_GENERATION);
         this.profileAnalysis = parse(objectMapper, PROFILE_ANALYSIS);
-        this.routineFromAnalysis = parse(objectMapper, ROUTINE_FROM_ANALYSIS);
-        this.routineStandalone = parse(objectMapper, ROUTINE_STANDALONE);
+        this.routineFromAnalysis = parse(objectMapper, withProblemCodes(ROUTINE_FROM_ANALYSIS));
+        this.routineStandalone = parse(objectMapper, withProblemCodes(ROUTINE_STANDALONE));
         this.inbodyOcr = parse(objectMapper, INBODY_OCR);
         this.productRecommendation = parse(objectMapper, PRODUCT_RECOMMENDATION);
     }

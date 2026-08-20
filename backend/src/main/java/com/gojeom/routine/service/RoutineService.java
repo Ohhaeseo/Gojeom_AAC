@@ -3,6 +3,7 @@ package com.gojeom.routine.service;
 import com.gojeom.ai.AiException;
 import com.gojeom.ai.AiTextService;
 import com.gojeom.ai.dto.AiPayloads.PlannedRoutine;
+import com.gojeom.ai.dto.AiPayloads.PlannedTask;
 import com.gojeom.ai.dto.AiPayloads.RoutinePlan;
 import com.gojeom.ai.dto.AiPayloads.StandalonePlan;
 import com.gojeom.ai.guardrail.GuardrailViolation;
@@ -11,6 +12,8 @@ import com.gojeom.analysis.entity.AnalysisResult;
 import com.gojeom.analysis.repository.AnalysisKeywordRepository;
 import com.gojeom.analysis.repository.AnalysisResultRepository;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.ProblemCode;
+import com.gojeom.common.enums.RoutineImportance;
 import com.gojeom.common.enums.RoutineSourceType;
 import com.gojeom.common.enums.TaskStatus;
 import com.gojeom.common.exception.BusinessException;
@@ -39,6 +42,7 @@ import com.gojeom.routine.repository.RoutineRepository;
 import com.gojeom.routine.repository.RoutineTaskRepository;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -112,10 +116,14 @@ public class RoutineService {
         RoutinePlan plan = generate(() -> aiTextService.generate(
                 prompt.forAnalysis(context.profileFacts(), context.resultDigest(), context.priorities()),
                 RoutinePlan::userFacingText,
-                p -> requireTasks(p.tasks().size())));
+                p -> {
+                    requireTasks(p.tasks().size());
+                    requireGroundedTasks(p.tasks());
+                }));
 
         RoutineSummary summary = routineTx.persistFromAnalysis(userId, context.analysisResultId(),
-                plan.title(), plan.dietGuide(), durationOf(plan), plan.tasks(), request.startDate());
+                plan.title(), plan.dietGuide(), durationOf(plan),
+                ensureCore(plan.tasks()), request.startDate());
 
         return new RoutineCreateResponse(List.of(summary));
     }
@@ -185,8 +193,12 @@ public class RoutineService {
                 StandalonePlan::userFacingText,
                 p -> requireExactCategories(p, items.keySet())));
 
+        List<PlannedRoutine> grounded = plan.routines().stream()
+                .map(r -> new PlannedRoutine(r.category(), r.title(), r.dietGuide(), ensureCore(r.tasks())))
+                .toList();
+
         List<RoutineSummary> summaries =
-                routineTx.persistStandalone(userId, plan.routines(), items, request.startDate());
+                routineTx.persistStandalone(userId, grounded, items, request.startDate());
 
         return new RoutineCreateResponse(summaries);
     }
@@ -271,10 +283,68 @@ public class RoutineService {
         }
     }
 
+    /** V16 이전 태스크는 {@code problemCode}·{@code reason}이 null이다. 그대로 내려보낸다. */
+    private static TaskView toTaskView(RoutineTask t) {
+        return new TaskView(t.getId(), t.getCategory(), t.getImportance(), t.getProblemCode(),
+                t.getReason(), t.getExpectedEffect(), t.getTitle(), t.getTiming(),
+                t.getDurationLabel(), t.getAmountLabel(), t.getScheduledDate(),
+                t.getWeekStart(), t.getWeeklyTarget(), t.getStatus());
+    }
+
     private static void requireTasks(int count) {
         if (count == 0) {
             throw new GuardrailViolation("태스크가 하나도 없다. 실행할 수 있는 태스크를 만들어라.");
         }
+    }
+
+    /**
+     * 근거가 <b>제자리에 있는지</b> 본다. (루틴 고도화 1단계)
+     *
+     * <p>스키마가 {@code problemCode}를 enum으로 묶어 <b>없는 문제를 지어내는 것</b>은
+     * 막았지만, <b>엉뚱한 카테고리의 문제를 고르는 것</b>은 막지 못한다 — 체형 태스크에
+     * {@code REDNESS_TENDENCY}(피부)를 붙이는 식이다. 그러면 "왜 이 행동인가"가
+     * 무너지므로 다시 만들게 한다.
+     *
+     * <p>{@code reason}도 함께 본다. 스키마의 {@code type: string}은 빈 문자열을
+     * 통과시킨다 — 근거를 요구해 놓고 빈칸을 받으면 요구하지 않은 것과 같다.
+     */
+    private static void requireGroundedTasks(List<PlannedTask> tasks) {
+        for (PlannedTask task : tasks) {
+            ProblemCode code = task.problemCode();
+            if (code != null && !code.belongsTo(task.category())) {
+                throw new GuardrailViolation(
+                        "'%s'는 %s 태스크인데 문제 코드가 %s(%s)다. 그 카테고리의 문제 코드를 골라라."
+                                .formatted(task.title(), task.category(), code, code.category()));
+            }
+            if (task.reason() == null || task.reason().isBlank()) {
+                throw new GuardrailViolation(
+                        "'%s'에 reason이 없다. 이 사용자에게 왜 필요한지 적어라.".formatted(task.title()));
+            }
+        }
+    }
+
+    /**
+     * {@code CORE}가 하나도 없으면 <b>첫 태스크를 올린다.</b>
+     *
+     * <p>🔴 <b>여기서는 재생성하지 않는다.</b> 화면이 기본으로 {@code CORE}만 보여주므로,
+     * 하나도 없으면 사용자는 <b>빈 목표</b>를 받는다. AI를 한 번 더 부르는 값보다
+     * 빈손으로 돌려보내지 않는 것이 낫다 — 순서는 AI가 중요한 것부터 낸다고 보고
+     * 맨 앞을 고른다.
+     */
+    private static List<PlannedTask> ensureCore(List<PlannedTask> tasks) {
+        boolean hasCore = tasks.stream()
+                .anyMatch(task -> task.importanceOrCore() == RoutineImportance.CORE);
+        if (hasCore || tasks.isEmpty()) {
+            return tasks;
+        }
+
+        log.warn("CORE 태스크가 없어 첫 태스크를 CORE로 올린다: {}", tasks.get(0).title());
+        List<PlannedTask> fixed = new ArrayList<>(tasks);
+        PlannedTask first = fixed.get(0);
+        fixed.set(0, new PlannedTask(first.category(), RoutineImportance.CORE, first.problemCode(),
+                first.title(), first.timing(), first.durationLabel(), first.amountLabel(),
+                first.frequencyPerWeek(), first.reason(), first.expectedEffect()));
+        return fixed;
     }
 
     // ------------------------------------------------------------ 조회
@@ -314,9 +384,7 @@ public class RoutineService {
                 overview(result),
                 progressOf(tasks),
                 tasks.stream()
-                        .map(t -> new TaskView(t.getId(), t.getCategory(), t.getTitle(), t.getTiming(),
-                                t.getDurationLabel(), t.getAmountLabel(), t.getScheduledDate(),
-                                t.getWeekStart(), t.getWeeklyTarget(), t.getStatus()))
+                        .map(RoutineService::toTaskView)
                         .toList(),
                 notification(userId, routine));
     }

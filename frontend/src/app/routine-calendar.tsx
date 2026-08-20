@@ -8,7 +8,7 @@ import {
   dayLabel, groupByDate, monthGrid, monthLabel, monthsOf, nearestDate,
 } from '@/lib/calendar';
 import { toIsoDate } from '@/lib/date';
-import { groupByTiming, visibleTasks, weeklyProgress } from '@/lib/tasks';
+import { groupByTiming, scheduledTasks, visibleTasks, weeklyProgress } from '@/lib/tasks';
 import * as backend from '@/services/backend';
 import type { RoutineDetail } from '@/services/backend';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -67,7 +67,8 @@ export default function RoutineCalendarScreen() {
     거른 뒤에 묶어야 **달력의 점과 날짜별 목록이 어긋나지 않는다** — 점은 있는데
     눌러 보면 비어 있는 날이 생기면 사용자는 고장으로 읽는다.
   */
-  const shown = useMemo(() => visibleTasks(tasks, tasks), [tasks]);
+  // 선택 항목은 시작일에 한 행만 있다 — 달력에 찍으면 그날만 뜬금없이 점이 생긴다.
+  const shown = useMemo(() => visibleTasks(scheduledTasks(tasks), tasks), [tasks]);
   const byDate = useMemo(() => groupByDate(shown), [shown]);
   const dates = useMemo(() => [...byDate.keys()], [byDate]);
   const months = useMemo(() => monthsOf(tasks), [tasks]);

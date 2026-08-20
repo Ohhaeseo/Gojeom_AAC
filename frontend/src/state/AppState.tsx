@@ -265,7 +265,7 @@ const mockKeywords: KeywordChoice[] = [
 ];
 
 const mockTasks: RoutineTask[] = Array.from({ length: 4 }, (_, index) => ({
-  taskId: `task-${index + 1}`, category: 'SKIN', title: '자외선 차단제 바르기',
+  taskId: `task-${index + 1}`, category: 'SKIN', importance: 'CORE', title: '자외선 차단제 바르기',
   timing: '매일 외출 전', durationLabel: '약 2분', amountLabel: '4ml', scheduledDate: '2026-08-14',
   status: 'PENDING',
 }));

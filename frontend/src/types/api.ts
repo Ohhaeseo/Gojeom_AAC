@@ -83,6 +83,9 @@ export type AnalysisResult = {
   disclaimer: string;
 };
 
+/** 필수 · 보조 · 선택. 서버 `RoutineImportance`와 같다. */
+export type RoutineImportance = 'CORE' | 'SUPPORT' | 'OPTIONAL';
+
 export type RoutineTask = {
   taskId: string;
   /**
@@ -91,6 +94,18 @@ export type RoutineTask = {
    */
   routineId?: string;
   category: Category;
+  /**
+   * 이 목표에서의 무게. (V16)
+   *
+   * 🔴 `OPTIONAL`은 **날짜로 펼쳐지지 않는다** — 시작일에 한 행만 있다.
+   * 오늘 할 일·캘린더에서 빼고 목표 상세의 "해보면 좋은 것"으로만 보여준다.
+   */
+  importance: RoutineImportance;
+  /** 이 행동이 푸는 문제. **V16 이전 태스크는 없다.** */
+  problemCode?: string | null;
+  /** 왜 이 사용자에게 이 행동인가. **없으면 그 줄을 그리지 않는다** — 지어내지 않는다. */
+  reason?: string | null;
+  expectedEffect?: string | null;
   title: string;
   timing: string;
   durationLabel: string;

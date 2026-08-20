@@ -3,6 +3,8 @@ package com.gojeom.ai.dto;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.ProblemCode;
+import com.gojeom.common.enums.RoutineImportance;
 import com.gojeom.common.enums.KeywordCategory;
 import com.gojeom.profile.entity.CaptureQuality;
 import java.math.BigDecimal;
@@ -137,11 +139,28 @@ public final class AiPayloads {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record PlannedTask(
             Category category,
+            /**
+             * 이 목표에서 이 행동의 무게. 🔴 {@code OPTIONAL}은 날짜로 펼치지 않는다.
+             * (docs/ROUTINE_UPGRADE_PLAN.md · {@code TaskScheduleExpander})
+             */
+            RoutineImportance importance,
+            /** 이 행동이 푸는 문제. AI 스키마가 enum으로 막아 목록 밖을 고를 수 없다. */
+            ProblemCode problemCode,
             String title,
             String timing,
             String durationLabel,
             String amountLabel,
-            Integer frequencyPerWeek) {
+            Integer frequencyPerWeek,
+            /** <b>왜 이 사용자에게</b> 이 행동인가. 일반론이면 후검증이 걸러 낸다. */
+            String reason,
+            /** 무엇이 어떻게 달라지는가. 치료를 보장하는 말은 쓰지 않는다. */
+            String expectedEffect) {
+
+        /** 값이 없으면 필수로 본다. 빠뜨려서 화면에서 사라지는 쪽이 더 나쁘다. */
+        @JsonIgnore
+        public RoutineImportance importanceOrCore() {
+            return importance == null ? RoutineImportance.CORE : importance;
+        }
 
         /** 값이 없거나 범위를 벗어나면 매일로 본다. 덜 배정하는 쪽이 더 나쁘다. */
         @JsonIgnore

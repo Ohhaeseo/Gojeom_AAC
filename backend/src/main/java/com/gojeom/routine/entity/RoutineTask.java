@@ -1,6 +1,8 @@
 package com.gojeom.routine.entity;
 
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.ProblemCode;
+import com.gojeom.common.enums.RoutineImportance;
 import com.gojeom.common.enums.TaskStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -79,6 +81,32 @@ public class RoutineTask {
     @Column(name = "weekly_target")
     private Short weeklyTarget;
 
+    /**
+     * 이 목표에서의 무게. (V16)
+     *
+     * <p>🔴 <b>NOT NULL DEFAULT 'CORE'다.</b> V16 이전 태스크에는 값이 없는데,
+     * nullable로 두면 "필수만 보기"에서 옛 목표의 할 일이 통째로 사라진다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "importance", nullable = false, length = 10)
+    private RoutineImportance importance;
+
+    /**
+     * 이 행동이 푸는 문제. <b>null일 수 있다</b> — V16 이전 태스크에는 근거가 없고,
+     * 없는 것을 지어 채우면 이 필드를 둔 목적을 스스로 어긴다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "problem_code", length = 30)
+    private ProblemCode problemCode;
+
+    /** 왜 이 사용자에게 이 행동인가. null이면 화면은 그 줄을 <b>그리지 않는다.</b> */
+    @Column(name = "reason", length = 200)
+    private String reason;
+
+    /** 무엇이 어떻게 달라지는가. 마찬가지로 null일 수 있다. */
+    @Column(name = "expected_effect", length = 200)
+    private String expectedEffect;
+
     @Column(name = "scheduled_date", nullable = false)
     private LocalDate scheduledDate;
 
@@ -93,11 +121,29 @@ public class RoutineTask {
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 
+    /**
+     * 태스크가 <b>왜</b> 있는지. 값이 늘어 생성자가 길어지는 것을 막으려고 묶었다.
+     *
+     * <p>{@code problemCode}·{@code reason}·{@code expectedEffect}는 null일 수 있다.
+     * {@code importance}만 반드시 있어야 한다 — 없으면 화면이 무엇을 먼저 보여줄지 모른다.
+     */
+    public record Detail(RoutineImportance importance, ProblemCode problemCode,
+                         String reason, String expectedEffect) {
+
+        public static Detail core() {
+            return new Detail(RoutineImportance.CORE, null, null, null);
+        }
+    }
+
     private RoutineTask(UUID routineId, Category category, String title, String timing,
                         String durationLabel, String amountLabel, LocalDate scheduledDate,
-                        LocalDate weekStart, Integer weeklyTarget) {
+                        LocalDate weekStart, Integer weeklyTarget, Detail detail) {
         this.routineId = routineId;
         this.category = category;
+        this.importance = detail.importance();
+        this.problemCode = detail.problemCode();
+        this.reason = detail.reason();
+        this.expectedEffect = detail.expectedEffect();
         this.title = title;
         this.timing = timing;
         this.durationLabel = durationLabel;
@@ -111,9 +157,9 @@ public class RoutineTask {
 
     public static RoutineTask of(UUID routineId, Category category, String title, String timing,
                                  String durationLabel, String amountLabel, LocalDate scheduledDate,
-                                 LocalDate weekStart, Integer weeklyTarget) {
+                                 LocalDate weekStart, Integer weeklyTarget, Detail detail) {
         return new RoutineTask(routineId, category, title, timing,
-                durationLabel, amountLabel, scheduledDate, weekStart, weeklyTarget);
+                durationLabel, amountLabel, scheduledDate, weekStart, weeklyTarget, detail);
     }
 
     /**

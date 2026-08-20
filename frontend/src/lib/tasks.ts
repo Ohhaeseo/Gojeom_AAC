@@ -47,9 +47,38 @@ export function frequencyRank(timing: string): number {
  * 목표별로 뭉치지 않고 **시점끼리 섞여** 나열된다. (피드백 7번)
  */
 function compareTasks(a: RoutineTask, b: RoutineTask): number {
+  // 🔴 중요도가 가장 먼저다. 오늘 할 일이 많을 때 **무엇부터 할지**를 순서가 말한다.
+  const byImportance = importanceRank(a) - importanceRank(b);
+  if (byImportance !== 0) return byImportance;
   const byFrequency = frequencyRank(a.timing) - frequencyRank(b.timing);
   if (byFrequency !== 0) return byFrequency;
   return timingRank(a.timing) - timingRank(b.timing);
+}
+
+/**
+ * 중요도 순위. **값이 없으면 필수로 본다** — V16 이전 태스크가 뒤로 밀리면
+ * 쓰던 사용자의 할 일 순서가 갑자기 바뀐다.
+ */
+const IMPORTANCE_ORDER = { CORE: 0, SUPPORT: 1, OPTIONAL: 2 } as const;
+
+export function importanceRank(task: RoutineTask): number {
+  return IMPORTANCE_ORDER[task.importance] ?? 0;
+}
+
+/**
+ * 날마다 하는 것만. **`OPTIONAL`은 뺀다.**
+ *
+ * 🔴 서버가 선택 항목을 <b>시작일에 한 행만</b> 만든다(날짜로 펼치지 않는다).
+ * 걸러 내지 않으면 목표 시작일 하루에만 뜬금없이 나타난다 — 날마다 체크할
+ * 대상이 아니라 "해보면 좋은 것" 목록이다. (docs/ROUTINE_UPGRADE_PLAN.md §2)
+ */
+export function scheduledTasks(tasks: RoutineTask[]): RoutineTask[] {
+  return tasks.filter((task) => task.importance !== 'OPTIONAL');
+}
+
+/** 목표 상세의 "해보면 좋은 것". 날짜가 없으므로 한 번만 나온다. */
+export function optionalTasks(tasks: RoutineTask[]): RoutineTask[] {
+  return tasks.filter((task) => task.importance === 'OPTIONAL');
 }
 
 /**
@@ -118,7 +147,9 @@ export function visibleTasks(
  * <p><b>홈과 루틴 화면이 이 함수를 함께 쓴다.</b> 각자 고르고 정렬하면 같은
  * 태스크가 두 화면에서 다른 순서로 나온다.
  */
-export function todayTasks(tasks: RoutineTask[]): { date?: string; items: RoutineTask[] } {
+export function todayTasks(all: RoutineTask[]): { date?: string; items: RoutineTask[] } {
+  // 선택 항목은 회차 계산에서 아예 뺀다. 두면 시작일의 회차를 그것이 정해 버린다.
+  const tasks = scheduledTasks(all);
   if (!tasks.length) return { items: [] };
 
   // `routineId`는 여러 목표를 합쳐 올릴 때 화면이 붙여 준다. 하나만 볼 때는

@@ -3,6 +3,8 @@ package com.gojeom.routine.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.ProblemCode;
+import com.gojeom.common.enums.RoutineImportance;
 import com.gojeom.common.enums.RoutineSourceType;
 import com.gojeom.common.enums.TaskStatus;
 import com.gojeom.routine.RoutinePolicy;
@@ -234,6 +236,13 @@ public final class RoutineDtos {
     public record TaskView(
             UUID taskId,
             Category category,
+            /** CORE=반드시 · SUPPORT=보조 · OPTIONAL=원할 때. (V16) */
+            RoutineImportance importance,
+            /** 이 행동이 푸는 문제. <b>V16 이전 태스크는 null이다.</b> */
+            ProblemCode problemCode,
+            /** 왜 이 사용자에게 이 행동인가. null이면 화면은 <b>그 줄을 그리지 않는다.</b> */
+            String reason,
+            String expectedEffect,
             String title,
             String timing,
             String durationLabel,

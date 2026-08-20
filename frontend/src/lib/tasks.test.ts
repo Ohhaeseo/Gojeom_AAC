@@ -1,4 +1,4 @@
-import { frequencyRank, groupByTiming, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
+import { frequencyRank, groupByTiming, optionalTasks, scheduledTasks, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
 import type { RoutineTask } from '@/types/api';
 
 /**
@@ -24,6 +24,7 @@ const task = (title: string, timing: string, scheduledDate: string, routineId?: 
   taskId: title,
   routineId,
   category: 'SKIN',
+  importance: 'CORE',
   title,
   timing,
   durationLabel: '',
@@ -191,14 +192,15 @@ describe('groupByTiming', () => {
 describe('weeklyProgress', () => {
   const weekly = (title: string, weekStart: string, status: 'PENDING' | 'DONE'): RoutineTask => ({
     taskId: title + weekStart + status + Math.random(),
-    routineId: 'r1', category: 'BODY', title, timing: '주 3회 저녁',
+    routineId: 'r1', category: 'BODY', importance: 'CORE', title, timing: '주 3회 저녁',
     durationLabel: '', amountLabel: '30초 3세트',
     scheduledDate: weekStart, weekStart, weeklyTarget: 3, status,
   });
 
   it('매일 하는 일은 셀 것이 없다', () => {
     const daily: RoutineTask = {
-      taskId: 'd1', routineId: 'r1', category: 'BODY', title: '스쿼트 하기', timing: '매일 아침',
+      taskId: 'd1', routineId: 'r1', category: 'BODY', importance: 'CORE',
+      title: '스쿼트 하기', timing: '매일 아침',
       durationLabel: '', amountLabel: '15회', scheduledDate: '2026-08-19',
       weekStart: '2026-08-19', weeklyTarget: null, status: 'PENDING',
     };
@@ -292,5 +294,52 @@ describe('주 N회 채운 뒤 감추기', () => {
     // 오늘 것을 아직 안 했는데 그 주에 이미 3번을 채웠다면 오늘 목록에서 빠진다.
     const filled = week('week-1', [1, 2, 3]);
     expect(todayTasks(filled).items).toHaveLength(0);
+  });
+});
+
+/**
+ * 필수 · 보조 · 선택. (V16 · docs/ROUTINE_UPGRADE_PLAN.md)
+ *
+ * 🔴 <b>서버는 선택 항목을 날짜로 펼치지 않는다</b> — 시작일에 한 행만 만든다.
+ * 걸러 내지 않으면 목표 시작일 하루에만 뜬금없이 나타난다.
+ */
+describe('중요도', () => {
+  const withImportance = (
+    title: string,
+    importance: RoutineTask['importance'],
+    scheduledDate: string,
+  ): RoutineTask => ({ ...task(title, '매일 아침', scheduledDate, 'r1'), importance });
+
+  it('오늘 할 일에서 선택 항목이 빠진다', () => {
+    const tasks = [
+      withImportance('스쿼트 하기', 'CORE', iso(0)),
+      withImportance('계단 오르기', 'SUPPORT', iso(0)),
+      withImportance('주간 사진 찍기', 'OPTIONAL', iso(0)),
+    ];
+    expect(titles(todayTasks(tasks).items)).toEqual(['스쿼트 하기', '계단 오르기']);
+  });
+
+  it('필수가 보조보다 먼저 온다', () => {
+    const tasks = [
+      withImportance('계단 오르기', 'SUPPORT', iso(0)),
+      withImportance('스쿼트 하기', 'CORE', iso(0)),
+    ];
+    expect(titles(todayTasks(tasks).items)).toEqual(['스쿼트 하기', '계단 오르기']);
+  });
+
+  it('선택 항목은 버리지 않고 따로 꺼낸다', () => {
+    const tasks = [
+      withImportance('스쿼트 하기', 'CORE', iso(0)),
+      withImportance('주간 사진 찍기', 'OPTIONAL', iso(0)),
+    ];
+    expect(titles(optionalTasks(tasks))).toEqual(['주간 사진 찍기']);
+    expect(titles(scheduledTasks(tasks))).toEqual(['스쿼트 하기']);
+  });
+
+  /** 🔴 V16 이전 태스크가 뒤로 밀리거나 사라지면 쓰던 사용자의 할 일이 바뀐다. */
+  it('옛 태스크(importance 없음)는 필수로 본다', () => {
+    const legacy = { ...task('미온수로 세안하기', '매일 아침', iso(0), 'r1') };
+    delete (legacy as Partial<RoutineTask>).importance;
+    expect(titles(todayTasks([legacy]).items)).toEqual(['미온수로 세안하기']);
   });
 });
