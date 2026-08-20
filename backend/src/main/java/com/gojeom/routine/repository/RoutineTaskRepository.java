@@ -30,6 +30,10 @@ public interface RoutineTaskRepository extends JpaRepository<RoutineTask, UUID> 
      *       120%가 되면 안 된다.</li>
      * </ul>
      *
+     * <p>🔴 <b>{@code OPTIONAL}은 빼고 센다.</b> 선택 항목은 날짜로 펼쳐지지 않고
+     * "해보면 좋은 것" 목록으로만 나온다 — <b>체크할 자리가 없는데 분모에 들어 있으면</b>
+     * 진행률이 100%에 닿지 못한다. {@code RoutineService.progressOf}와 같은 규칙이다.
+     *
      * <p>태스크를 {@code title + timing}으로 묶는다. {@code TaskTimingSplitter}가
      * 시점마다 나누므로 한 목표 안에서 이 둘의 짝은 유일하다.
      *
@@ -45,6 +49,7 @@ public interface RoutineTaskRepository extends JpaRepository<RoutineTask, UUID> 
                            CASE WHEN status = 'DONE' THEN 1 ELSE 0 END AS done
                       FROM routine_tasks
                      WHERE routine_id IN (:routineIds) AND weekly_target IS NULL
+                       AND importance <> 'OPTIONAL'
                     UNION ALL
                     SELECT routine_id,
                            MIN(weekly_target) AS target,
@@ -52,6 +57,7 @@ public interface RoutineTaskRepository extends JpaRepository<RoutineTask, UUID> 
                                  MIN(weekly_target)) AS done
                       FROM routine_tasks
                      WHERE routine_id IN (:routineIds) AND weekly_target IS NOT NULL
+                       AND importance <> 'OPTIONAL'
                      GROUP BY routine_id, title, timing, week_start
                    ) x
              GROUP BY x.routine_id

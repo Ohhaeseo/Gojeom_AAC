@@ -146,8 +146,18 @@ public class RoutineService {
      * <p>{@code RoutineTaskRepository.countProgressByRoutineIds}와 같은 규칙이다 —
      * 저쪽은 목록용이라 SQL로 집계하고, 여기는 이미 태스크를 다 들고 있어 자바로 센다.
      * 같은 태스크인지는 {@code title + timing}으로 가른다.
+     *
+     * <p>🔴 <b>선택 항목은 세지 않는다.</b> {@code OPTIONAL}은 날짜로 펼쳐지지 않고
+     * "해보면 좋은 것" 목록으로만 보여준다 — <b>화면에 체크할 자리가 없다.</b>
+     * 그런데 분모에 들어 있어서, 사용자가 할 수 있는 것을 전부 해도 진행률이
+     * 100%에 닿지 못했다. {@code RoutineTxService.persistTasks}가 {@code taskCount}에서
+     * 이미 같은 이유로 빼고 있었는데 진행률만 빠뜨렸다.
      */
-    private static Progress progressOf(List<RoutineTask> tasks) {
+    static Progress progressOf(List<RoutineTask> allTasks) {
+        List<RoutineTask> tasks = allTasks.stream()
+                .filter(task -> task.getImportance() != RoutineImportance.OPTIONAL)
+                .toList();
+
         long total = 0;
         long done = 0;
 

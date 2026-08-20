@@ -217,6 +217,50 @@ export function groupByTiming(items: RoutineTask[]): TaskGroup[] {
 }
 
 /**
+ * 목표 진행. 🔴 <b>행을 그냥 세지 않는다.</b>
+ *
+ * 화면이 `완료 수 / 태스크 행 수`로 세는 바람에 **캘린더에서 다 해도 바가 꽉 차지
+ * 않았다.** 두 가지가 겹쳤다.
+ *
+ * 1. **주 N회는 그 주 모든 날에 행이 있다**(V15). 주 3회면 7행 중 3개만 하면 되는데
+ *    행으로 세면 3/7이다. 게다가 채운 뒤에는 남은 4일이 화면에서 사라지므로
+ *    ({@link visibleTasks}) 사용자는 **더 체크할 것이 없는데 바는 안 찬** 상태를 본다.
+ * 2. **`OPTIONAL`은 체크할 수 없다.** 날짜로 펼쳐지지 않고 "해보면 좋은 것" 목록으로만
+ *    보여주는데, 분모에 들어 있으면 영원히 미완인 몫이 남는다.
+ *
+ * 서버의 `RoutineService.progressOf`·`countProgressByRoutineIds`와 **같은 규칙**이다.
+ * 그쪽 값을 그대로 쓰지 않는 이유는 완료 체크가 낙관적 갱신이라, 서버에 다녀오기
+ * 전에도 바가 즉시 움직여야 하기 때문이다.
+ */
+export function routineProgress(all: RoutineTask[]): { done: number; total: number; rate: number } {
+  let done = 0;
+  let total = 0;
+  const weekly = new Map<string, RoutineTask[]>();
+
+  for (const task of scheduledTasks(all)) {
+    // 매일 하는 일 — 행 하나가 곧 한 번이다.
+    if (!task.weeklyTarget) {
+      total += 1;
+      if (task.status === 'DONE') done += 1;
+      continue;
+    }
+    // 같은 태스크인지는 `title + timing`으로 가른다. 서버 집계와 같은 기준이다.
+    const key = [task.routineId ?? '', task.title, task.timing, task.weekStart ?? ''].join('|');
+    const bucket = weekly.get(key);
+    if (bucket) bucket.push(task);
+    else weekly.set(key, [task]);
+  }
+
+  for (const bucket of weekly.values()) {
+    const target = bucket[0]?.weeklyTarget ?? 1;
+    // 넷째 날을 더 체크했다고 4/3이 되면 안 된다.
+    total += target;
+    done += Math.min(bucket.filter((task) => task.status === 'DONE').length, target);
+  }
+  return { done, total, rate: total ? Math.round((done / total) * 1000) / 10 : 0 };
+}
+
+/**
  * 주 N회 태스크의 그 주 진행. (V15)
  *
  * **주 3회짜리는 그 주의 모든 날에 배정이 있다.** 그중 3개를 체크하면 채워진 것이라,

@@ -12,7 +12,7 @@ import { ProductRecommendation } from '@/components/product/ProductRecommendatio
 import { ProductShelf } from '@/components/product/ProductShelf';
 import { AppButton } from '@/components/ui/AppButton';
 import { formatAnalyzedDate } from '@/lib/date';
-import { groupByTiming, todayTasks, weeklyProgress } from '@/lib/tasks';
+import { groupByTiming, routineProgress, todayTasks, weeklyProgress } from '@/lib/tasks';
 import { useAppState, type DrawerItem } from '@/state/AppState';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { AnalysisResult, Category } from '@/types/api';
@@ -85,7 +85,9 @@ export default function HomeScreen() {
       },
     };
   const hasAnyProgress = Boolean(photoUri || priorities.length || saved);
-  const done = tasks.filter((task) => task.status === 'DONE').length;
+  // 🔴 행이 아니라 **해야 하는 횟수**로 센다. 주 N회는 그 주 모든 날에 행이 있고
+  // 선택 항목은 체크할 수 없다 — 행으로 세면 바가 영영 안 찬다. (`lib/tasks.ts`)
+  const progress = routineProgress(tasks);
 
   /**
    * 진행률 링이 무엇을 세는지. **기본은 오늘이다.**
@@ -185,7 +187,7 @@ export default function HomeScreen() {
                 ))}
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="루틴 화면으로 이동" onPress={() => router.push('/routines')} style={styles.progressBody}>
-                <GoalProgressRing completed={scope === 'TODAY' ? todayDone : done} total={scope === 'TODAY' ? today.length : tasks.length} />
+                <GoalProgressRing completed={scope === 'TODAY' ? todayDone : progress.done} total={scope === 'TODAY' ? today.length : progress.total} />
                 <Text style={styles.progressText}>{ordered.slice(0, 3).map((task) => `${task.status === 'DONE' ? '완료 · ' : ''}${task.title}`).join('\n')}</Text>
               </Pressable>
             </View>
@@ -243,7 +245,7 @@ export default function HomeScreen() {
 
           <Pressable accessibilityRole="button" accessibilityLabel="최근 분석 결과 보기" onPress={() => router.push('/drawer')}><Text style={styles.sectionTitle}>최근 분석 결과 ›</Text></Pressable>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          {recent ? <Pressable accessibilityRole="button" accessibilityLabel={`${recent.title} 결과 보기`} onPress={recent.open} style={styles.resultCard}>{recent.thumbnailUrl ? <Image source={{ uri: recent.thumbnailUrl }} style={styles.thumb} accessibilityLabel={`${recent.title} 비교 이미지`} /> : <OfficialFaceLogo size={112} />}<View style={styles.resultCopy}><Text style={styles.date}>{formatAnalyzedDate(recent.analyzedAt)} 분석</Text><Text style={styles.resultTitle} numberOfLines={1}>{recent.title}</Text>{tasks.length ? <View style={styles.track}><View style={[styles.fill, { width: `${Math.round((done / tasks.length) * 100)}%` }]} /></View> : null}</View></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="서랍에서 저장한 결과 보기" onPress={() => router.push('/drawer')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 분석 결과가 없어요.</Text><Text style={styles.emptyText}>새로 진단을 완료하면 이곳에 결과가 표시돼요.{`\n`}저장한 결과는 서랍에서 볼 수 있어요.</Text></Pressable>}
+          {recent ? <Pressable accessibilityRole="button" accessibilityLabel={`${recent.title} 결과 보기`} onPress={recent.open} style={styles.resultCard}>{recent.thumbnailUrl ? <Image source={{ uri: recent.thumbnailUrl }} style={styles.thumb} accessibilityLabel={`${recent.title} 비교 이미지`} /> : <OfficialFaceLogo size={112} />}<View style={styles.resultCopy}><Text style={styles.date}>{formatAnalyzedDate(recent.analyzedAt)} 분석</Text><Text style={styles.resultTitle} numberOfLines={1}>{recent.title}</Text>{progress.total ? <View style={styles.track}><View style={[styles.fill, { width: `${Math.round(progress.rate)}%` }]} /></View> : null}</View></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="서랍에서 저장한 결과 보기" onPress={() => router.push('/drawer')} style={styles.emptyAnalysis}><Text style={styles.emptyTitle}>아직 분석 결과가 없어요.</Text><Text style={styles.emptyText}>새로 진단을 완료하면 이곳에 결과가 표시돼요.{`\n`}저장한 결과는 서랍에서 볼 수 있어요.</Text></Pressable>}
 
           {/*
             나의 현재 상태를 **목표 진행도 아래로 내렸다.** 매일 여는 화면에서 먼저

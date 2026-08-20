@@ -8,7 +8,7 @@ import {
   dayLabel, groupByDate, monthGrid, monthLabel, monthsOf, nearestDate,
 } from '@/lib/calendar';
 import { toIsoDate } from '@/lib/date';
-import { groupByTiming, scheduledTasks, visibleTasks, weeklyProgress } from '@/lib/tasks';
+import { groupByTiming, routineProgress, scheduledTasks, visibleTasks, weeklyProgress } from '@/lib/tasks';
 import * as backend from '@/services/backend';
 import type { RoutineDetail } from '@/services/backend';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -76,7 +76,9 @@ export default function RoutineCalendarScreen() {
 
   const pickedItems = picked ? byDate.get(picked) ?? [] : [];
   const hint = picked && !pickedItems.length ? nearestDate(dates, picked) : undefined;
-  const done = tasks.filter((task) => task.status === 'DONE').length;
+  // 화면 위의 "N/M개 완료"도 진행도바와 같은 규칙으로 센다. 둘이 다른 수를
+  // 말하면 사용자는 어느 쪽이 맞는지 알 수 없다.
+  const progress = routineProgress(tasks);
 
   const step = (delta: number) => {
     const next = months[months.indexOf(month ?? '') + delta];
@@ -124,7 +126,7 @@ export default function RoutineCalendarScreen() {
     <AppScreen navigation contentStyle={styles.content}>
       <Text style={styles.title} numberOfLines={2}>{detail.title}</Text>
       <Text style={styles.description}>
-        일이 있는 날 {dates.length}일 · 태스크 {done}/{tasks.length}개 완료
+        일이 있는 날 {dates.length}일 · 태스크 {progress.done}/{progress.total}개 완료
       </Text>
 
       <View style={styles.card}>

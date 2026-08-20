@@ -12,7 +12,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
 import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits } from '@/lib/date';
-import { groupByTiming, optionalTasks, todayTasks } from '@/lib/tasks';
+import { groupByTiming, optionalTasks, routineProgress, todayTasks } from '@/lib/tasks';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -262,7 +262,9 @@ export default function RoutinesScreen() {
   if (!routines.length) return <EmptyRoutines savedCount={savedCount} error={error} />;
 
   const current = routines.find((item) => item.routineId === selectedId) ?? first;
-  const done = tasks.filter((task) => task.status === 'DONE').length;
+  // 🔴 행을 그냥 세면 주 N회가 3/7로 잡히고 선택 항목이 영원히 미완으로 남는다.
+  // 서버 집계와 같은 규칙이다. (`lib/tasks.ts`)
+  const progress = routineProgress(tasks);
   /** 켜는 데는 성공했지만 이 기기로는 못 받을 수 있다. 그 사유를 그대로 띄운다. */
   const applyNotify = async (enabled: boolean) => {
     setError(''); setNotice('');
@@ -315,7 +317,7 @@ export default function RoutinesScreen() {
                 <RoutineCard
                   item={item}
                   selected={item.routineId === current?.routineId}
-                  progress={item.routineId === current?.routineId && tasks.length ? Math.round((done / tasks.length) * 100) : undefined}
+                  progress={item.routineId === current?.routineId && progress.total ? Math.round(progress.rate) : undefined}
                   dragging={dragging}
                   controls={items.length > 1 ? controls : null}
                   onSelect={() => select(item.routineId)}
@@ -333,7 +335,7 @@ export default function RoutinesScreen() {
       })}
 
       <Text style={styles.sectionTitle}>오늘 할 일</Text>
-      <Text style={styles.description}>{today.date ? `${formatAnalyzedDate(today.date)} 회차 · ` : ''}오늘 {today.items.length}개 · 전체 {tasks.length}개 중 {done}개 완료</Text>
+      <Text style={styles.description}>{today.date ? `${formatAnalyzedDate(today.date)} 회차 · ` : ''}오늘 {today.items.length}개 · 전체 {progress.total}개 중 {progress.done}개 완료</Text>
       {/* 묶는 규칙도 홈과 **같은 함수**를 쓴다. 각자 나누면 두 화면의 순서가 갈린다. */}
       {today.items.length ? groupByTiming(today.items).map((group) => (
         <View key={group.key}>

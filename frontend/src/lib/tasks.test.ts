@@ -1,4 +1,4 @@
-import { frequencyRank, groupByTiming, optionalTasks, scheduledTasks, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
+import { frequencyRank, groupByTiming, optionalTasks, routineProgress, scheduledTasks, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
 import type { RoutineTask } from '@/types/api';
 
 /**
@@ -341,5 +341,78 @@ describe('중요도', () => {
     const legacy = { ...task('미온수로 세안하기', '매일 아침', iso(0), 'r1') };
     delete (legacy as Partial<RoutineTask>).importance;
     expect(titles(todayTasks([legacy]).items)).toEqual(['미온수로 세안하기']);
+  });
+});
+
+/**
+ * 진행도바. 🔴 <b>캘린더에서 다 해도 바가 꽉 차지 않던 자리다.</b>
+ *
+ * 화면이 `완료 수 / 행 수`로 셌다. 주 N회는 그 주 모든 날에 행이 있고
+ * (주 3회면 7행 중 3개면 끝), 선택 항목은 체크할 자리조차 없다. 둘 다 분모에
+ * 들어 있어 사용자가 할 수 있는 것을 전부 해도 100%에 닿지 못했다.
+ */
+describe('routineProgress', () => {
+  const daily = (title: string, status: 'PENDING' | 'DONE'): RoutineTask => ({
+    ...task(title, '매일 아침', '2026-08-19', 'r1'), taskId: title + status + Math.random(), status,
+  });
+
+  const weekly = (title: string, status: 'PENDING' | 'DONE'): RoutineTask => ({
+    ...task(title, '주 3회 저녁', '2026-08-19', 'r1'),
+    taskId: title + status + Math.random(),
+    weekStart: '2026-08-19', weeklyTarget: 3, status,
+  });
+
+  it('하나도 없으면 0이다', () => {
+    expect(routineProgress([])).toEqual({ done: 0, total: 0, rate: 0 });
+  });
+
+  /** 🔴 주 3회를 세 번 하면 그 주는 끝난 것이다. 남은 4일은 화면에서도 사라진다. */
+  it('주 N회는 행이 아니라 목표 횟수로 센다', () => {
+    const tasks = [
+      weekly('플랭크 버티기', 'DONE'),
+      weekly('플랭크 버티기', 'DONE'),
+      weekly('플랭크 버티기', 'DONE'),
+      weekly('플랭크 버티기', 'PENDING'),
+      weekly('플랭크 버티기', 'PENDING'),
+      weekly('플랭크 버티기', 'PENDING'),
+      weekly('플랭크 버티기', 'PENDING'),
+    ];
+    expect(routineProgress(tasks)).toEqual({ done: 3, total: 3, rate: 100 });
+  });
+
+  it('네 번째를 더 체크해도 100%를 넘지 않는다', () => {
+    const tasks = [
+      weekly('플랭크 버티기', 'DONE'),
+      weekly('플랭크 버티기', 'DONE'),
+      weekly('플랭크 버티기', 'DONE'),
+      weekly('플랭크 버티기', 'DONE'),
+    ];
+    expect(routineProgress(tasks)).toEqual({ done: 3, total: 3, rate: 100 });
+  });
+
+  /** 🔴 "해보면 좋은 것"에는 체크박스가 없다. 분모에 두면 영원히 미완이다. */
+  it('선택 항목은 분모에서 뺀다', () => {
+    const tasks = [
+      daily('미온수로 세안하기', 'DONE'),
+      { ...daily('주간 사진 찍기', 'PENDING'), importance: 'OPTIONAL' as const },
+    ];
+    expect(routineProgress(tasks)).toEqual({ done: 1, total: 1, rate: 100 });
+  });
+
+  it('매일 하는 일은 행 하나가 한 번이다', () => {
+    const tasks = [daily('세안하기', 'DONE'), daily('보습하기', 'PENDING')];
+    expect(routineProgress(tasks)).toEqual({ done: 1, total: 2, rate: 50 });
+  });
+
+  /** 목표를 여러 개 합쳐 봐도 서로의 주차가 섞이지 않아야 한다. */
+  it('다른 목표의 같은 이름은 따로 센다', () => {
+    const other = (status: 'PENDING' | 'DONE'): RoutineTask => ({
+      ...weekly('플랭크 버티기', status), routineId: 'r2',
+    });
+    const tasks = [
+      weekly('플랭크 버티기', 'DONE'), weekly('플랭크 버티기', 'DONE'), weekly('플랭크 버티기', 'DONE'),
+      other('PENDING'), other('PENDING'), other('PENDING'),
+    ];
+    expect(routineProgress(tasks)).toEqual({ done: 3, total: 6, rate: 50 });
   });
 });
