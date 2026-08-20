@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 
 import { ApiError, isMockMode, onSessionExpired } from '@/services/api';
 import { detailFields, messageOf } from '@/lib/errors';
+import { emailFromIdToken } from '@/lib/idToken';
 import * as backend from '@/services/backend';
 import { pushMessage, registerForPush } from '@/services/push';
 import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
@@ -94,6 +95,15 @@ type AppStateValue = {
   login: (id: string, password: string) => Promise<ActionResult>;
   /** Google ID 토큰으로 로그인. 서버 모드에서만 동작한다. */
   loginWithGoogle: (idToken: string, birthDate?: string, agreedConsents?: ConsentCode[]) => Promise<ActionResult>;
+  /**
+   * 가입을 마치려고 **잠깐 들고 있는** Google 토큰.
+   *
+   * 🔴 메모리에만 둔다 — 저장소에도 주소창에도 쓰지 않는다. 예전에는 이것을 버려서
+   * 가입 화면에서 Google 버튼을 **한 번 더** 눌러야 했다.
+   */
+  googleSignup?: { idToken: string; email?: string };
+  /** 가입을 포기하거나 다른 계정으로 갈 때. */
+  clearGoogleSignup: () => void;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<ActionResult>;
 
@@ -348,6 +358,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const [saved, setSaved] = useState(false);
   const [tasks, setTasks] = useState<RoutineTask[]>([]);
   const [analysisKeywords, setAnalysisKeywords] = useState<KeywordChoice[]>([]);
+  // 가입을 마치려고 잠깐 들고 있는 Google 토큰. 저장소에 쓰지 않는다.
+  const [googleSignup, setGoogleSignup] = useState<{ idToken: string; email?: string }>();
   const [analysisStatusText, setAnalysisStatusText] = useState('');
   const [analysisPercent, setAnalysisPercent] = useState<number>();
   // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
@@ -525,14 +537,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     if (mode === 'mock') return { ok: false, message: '백엔드에 연결되어 있지 않아 Google 로그인을 쓸 수 없어요.' };
     try {
       await adoptSession(await backend.googleLogin(idToken, birthDate, agreedConsents));
+      setGoogleSignup(undefined);
       return { ok: true };
     } catch (error) {
-      // 처음 쓰는 Google 계정이면 서버가 `CONSENT_REQUIRED`로 돌려보낸다. 나이와
-      // 동의를 받아야 계정을 만들 수 있기 때문이다. 화면이 그것을 알아야
-      // "실패"가 아니라 가입 화면으로 안내할 수 있다.
-      return failure(error, 'Google 로그인에 실패했어요.');
+      const result = failure(error, 'Google 로그인에 실패했어요.');
+      /*
+        처음 쓰는 Google 계정이면 서버가 `CONSENT_REQUIRED`로 돌려보낸다. 나이와
+        동의를 받아야 계정을 만들 수 있기 때문이다.
+
+        🔴 **그때 토큰을 들고 있는다.** 예전에는 버려서, 가입 화면에서 Google
+        버튼을 한 번 더 눌러야 계정이 만들어졌다. 주소창에 토큰을 남기지 않으려던
+        것인데(`login.tsx` 옛 주석), 메모리에 두면 그럴 이유가 없다.
+      */
+      if (result.code === 'CONSENT_REQUIRED') {
+        setGoogleSignup({ idToken, email: emailFromIdToken(idToken) });
+      }
+      return result;
     }
   }, [adoptSession, mode]);
+
+  const clearGoogleSignup = useCallback(() => setGoogleSignup(undefined), []);
 
   const logout = useCallback(async () => {
     if (mode === 'server') { await backend.logout().catch(() => clearSession()); resetServerState(); }
@@ -1142,7 +1166,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     ready,
     mode,
     currentAccountId,
-    register, login, loginWithGoogle, logout, deleteAccount,
+    register, login, loginWithGoogle, googleSignup, clearGoogleSignup, logout, deleteAccount,
     nickname: serverMode ? nickname : account.nickname,
     setNickname,
     me,
@@ -1197,7 +1221,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   }), [
     account, activeRoutineId, activeRoutineIds, analysisKeywords, analysisPercent, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
     deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
-    loadNotificationSettings, loadRoutines, login, loginWithGoogle, logout, me, mode, nickname, notificationSettings,
+    loadNotificationSettings, loadRoutines, login, loginWithGoogle, googleSignup, clearGoogleSignup, logout, me, mode, nickname, notificationSettings,
     openRoutine, openRoutines, openSavedResult, peekSavedResult, photoUri, setRoutineNotifyTime, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
     result, routineDraft, routines, updateRoutineDraft,
     saveProfile, savePriorities, changePhoto, saveToDrawer, saved, scanInbody, serverMode, setNickname,

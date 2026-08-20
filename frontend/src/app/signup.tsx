@@ -23,7 +23,14 @@ const phone = require('../../assets/figma/login-phone.svg');
 
 export default function SignupScreen() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState(''); const { register, loginWithGoogle } = useAppState();
+  const [error, setError] = useState('');
+  const { register, loginWithGoogle, googleSignup, clearGoogleSignup } = useAppState();
+  /*
+    🔴 **Google로 가입하는 중.** 로그인 화면에서 누른 토큰을 `AppState`가 들고 있다.
+    이때는 이메일·비밀번호를 받지 않는다 — Google이 신원을 보증하므로 필요 없고,
+    받으면 사용자가 만들지도 않을 비밀번호를 짜내게 된다.
+  */
+  const googleMode = Boolean(googleSignup);
   const [pending, setPending] = useState(false);
   /** 서버가 지목한 입력칸별 사유. 해당 칸 밑에 붙는다. */
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -100,24 +107,46 @@ export default function SignupScreen() {
   const submit = async () => {
     setSubmitted(true); setError(''); setFields({});
     const birthDate = toIsoBirthDate(birth);
-    if (!emailCheck.ok || !passwordCheck.ok || !confirmOk || !birthDate || !birthCheck.ok || !requiredOk) return;
+    if (!birthDate || !birthCheck.ok || !requiredOk) return;
+    if (!googleMode && (!emailCheck.ok || !passwordCheck.ok || !confirmOk)) return;
 
     setPending(true);
-    const result = await register(email, password, birthDate, agreed);
+    /*
+      Google로 왔으면 들고 있던 토큰으로 그대로 끝낸다. **버튼을 다시 누르지 않는다.**
+      닉네임은 Google 프로필에서 오므로 이름 화면도 건너뛴다.
+    */
+    const result = googleSignup
+      ? await loginWithGoogle(googleSignup.idToken, birthDate, agreed)
+      : await register(email, password, birthDate, agreed);
     setPending(false);
-    if (!result.ok) return report(result, '회원가입에 실패했어요.');
-    router.replace('/name');
+    if (!result.ok) return report(result, googleMode ? 'Google 가입에 실패했어요.' : '회원가입에 실패했어요.');
+    router.replace(googleMode ? '/home' : '/name');
   };
   return (
     <AppScreen title="회원가입" headerLogo={false} contentStyle={styles.content}>
       <BrandLogo variant="face" style={styles.logo} />
-      {reason === 'google-new' ? (
-        <Text style={styles.notice}>처음 오신 Google 계정이에요. 생년월일과 동의를 받은 뒤 Google 버튼을 다시 눌러주세요.</Text>
+      {googleMode ? (
+        <View style={styles.googleCard}>
+          <Text style={styles.googleTitle}>Google 계정으로 가입</Text>
+          <Text style={styles.googleEmail}>{googleSignup?.email ?? '확인된 Google 계정'}</Text>
+          <Text style={styles.googleHint}>생년월일과 약관 동의만 마치면 가입이 끝나요.</Text>
+          <Text
+            accessibilityRole="button"
+            accessibilityLabel="다른 방법으로 가입하기"
+            onPress={() => { clearGoogleSignup(); setError(''); setFields({}); }}
+            style={styles.googleSwitch}
+          >다른 방법으로 가입하기</Text>
+        </View>
+      ) : reason === 'google-new' ? (
+        <Text style={styles.notice}>처음 오신 Google 계정이에요. 생년월일과 동의를 받아 가입을 마쳐주세요.</Text>
       ) : null}
       <View style={styles.form}>
+        {/* Google이 신원을 보증하므로 이메일·비밀번호를 받지 않는다. */}
+        {googleMode ? null : <>
         <FormField label="이메일" required value={email} onChangeText={(value) => { setEmail(value); setError(''); }} autoCapitalize="none" keyboardType="email-address" placeholder="이메일을 입력해 주세요." error={emailError} />
         <FormField label="비밀번호" required value={password} onChangeText={(value) => { setPassword(value); setFields({}); }} secureTextEntry placeholder="비밀번호를 입력해 주세요." error={passwordError} />
         <FormField label="비밀번호 확인" required value={confirm} onChangeText={setConfirm} secureTextEntry placeholder="비밀번호를 다시 입력해 주세요." error={confirmError} />
+        </>}
         <FormField
           label="생년월일"
           required
@@ -152,15 +181,15 @@ export default function SignupScreen() {
       {/* 어느 칸에도 붙지 않는 사유(네트워크·서버 오류 등)만 여기 뜬다. */}
       {error ? <Text style={styles.formError}>{error}</Text> : null}
       <View style={styles.linkRow}><Text style={styles.muted}>이미 고점 회원이신가요?</Text><Pressable onPress={() => router.replace('/login')}><Text style={styles.link}>로그인 하기</Text></Pressable></View>
-      <AppButton label={pending ? '가입 중...' : '회원가입 하기'} disabled={pending} onPress={submit} />
-      <View style={styles.social}>
+      <AppButton label={pending ? '가입 중...' : googleMode ? '가입 완료' : '회원가입 하기'} disabled={pending} onPress={submit} />
+      {googleMode ? null : <View style={styles.social}>
         <Pressable accessibilityRole="button" accessibilityLabel="네이버 가입 준비 중" style={styles.socialButton} onPress={() => setError('네이버 가입은 준비 중이에요.')}><Image source={naver} contentFit="contain" style={styles.socialIcon} /></Pressable>
         <GoogleSignInButton onToken={submitGoogle} onError={setError} />
         <Pressable accessibilityRole="button" accessibilityLabel="전화번호 가입 준비 중" style={styles.socialButton} onPress={() => setError('전화번호 가입은 준비 중이에요.')}><Image source={phone} contentFit="contain" style={styles.socialIcon} /></Pressable>
-      </View>
+      </View>}
       <Text style={styles.privacy}>GO.는 민감한 건강정보를 최소한으로 수집하고{`\n`}사용자 동의에 따라 철저하게 관리합니다.</Text>
     </AppScreen>
   );
 }
 
-const styles = StyleSheet.create({ content: { paddingTop: 40 }, notice: { ...typography.body, color: colors.primary, textAlign: 'center' }, logo: { alignSelf: 'center', width: 145, height: 98 }, form: { gap: 12 }, consents: { padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface }, divider: { height: 1, marginVertical: 6, backgroundColor: colors.divider }, fieldError: { marginTop: 8, ...typography.caption, color: colors.danger }, formError: { ...typography.caption, color: colors.danger, textAlign: 'center' }, linkRow: { alignItems: 'center', gap: 4 }, muted: { ...typography.body, color: colors.textMuted }, link: { ...typography.label, color: colors.primary }, social: { flexDirection: 'row', justifyContent: 'center', gap: 28, alignItems: 'center' }, socialButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }, socialIcon: { width: 38, height: 38 }, privacy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' } });
+const styles = StyleSheet.create({ content: { paddingTop: 40 }, notice: { ...typography.body, color: colors.primary, textAlign: 'center' }, logo: { alignSelf: 'center', width: 145, height: 98 }, form: { gap: 12 }, consents: { padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface }, divider: { height: 1, marginVertical: 6, backgroundColor: colors.divider }, googleCard: { gap: 4, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.primaryLight, backgroundColor: colors.primaryBg }, googleTitle: { ...typography.label, color: colors.text }, googleEmail: { ...typography.body, color: colors.primaryPressed }, googleHint: { ...typography.caption, color: colors.textTertiary }, googleSwitch: { marginTop: 6, ...typography.caption, color: colors.textMuted, textDecorationLine: 'underline' }, fieldError: { marginTop: 8, ...typography.caption, color: colors.danger }, formError: { ...typography.caption, color: colors.danger, textAlign: 'center' }, linkRow: { alignItems: 'center', gap: 4 }, muted: { ...typography.body, color: colors.textMuted }, link: { ...typography.label, color: colors.primary }, social: { flexDirection: 'row', justifyContent: 'center', gap: 28, alignItems: 'center' }, socialButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }, socialIcon: { width: 38, height: 38 }, privacy: { ...typography.caption, color: colors.textMuted, textAlign: 'center' } });

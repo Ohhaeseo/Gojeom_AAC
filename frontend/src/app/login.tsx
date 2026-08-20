@@ -51,8 +51,9 @@ export default function LoginScreen() {
       돌아온다. 이것은 실패가 아니라 **가입이 필요하다는 뜻**이므로 빨간 오류를
       띄우는 대신 가입 화면으로 보낸다.
 
-      토큰은 들려 보내지 않는다 — 라우터 파라미터는 웹에서 주소창에 남는다.
-      가입 화면에서 Google 버튼을 한 번 더 누르면 그때 동의와 함께 넘어간다.
+      **토큰은 주소창이 아니라 메모리로 넘긴다.** `AppState.googleSignup`이 들고 있다가
+      가입 화면이 생년월일·동의를 받아 그대로 이어서 부른다 — 사용자는 Google 버튼을
+      한 번만 누른다. (예전에는 여기서 토큰을 버려 가입 화면에서 다시 눌러야 했다)
     */
     if (result.code === 'CONSENT_REQUIRED') {
       return router.replace({ pathname: '/signup', params: { reason: 'google-new' } });
