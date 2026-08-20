@@ -7,6 +7,7 @@ import com.gojeom.analysis.entity.AnalysisKeyword;
 import com.gojeom.analysis.entity.AnalysisResult;
 import com.gojeom.analysis.entity.CategoryChange;
 import com.gojeom.analysis.entity.DailyCare;
+import com.gojeom.analysis.entity.GapItem;
 import com.gojeom.analysis.repository.AnalysisKeywordRepository;
 import com.gojeom.analysis.repository.AnalysisReferenceImageRepository;
 import com.gojeom.analysis.repository.AnalysisRepository;
@@ -124,7 +125,8 @@ public class AnalysisTxService {
      */
     @Transactional
     public void completeWithResult(UUID analysisId, UUID userId, PeakResult payload,
-                                   List<CategoryChange> orderedChanges, ImageStatus imageStatus) {
+                                   List<CategoryChange> orderedChanges, List<GapItem> gapItems,
+                                   ImageStatus imageStatus) {
         if (subscriptionRepository.consumeCredit(userId) == 0) {
             throw new BusinessException(ErrorCode.NO_ANALYSIS_CREDIT);
         }
@@ -142,7 +144,7 @@ public class AnalysisTxService {
         resultRepository.save(AnalysisResult.create(
                 analysisId, payload.title(), payload.summary(),
                 payload.keepPoints(), payload.emphasizePoints(), payload.changeIntensity(),
-                orderedChanges, cares, imageStatus));
+                orderedChanges, cares, gapItems, imageStatus));
 
         analysis.markDone();
     }

@@ -4,25 +4,34 @@ import com.gojeom.ai.AiException;
 import com.gojeom.ai.AiStage;
 import com.gojeom.ai.AiTextService;
 import com.gojeom.ai.dto.AiPayloads.ExtractedKeyword;
+import com.gojeom.ai.dto.AiPayloads.GapItemPayload;
 import com.gojeom.ai.dto.AiPayloads.KeywordExtraction;
 import com.gojeom.ai.dto.AiPayloads.PeakResult;
 import com.gojeom.ai.guardrail.GuardrailViolation;
 import com.gojeom.ai.guardrail.TruncationDetector;
+import com.gojeom.ai.prompt.InputEvidence;
 import com.gojeom.ai.prompt.KeywordExtractionPrompt;
 import com.gojeom.ai.prompt.ProfileFacts;
 import com.gojeom.ai.prompt.ResultGenerationPrompt;
 import com.gojeom.ai.schema.JsonSchemas;
 import com.gojeom.analysis.entity.CategoryChange;
+import com.gojeom.analysis.entity.GapItem;
 import com.gojeom.common.config.AsyncConfig;
 import com.gojeom.common.enums.AnalysisStatus;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.EvidenceSource;
 import com.gojeom.common.enums.ImageStatus;
+import com.gojeom.common.enums.ProblemCode;
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
 import com.gojeom.storage.StorageService;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -130,9 +139,12 @@ public class AnalysisPipeline {
                     .map(AnalysisContext.SelectedKeyword::toPromptLine)
                     .toList();
 
+            Set<EvidenceSource> available = InputEvidence.of(
+                    context.sleepHours(), context.inbody(), context.profileSummary());
+
             PeakResult result = aiTextService.generate(
                     resultPrompt.build(analysisId, context.inputText(), facts(context),
-                            keywordLines, context.priorities()),
+                            keywordLines, context.priorities(), available),
                     PeakResult::userFacingText,
                     AnalysisPipeline::requireOneChangePerCategory);
 
@@ -143,6 +155,7 @@ public class AnalysisPipeline {
 
             analysisTx.completeWithResult(analysisId, context.userId(), result,
                     orderByPriorities(result, context.priorities()),
+                    groundGapItems(result, available, context.priorities()),
                     willGenerateImage ? ImageStatus.PENDING : ImageStatus.SKIPPED);
             log.info("결과 생성 완료");
 
@@ -201,6 +214,85 @@ public class AnalysisPipeline {
         return priorities.stream()
                 .map(category -> new CategoryChange(category, byCategory.get(category)))
                 .toList();
+    }
+
+    /**
+     * gapItem을 <b>실제로 있었던 근거만 남기고</b> 걸러, 순서를 매긴다. (루틴 고도화 2단계)
+     *
+     * <p>🔴 <b>여기서 재생성을 시키지 않는다.</b> 어긋난 gapItem 때문에 분석 전체를
+     * 다시 돌리면, 두 번째도 같은 답이 나올 때 <b>사용자가 결과지를 통째로 잃는다.</b>
+     * 결과지의 본문(요약·카테고리별 변화·오늘 할 관리)은 멀쩡한데 부가 정보 하나
+     * 때문에 실패시킬 이유가 없다. 목표 생성은 목록이 비면 <b>지금까지와 똑같이</b>
+     * 전체 코드로 동작한다. (2026-08-20 오후 인수인계 §0)
+     *
+     * <p><b>{@code RoutineService.normalize}와 버리는 단위가 다르다.</b> 저쪽은
+     * 코드만 지우고 태스크는 살린다 — 태스크는 그 자체로 사용자가 할 일이기 때문이다.
+     * 여기서는 <b>항목이 곧 코드와 근거</b>라서 남길 알맹이가 없다.
+     *
+     * <p>정렬은 {@code profiles.priorities}만 본다. {@link List#sort}는 안정 정렬이라
+     * 같은 카테고리 안에서는 <b>모델이 낸 순서가 그대로 남는다</b> — 프롬프트가
+     * "중요한 것부터 앞에 쓰라"고 요구한 그 순서다.
+     */
+    static List<GapItem> groundGapItems(PeakResult result, Set<EvidenceSource> available,
+                                        List<Category> priorities) {
+        if (result.gapItems() == null || result.gapItems().isEmpty()) {
+            return List.of();
+        }
+        EnumSet<ProblemCode> seen = EnumSet.noneOf(ProblemCode.class);
+        List<GapItemPayload> kept = new ArrayList<>();
+
+        for (GapItemPayload item : result.gapItems()) {
+            String rejection = rejectionOf(item, available, seen);
+            if (rejection != null) {
+                // 근거 문장은 남기지 않는다. 신체 수치가 그대로 로그에 박힌다. (규칙 9)
+                log.warn("gapItem을 버린다 — {} : category={} code={} source={}",
+                        rejection, item.category(), item.problemCode(), item.evidenceSource());
+                continue;
+            }
+            seen.add(item.problemCode());
+            kept.add(item);
+        }
+        kept.sort(Comparator.comparingInt(item -> priorityIndex(priorities, item.category())));
+
+        List<GapItem> grounded = new ArrayList<>(kept.size());
+        for (int i = 0; i < kept.size(); i++) {
+            GapItemPayload item = kept.get(i);
+            grounded.add(new GapItem(item.category(), item.problemCode(), i + 1,
+                    item.evidenceSource(), item.evidence().trim()));
+        }
+        if (grounded.isEmpty()) {
+            log.warn("gapItem이 하나도 남지 않았다. 목표 생성은 전체 문제 코드로 돌아간다");
+        }
+        return grounded;
+    }
+
+    /** 버릴 이유. 없으면 null이다. */
+    private static String rejectionOf(GapItemPayload item, Set<EvidenceSource> available,
+                                      Set<ProblemCode> seen) {
+        if (item.category() == null || item.problemCode() == null) {
+            return "카테고리나 문제 코드가 비었다";
+        }
+        if (!item.problemCode().belongsTo(item.category())) {
+            return "문제 코드가 다른 카테고리 것이다";
+        }
+        if (seen.contains(item.problemCode())) {
+            return "같은 문제를 두 번 짚었다";
+        }
+        // 🔴 이 한 줄이 2단계의 후검증이다. 프롬프트가 "받지 않은 것을 근거로 대지
+        // 마라"고 말해도 지켜진다는 보장이 없어, 서버가 대조한다. (규칙 14)
+        if (item.evidenceSource() == null || !available.contains(item.evidenceSource())) {
+            return "받은 적 없는 것을 근거로 댔다";
+        }
+        if (item.evidence() == null || item.evidence().isBlank()) {
+            return "근거가 비었다";
+        }
+        return null;
+    }
+
+    /** 우선순위에 없는 카테고리는 맨 뒤로. (priorities는 3종을 모두 담는 것이 정상이다) */
+    private static int priorityIndex(List<Category> priorities, Category category) {
+        int index = priorities.indexOf(category);
+        return index < 0 ? Integer.MAX_VALUE : index;
     }
 
     /**

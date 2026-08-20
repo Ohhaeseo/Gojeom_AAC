@@ -3,6 +3,7 @@ package com.gojeom.ai.dto;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.EvidenceSource;
 import com.gojeom.common.enums.ProblemCode;
 import com.gojeom.common.enums.RoutineImportance;
 import com.gojeom.common.enums.KeywordCategory;
@@ -60,9 +61,17 @@ public final class AiPayloads {
             List<String> emphasizePoints,
             List<String> changeIntensity,
             List<CategoryChangePayload> categoryChanges,
-            List<DailyCarePayload> dailyCares) {
+            List<DailyCarePayload> dailyCares,
+            /** 루틴이 풀 문제 목록. 서버가 근거를 대조해 걸러낸 뒤 저장한다. (2단계) */
+            List<GapItemPayload> gapItems) {
 
-        /** 가드레일 후검증 대상 텍스트. 사용자에게 노출되는 문자열만 모은다. */
+        /**
+         * 가드레일 후검증 대상 텍스트. 사용자에게 노출되는 문자열만 모은다.
+         *
+         * <p><b>{@code gapItems.evidence}도 넣는다.</b> 결과 화면에는 나가지 않지만
+         * 루틴 생성 프롬프트로 들어가고, 거기서 나온 {@code reason}은 화면에 뜬다.
+         * 금지어가 한 단계 건너 사용자에게 닿는 길을 열어 둘 이유가 없다.
+         */
         @JsonIgnore
         public String userFacingText() {
             StringBuilder sb = new StringBuilder();
@@ -72,6 +81,9 @@ public final class AiPayloads {
             changeIntensity.forEach(s -> sb.append(s).append('\n'));
             categoryChanges.forEach(c -> sb.append(c.description()).append('\n'));
             dailyCares.forEach(c -> sb.append(c.title()).append('\n').append(c.description()).append('\n'));
+            if (gapItems != null) {
+                gapItems.forEach(g -> sb.append(g.evidence()).append('\n'));
+            }
             return sb.toString();
         }
     }
@@ -82,6 +94,22 @@ public final class AiPayloads {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record DailyCarePayload(String title, String description) {
+    }
+
+    /**
+     * 루틴이 풀 문제 하나. ({@code AnalysisResult.gapItems}로 저장된다)
+     *
+     * <p><b>{@code priority}가 없다.</b> 순서는 서버가
+     * {@code profiles.priorities}로 매긴다 — 모델에게 숫자를 매기게 하면 그것이 곧
+     * 점수가 되고, 점수를 만들지 않는 것이 이 서비스의 원칙이다. (PRD G-1)
+     *
+     * <p>{@code evidenceSource}는 <b>무엇을 보고 판단했는지</b>다. 서버가 이 사용자에게
+     * 실제로 있었던 것인지 대조해, 아니면 그 항목을 통째로 버린다.
+     * ({@code ai/prompt/InputEvidence})
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record GapItemPayload(Category category, ProblemCode problemCode,
+                                 EvidenceSource evidenceSource, String evidence) {
     }
 
     // ------------------------------------------------------ ROUTINE_GENERATION

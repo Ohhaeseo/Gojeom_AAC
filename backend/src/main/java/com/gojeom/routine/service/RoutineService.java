@@ -9,6 +9,7 @@ import com.gojeom.ai.dto.AiPayloads.StandalonePlan;
 import com.gojeom.ai.guardrail.GuardrailViolation;
 import com.gojeom.ai.prompt.RoutineGenerationPrompt;
 import com.gojeom.analysis.entity.AnalysisResult;
+import com.gojeom.analysis.entity.GapItem;
 import com.gojeom.analysis.repository.AnalysisKeywordRepository;
 import com.gojeom.analysis.repository.AnalysisResultRepository;
 import com.gojeom.common.enums.Category;
@@ -108,13 +109,23 @@ public class RoutineService {
                 : createStandalone(userId, request);
     }
 
-    /** 경로 A — 여러 카테고리에 걸친 목표 1개. */
+    /**
+     * 경로 A — 여러 카테고리에 걸친 목표 1개.
+     *
+     * <p>분석이 짚은 문제({@link GapItem})가 있으면 <b>태스크가 고를 수 있는 문제 코드를
+     * 그것으로 좁힌다.</b> (루틴 고도화 2단계) 좁히는 일은 스키마가 하고, 이 메서드는
+     * 무엇으로 좁힐지만 정한다.
+     */
     private RoutineCreateResponse createFromAnalysis(UUID userId, RoutineCreateRequest request) {
         RoutineCreationContext context =
                 routineTx.loadFromAnalysis(userId, request.sourceAnalysisResultId());
 
+        List<GapItem> gaps = context.safeGapItems();
+        Set<ProblemCode> allowed = allowedCodes(gaps);
+
         RoutinePlan plan = generate(() -> aiTextService.generate(
-                prompt.forAnalysis(context.profileFacts(), context.resultDigest(), context.priorities()),
+                prompt.forAnalysis(context.profileFacts(), context.resultDigest(), context.priorities(),
+                        gapLines(gaps), allowed),
                 RoutinePlan::userFacingText,
                 p -> requireTasks(p.tasks().size())));
 
@@ -287,6 +298,46 @@ public class RoutineService {
                 t.getReason(), t.getExpectedEffect(), t.getTitle(), t.getTiming(),
                 t.getDurationLabel(), t.getAmountLabel(), t.getScheduledDate(),
                 t.getWeekStart(), t.getWeeklyTarget(), t.getStatus());
+    }
+
+    /**
+     * 태스크가 고를 수 있는 문제 코드. (루틴 고도화 2단계)
+     *
+     * <p>🔴 <b>카테고리마다 따로 정한다.</b> 분석이 그 카테고리에서 문제를 하나도
+     * 짚지 않았으면 <b>그 카테고리만 전체 목록으로 되돌린다.</b> 전부를 gapItem으로
+     * 좁혀 버리면, 예컨대 건강 문제가 하나도 없는 결과지로 목표를 만들 때
+     * <b>건강 태스크에 붙일 코드가 하나도 없어</b> 모델이 아무것도 만들지 못한다.
+     *
+     * <p>비어 있으면 결과는 전체 목록이고, 그때 {@code JsonSchemas}는 스키마를
+     * 좁히지 않는다 — <b>V17 이전 결과지는 지금까지와 똑같이 동작한다.</b>
+     *
+     * <p>{@code EnumSet}이라 같은 코드를 두 번 담아도 한 번만 남는다.
+     */
+    static Set<ProblemCode> allowedCodes(List<GapItem> gaps) {
+        EnumSet<ProblemCode> allowed = EnumSet.noneOf(ProblemCode.class);
+
+        for (Category category : Category.values()) {
+            List<ProblemCode> found = gaps.stream()
+                    .filter(gap -> gap.category() == category && gap.problemCode() != null)
+                    .map(GapItem::problemCode)
+                    .toList();
+            allowed.addAll(found.isEmpty() ? ProblemCode.of(category) : found);
+        }
+        return allowed;
+    }
+
+    /**
+     * 프롬프트에 넣을 줄.
+     *
+     * <p><b>코드 이름을 그대로 쓴다.</b> 모델이 되돌려 줘야 하는 글자가 그것이라,
+     * 한국어로 풀어 쓰면 무엇을 고르라는 말인지 이어지지 않는다.
+     */
+    private static List<String> gapLines(List<GapItem> gaps) {
+        return gaps.stream()
+                .filter(gap -> gap.problemCode() != null)
+                .map(gap -> "- [%s] %s — %s"
+                        .formatted(gap.category().label(), gap.problemCode().name(), gap.evidence()))
+                .toList();
     }
 
     private static void requireTasks(int count) {

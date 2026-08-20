@@ -6,7 +6,9 @@ import com.gojeom.ai.dto.AiPayloads.RoutinePlan;
 import com.gojeom.ai.dto.AiPayloads.StandalonePlan;
 import com.gojeom.ai.schema.JsonSchemas;
 import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.ProblemCode;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -142,6 +144,9 @@ public class RoutineGenerationPrompt {
             - tasks: 결과지의 '카테고리별 변화'와 '오늘 해볼 관리'를 실행 단위로 옮긴다.
               결과지에 없는 이야기를 새로 만들지 않는다. (G-5)
             - 우선순위 1순위 카테고리의 태스크를 가장 구체적으로 쓴다.
+            - 🔴 **「분석이 찾은 문제」가 주어지면 그 문제들을 푸는 태스크만 만든다.**
+              문제 하나에 태스크가 여럿일 수 있다. 앞에 있는 문제일수록 태스크를 두텁게 쌓는다.
+              그 목록에 없는 문제는 다루지 않는다 — 다룰 problemCode 자체가 없다.
             """;
 
     private static final String STANDALONE = """
@@ -162,16 +167,33 @@ public class RoutineGenerationPrompt {
     /**
      * 경로 A — 저장된 분석 결과 기반.
      *
+     * <p>🔴 <b>{@code allowed}가 스키마의 {@code problemCode} enum을 좁힌다.</b>
+     * (루틴 고도화 2단계) 아래 프롬프트도 같은 말을 하지만, <b>부탁한 것은 지켜지지
+     * 않을 수 있고 스키마로 막은 것은 지켜진다.</b> 두 겹으로 둔 이유는 스키마가
+     * "고를 수 없게" 할 뿐 "왜 이것만인지"를 말해 주지 못해서다.
+     *
      * @param resultDigest 결과지 내용을 텍스트로 펼친 것
+     * @param gapLines     분석이 짚은 문제를 사람이 읽는 줄로 펼친 것. 비어 있을 수 있다
+     * @param allowed      고를 수 있는 문제 코드. 비어 있으면 좁히지 않는다
      */
     public OpenAiRequest<RoutinePlan> forAnalysis(String profileFacts, String resultDigest,
-                                                  List<Category> priorities) {
-        return OpenAiRequest.builder(AiStage.ROUTINE_GENERATION, RoutinePlan.class)
-                .schema(schemas.routineFromAnalysis())
+                                                  List<Category> priorities, List<String> gapLines,
+                                                  Set<ProblemCode> allowed) {
+        var builder = OpenAiRequest.builder(AiStage.ROUTINE_GENERATION, RoutinePlan.class)
+                .schema(schemas.routineFromAnalysis(allowed))
                 .system(SystemPrompts.base() + SystemPrompts.PRIORITY_WEIGHTING
                         + FROM_ANALYSIS + TASK_FORMAT)
                 .text(profileFacts)
-                .text("\n[근거가 되는 고점 분석 결과]\n" + resultDigest)
+                .text("\n[근거가 되는 고점 분석 결과]\n" + resultDigest);
+
+        // V17 이전 결과지에는 문제 목록이 없다. **없는 블록을 빈 채로 넣지 않는다** —
+        // 제목만 있고 내용이 없으면 모델이 그 자리를 스스로 채우려 든다.
+        if (!gapLines.isEmpty()) {
+            builder.text("\n[분석이 찾은 문제 — 이 목록만 푼다] 앞에 있는 것이 더 중요하다\n"
+                    + String.join("\n", gapLines)
+                    + "\n각 태스크의 problemCode 는 이 목록에 있는 코드 중 하나여야 한다.");
+        }
+        return builder
                 .text("\n[우선순위 가중치] " + priorityLine(priorities))
                 .build();
     }

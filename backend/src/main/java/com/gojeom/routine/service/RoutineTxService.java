@@ -7,6 +7,7 @@ import com.gojeom.analysis.entity.Analysis;
 import com.gojeom.analysis.entity.AnalysisResult;
 import com.gojeom.analysis.entity.CategoryChange;
 import com.gojeom.analysis.entity.DailyCare;
+import com.gojeom.analysis.entity.GapItem;
 import com.gojeom.analysis.repository.AnalysisRepository;
 import com.gojeom.analysis.repository.AnalysisResultRepository;
 import com.gojeom.common.enums.Category;
@@ -71,14 +72,14 @@ public class RoutineTxService {
         Profile profile = activeProfile(userId);
 
         return new RoutineCreationContext(analysisResultId, profile.getPriorities(),
-                facts(profile), digest(result));
+                facts(profile), digest(result), result.getGapItems());
     }
 
     /** 경로 B — 분석 결과가 없으므로 프로필만 있으면 된다. */
     @Transactional(readOnly = true)
     public RoutineCreationContext loadStandalone(UUID userId) {
         Profile profile = activeProfile(userId);
-        return new RoutineCreationContext(null, profile.getPriorities(), facts(profile), null);
+        return new RoutineCreationContext(null, profile.getPriorities(), facts(profile), null, List.of());
     }
 
     private Profile activeProfile(UUID userId) {

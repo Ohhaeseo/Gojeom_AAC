@@ -70,6 +70,17 @@ public class AnalysisResult extends BaseCreatedEntity {
     @Column(name = "daily_cares", nullable = false)
     private List<DailyCare> dailyCares;
 
+    /**
+     * 루틴이 풀 문제 목록. <b>V17 이전 결과지는 빈 배열이다.</b> (루틴 고도화 2단계)
+     *
+     * <p>화면에 나가지 않는다 — {@code ResultAssembler}가 응답에 싣지 않는다.
+     * 읽는 것은 목표 생성(경로 A)뿐이다. {@link GapItem#priority()}가 순서를
+     * 담고 있어, 사용자에게 보이는 순간 그것이 순위가 된다. (PRD G-1)
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "gap_items", nullable = false)
+    private List<GapItem> gapItems;
+
     @Column(name = "comparison_image_key", length = 512)
     private String comparisonImageKey;
 
@@ -80,7 +91,7 @@ public class AnalysisResult extends BaseCreatedEntity {
     private AnalysisResult(UUID analysisId, String title, String summary, List<String> keepPoints,
                            List<String> emphasizePoints, List<String> changeIntensity,
                            List<CategoryChange> categoryChanges, List<DailyCare> dailyCares,
-                           ImageStatus imageStatus) {
+                           List<GapItem> gapItems, ImageStatus imageStatus) {
         this.analysisId = analysisId;
         this.title = title;
         this.summary = summary;
@@ -89,6 +100,7 @@ public class AnalysisResult extends BaseCreatedEntity {
         this.changeIntensity = changeIntensity;
         this.categoryChanges = categoryChanges;
         this.dailyCares = dailyCares;
+        this.gapItems = gapItems;
         this.imageStatus = imageStatus;
     }
 
@@ -127,8 +139,9 @@ public class AnalysisResult extends BaseCreatedEntity {
                                         List<String> keepPoints, List<String> emphasizePoints,
                                         List<String> changeIntensity,
                                         List<CategoryChange> categoryChanges,
-                                        List<DailyCare> dailyCares, ImageStatus imageStatus) {
+                                        List<DailyCare> dailyCares, List<GapItem> gapItems,
+                                        ImageStatus imageStatus) {
         return new AnalysisResult(analysisId, title, summary, keepPoints, emphasizePoints,
-                changeIntensity, categoryChanges, dailyCares, imageStatus);
+                changeIntensity, categoryChanges, dailyCares, gapItems, imageStatus);
     }
 }

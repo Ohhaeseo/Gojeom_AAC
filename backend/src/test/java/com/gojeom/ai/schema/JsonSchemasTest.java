@@ -4,8 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.EvidenceSource;
+import com.gojeom.common.enums.ProblemCode;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -101,6 +106,74 @@ class JsonSchemasTest {
         String capture = schemas.profileAnalysis().at("/schema/properties/capture").toString().toLowerCase();
 
         assertThat(capture).doesNotContain("score", "grade", "rank", "point");
+    }
+
+    // ------------------------------------------------------ 루틴 고도화 2단계
+
+    @Test
+    @DisplayName("gapItems의 problemCode·evidenceSource는 enum에서 만들어진다")
+    void gapItems_열거형() {
+        JsonNode gaps = schemas.resultGeneration().at("/schema/properties/gapItems");
+
+        assertThat(gaps.path("minItems").asInt()).isEqualTo(3);
+        assertThat(gaps.at("/items/properties/problemCode/enum"))
+                .hasSize(ProblemCode.values().length);
+        assertThat(gaps.at("/items/properties/evidenceSource/enum"))
+                .hasSize(EvidenceSource.values().length);
+
+        // 🔴 손으로 적어 둔 목록이 아닌지 본다. enum을 늘렸는데 스키마가 그대로면
+        // 모델이 새 코드를 고를 수 없게 되고, 그 사실이 조용히 지나간다.
+        assertThat(gaps.at("/items/properties/problemCode/enum").toString())
+                .contains(ProblemCode.values()[ProblemCode.values().length - 1].name());
+    }
+
+    /** 🔴 2단계의 핵심 장치 — 분석이 짚은 문제 밖은 애초에 고를 수 없게 만든다. */
+    @Test
+    @DisplayName("경로 A 스키마는 주어진 문제 코드로 좁혀진다")
+    void 경로A_스키마_좁히기() {
+        Set<ProblemCode> allowed = EnumSet.of(
+                ProblemCode.UV_CARE_GAP, ProblemCode.LOW_ACTIVITY, ProblemCode.SLEEP_IRREGULARITY);
+
+        JsonNode codes = schemas.routineFromAnalysis(allowed)
+                .at("/schema/properties/tasks/items/properties/problemCode/enum");
+
+        assertThat(codes).hasSize(3);
+        assertThat(codes.toString())
+                .contains("UV_CARE_GAP", "LOW_ACTIVITY", "SLEEP_IRREGULARITY")
+                .doesNotContain("DEHYDRATION_TENDENCY");
+    }
+
+    @Test
+    @DisplayName("좁힌 스키마도 strict 불변식을 지킨다")
+    void 좁힌_스키마도_strict다() {
+        JsonNode root = schemas.routineFromAnalysis(EnumSet.of(ProblemCode.UV_CARE_GAP));
+
+        assertThat(root.path("strict").asBoolean()).isTrue();
+        List<String> problems = new ArrayList<>();
+        walk(root.path("schema"), "schema", problems);
+        assertThat(problems).isEmpty();
+    }
+
+    /** V17 이전 결과지다. 좁힐 것이 없으면 지금까지와 똑같아야 한다. */
+    @Test
+    @DisplayName("문제 목록이 비면 좁히지 않는다")
+    void 비면_전체_스키마다() {
+        assertThat(schemas.routineFromAnalysis(Set.of()))
+                .isSameAs(schemas.routineFromAnalysis());
+        assertThat(schemas.routineFromAnalysis(EnumSet.allOf(ProblemCode.class)))
+                .isSameAs(schemas.routineFromAnalysis());
+    }
+
+    @Test
+    @DisplayName("문제 코드는 카테고리마다 하나 이상 있다")
+    void 카테고리마다_코드가_있다() {
+        // 카테고리 하나가 비면 그 카테고리로 좁혔을 때 고를 코드가 없어
+        // 모델이 그 카테고리 태스크를 아예 만들지 못한다.
+        for (Category category : Category.values()) {
+            assertThat(ProblemCode.of(category))
+                    .as("%s 문제 코드", category.name())
+                    .isNotEmpty();
+        }
     }
 
     /** 모든 object 노드가 두 조건을 지키는지 재귀 확인. */

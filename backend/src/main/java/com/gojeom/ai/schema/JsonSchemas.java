@@ -1,7 +1,11 @@
 package com.gojeom.ai.schema;
 
+import com.gojeom.common.enums.EvidenceSource;
 import com.gojeom.common.enums.ProblemCode;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,6 +37,9 @@ public class JsonSchemas {
     public static final int FACE_IMPRESSION_MAX = 30;
     public static final int BODY_RANGE_MAX = 40;
     public static final int HEALTH_NOTE_MAX = 60;
+
+    /** 좁히지 않았을 때 쓰는 전체 목록. 선언 순서를 그대로 쓴다. */
+    private static final List<ProblemCode> ALL_PROBLEM_CODES = List.of(ProblemCode.values());
 
     /** API.md §7.2 */
     private static final String KEYWORD_EXTRACTION = """
@@ -67,7 +74,7 @@ public class JsonSchemas {
               "schema": {
                 "type": "object", "additionalProperties": false,
                 "required": ["title", "summary", "keepPoints", "emphasizePoints",
-                             "changeIntensity", "categoryChanges", "dailyCares"],
+                             "changeIntensity", "categoryChanges", "dailyCares", "gapItems"],
                 "properties": {
                   "title":   { "type": "string", "maxLength": 60 },
                   "summary": { "type": "string", "maxLength": 120 },
@@ -93,6 +100,19 @@ public class JsonSchemas {
                       "properties": {
                         "title":       { "type": "string", "maxLength": 30 },
                         "description": { "type": "string", "maxLength": 150 }
+                      }
+                    }
+                  },
+                  "gapItems": {
+                    "type": "array", "minItems": 3, "maxItems": 6,
+                    "items": {
+                      "type": "object", "additionalProperties": false,
+                      "required": ["category", "problemCode", "evidenceSource", "evidence"],
+                      "properties": {
+                        "category":       { "type": "string", "enum": ["SKIN", "BODY", "HEALTH"] },
+                        "problemCode":    { "type": "string", "enum": [__PROBLEM_CODES__] },
+                        "evidenceSource": { "type": "string", "enum": [__EVIDENCE_SOURCES__] },
+                        "evidence":       { "type": "string", "maxLength": 80 }
                       }
                     }
                   }
@@ -278,6 +298,9 @@ public class JsonSchemas {
     private final JsonNode inbodyOcr;
     private final JsonNode productRecommendation;
 
+    /** 경로 A 스키마를 <b>요청마다</b> 좁히는 데 쓴다. {@link #routineFromAnalysis(Set)} */
+    private final ObjectMapper objectMapper;
+
     /**
      * 문제 코드 목록을 <b>enum에서 만들어</b> 스키마에 끼운다.
      *
@@ -285,11 +308,28 @@ public class JsonSchemas {
      * 코드를 더할 때 여기를 같이 고쳐야 하는데, 잊으면 <b>모델이 새 코드를 고를 수
      * 없게 되고 그 사실이 조용히 지나간다.</b> 한쪽만 고쳐도 어긋나지 않게 한다.
      */
-    private static String withProblemCodes(String schema) {
+    private static String withProblemCodes(String schema, Collection<ProblemCode> allowed) {
+        // 🔴 선언 순서로 쓴다. 집합의 순회 순서를 그대로 따르면 같은 입력에 스키마가
+        // 매번 다른 모양으로 나가 캐시도 대조도 어긋난다.
         String codes = Arrays.stream(ProblemCode.values())
+                .filter(allowed::contains)
                 .map(code -> '"' + code.name() + '"')
                 .collect(Collectors.joining(", "));
         return schema.replace("__PROBLEM_CODES__", codes);
+    }
+
+    /**
+     * 근거 출처 목록. <b>여기서는 좁히지 않는다.</b>
+     *
+     * <p>쓸 수 있는 출처는 사용자마다 다르다(인바디를 낸 사람과 안 낸 사람).
+     * 스키마는 기동 시점에 한 번 만들어지므로 사용자별로 좁힐 수 없다 —
+     * 실제 대조는 {@code AnalysisPipeline}이 {@code ai/prompt/InputEvidence}로 한다.
+     */
+    private static String withEvidenceSources(String schema) {
+        String sources = Arrays.stream(EvidenceSource.values())
+                .map(source -> '"' + source.name() + '"')
+                .collect(Collectors.joining(", "));
+        return schema.replace("__EVIDENCE_SOURCES__", sources);
     }
 
     /**
@@ -297,11 +337,15 @@ public class JsonSchemas {
      * 애플리케이션 기동에서 즉시 드러난다.
      */
     public JsonSchemas(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.keywordExtraction = parse(objectMapper, KEYWORD_EXTRACTION);
-        this.resultGeneration = parse(objectMapper, RESULT_GENERATION);
+        this.resultGeneration = parse(objectMapper,
+                withEvidenceSources(withProblemCodes(RESULT_GENERATION, ALL_PROBLEM_CODES)));
         this.profileAnalysis = parse(objectMapper, PROFILE_ANALYSIS);
-        this.routineFromAnalysis = parse(objectMapper, withProblemCodes(ROUTINE_FROM_ANALYSIS));
-        this.routineStandalone = parse(objectMapper, withProblemCodes(ROUTINE_STANDALONE));
+        this.routineFromAnalysis = parse(objectMapper,
+                withProblemCodes(ROUTINE_FROM_ANALYSIS, ALL_PROBLEM_CODES));
+        this.routineStandalone = parse(objectMapper,
+                withProblemCodes(ROUTINE_STANDALONE, ALL_PROBLEM_CODES));
         this.inbodyOcr = parse(objectMapper, INBODY_OCR);
         this.productRecommendation = parse(objectMapper, PRODUCT_RECOMMENDATION);
     }
@@ -356,6 +400,28 @@ public class JsonSchemas {
 
     public JsonNode routineFromAnalysis() {
         return routineFromAnalysis;
+    }
+
+    /**
+     * 경로 A 스키마를 <b>분석이 찾은 문제로 좁힌다.</b> (루틴 고도화 2단계)
+     *
+     * <p>🔴 <b>이것이 2단계의 핵심 장치다.</b> 프롬프트로 "이 문제만 다뤄라"라고
+     * 부탁하는 것과 {@code enum}에서 아예 뺀 것은 다르다 — 부탁한 것은 지켜지지
+     * 않을 수 있고, 스키마로 막은 것은 지켜진다.
+     *
+     * <p><b>비어 있으면 좁히지 않는다.</b> V17 이전에 만들어진 결과지에는
+     * {@code gapItems}가 없고, 그 목표를 만들 때 고를 수 있는 코드가 하나도 없으면
+     * 루틴 생성이 통째로 막힌다. 옛 결과지는 <b>지금까지와 똑같이</b> 동작하는 것이
+     * 맞다. (2026-08-20 오후 인수인계 §0 — 가드레일을 조일 때는 실패 경로를 먼저 정한다)
+     *
+     * <p>요청마다 파싱하지만 스키마는 2KB 남짓이고 이 경로는 이미 AI 호출로 4~6초를
+     * 쓴다. 전체 목록일 때는 기동 시점에 파싱해 둔 것을 그대로 돌려준다.
+     */
+    public JsonNode routineFromAnalysis(Set<ProblemCode> allowed) {
+        if (allowed == null || allowed.isEmpty() || allowed.size() == ALL_PROBLEM_CODES.size()) {
+            return routineFromAnalysis;
+        }
+        return parse(objectMapper, withProblemCodes(ROUTINE_FROM_ANALYSIS, allowed));
     }
 
     public JsonNode routineStandalone() {
