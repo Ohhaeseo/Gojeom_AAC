@@ -1,5 +1,6 @@
 package com.gojeom.profile.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.gojeom.common.enums.Category;
 import com.gojeom.profile.entity.Inbody;
 import com.gojeom.profile.entity.ProfileAnalysisSummary;
@@ -62,11 +63,28 @@ public final class ProfileDtos {
             Inbody inbody) {
     }
 
+    /**
+     * 사진만 교체. (시안 11의 "사진 변경")
+     *
+     * <p>신체 정보를 함께 받지 않는다 — 사진 한 장 바꾸자고 키·체중·수면을 다시
+     * 입력하게 만들지 않으려는 것이 이 요청이 있는 이유다.
+     */
+    public record PhotoUpdateRequest(
+            @NotBlank(message = "사진을 먼저 등록해주세요.")
+            String photoKey) {
+    }
+
     public record PrioritiesUpdateRequest(
             @Priorities
             List<Category> priorities) {
     }
 
+    /**
+     * 선택 정보라 {@code sleepHours}·{@code inbody}가 null일 수 있고,
+     * {@code analysisSummary}는 AI 분석이 끝나기 전까지 null이다.
+     * 전역 {@code non_null} 설정이 이 키들을 통째로 지우지 않게 막는다. (AGENTS.md N-7)
+     */
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public record ProfileResponse(
             UUID profileId,
             String photoUrl,

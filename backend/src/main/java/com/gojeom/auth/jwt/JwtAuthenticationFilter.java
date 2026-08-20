@@ -1,6 +1,7 @@
 package com.gojeom.auth.jwt;
 
 import com.gojeom.common.security.UserPrincipal;
+import com.gojeom.user.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,6 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String PREFIX = "Bearer ";
 
     private final JwtProvider jwtProvider;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(
@@ -41,6 +43,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 JwtProvider.ParsedToken parsed = jwtProvider.parseAccessToken(token);
+                // JWT가 아직 만료되지 않았더라도 탈퇴한 계정이면 인증하지 않는다.
+                // 계정 삭제는 soft delete라 토큰 서명만 검사하면 access TTL 동안
+                // 프로필·분석·서랍 API에 계속 접근할 수 있다.
+                if (!userRepository.existsByIdAndDeletedAtIsNull(parsed.userId())) {
+                    SecurityContextHolder.clearContext();
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 UserPrincipal principal = new UserPrincipal(parsed.userId(), parsed.email());
 
                 var authentication = new UsernamePasswordAuthenticationToken(

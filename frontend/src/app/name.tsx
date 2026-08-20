@@ -18,7 +18,7 @@ export default function NameScreen() {
   return (
     <AppScreen header={false} contentStyle={styles.content}>
       <BrandLogo style={styles.wordmark} />
-      <Text style={styles.title}>환영해요!👋</Text><Text style={styles.description}>나만의 고점으로 가는 여정, 우리 함께해요.</Text>
+      <Text style={styles.title}>환영해요!</Text><Text style={styles.description}>나만의 고점으로 가는 여정, 우리 함께해요.</Text>
       <CircleFaceLogo size={150} />
       <Text style={styles.sectionTitle}>남들이 시도한 변화와 생활 습관</Text><Text style={styles.description}>나에게도 잘 맞을지 고점으로 확인할 수 있어요!</Text>
       <Image source={comparison} contentFit="cover" style={styles.comparison} />

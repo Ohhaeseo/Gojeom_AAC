@@ -14,7 +14,8 @@ export default function BodyInfoScreen() {
   const { photoUri, priorities, profile } = useAppState();
   const [height, setHeight] = useState(() => params.edit === '1' && profile ? String(profile.heightCm) : '');
   const [weight, setWeight] = useState(() => params.edit === '1' && profile ? String(profile.weightKg) : '');
-  const valid = Number(height) >= 100 && Number(height) <= 250 && Number(weight) >= 25 && Number(weight) <= 300;
+  // 서버 제약과 같은 범위를 쓴다. 넓게 두면 제출 순간에 400이 난다. (API.md §6.3)
+  const valid = Number(height) >= 100 && Number(height) <= 250 && Number(weight) >= 30 && Number(weight) <= 200;
   return (
     <AppScreen navigation contentStyle={styles.content}>
       <Text style={styles.previous}>내 사진 등록하기</Text><ProfilePhotoPanel photoUri={photoUri} />

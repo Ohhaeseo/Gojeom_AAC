@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "추구미 생산기",
-    "slug": "chugumi-producer",
+    "name": "고점 생산기",
+    "slug": "gojeom-producer",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "chugumi",
+    "scheme": "gojeom",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.chugumi.producer"
+      "bundleIdentifier": "com.gojeom.producer"
     },
     "android": {
-      "package": "com.chugumi.producer",
+      "package": "com.gojeom.producer",
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -24,14 +24,30 @@
         "expo-image-picker",
         {
           "photosPermission": "분위기 분석에 사용할 사진을 선택하려면 사진 접근 권한이 필요해요.",
-          "cameraPermission": "분위기 분석에 사용할 사진을 촬영하려면 카메라 권한이 필요해요."
+          "cameraPermission": "분위기 분석에 사용할 사진을 촬영하려면 카메라 권한이 필요해요.",
+          "microphonePermission": false
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#6BBDA6"
+        }
+      ],
+      "./plugins/withCropImageTheme",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "eec53c17-899a-469d-b5ed-1370b7e81d34"
+      }
+    },
+    "owner": "ohhaeseo"
   }
 }

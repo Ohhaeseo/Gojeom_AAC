@@ -3,18 +3,20 @@ package com.gojeom.profile;
 import com.gojeom.common.enums.Category;
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.profile.dto.ProfileDtos.PhotoUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.PrioritiesUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileResponse;
 import com.gojeom.profile.dto.ProfileDtos.ProfileUpdateRequest;
 import com.gojeom.profile.entity.Profile;
 import com.gojeom.profile.repository.ProfileRepository;
-import com.gojeom.storage.ObjectKeyFactory;
 import com.gojeom.storage.StorageService;
 import com.gojeom.storage.UploadPurpose;
+import com.gojeom.storage.deletion.StorageDeletionService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,30 +26,30 @@ public class ProfileService {
 
     private final ProfileRepository profileRepository;
     private final StorageService storageService;
-    private final ObjectKeyFactory keyFactory;
+    private final StorageDeletionService storageDeletionService;
+    private final ProfileTxService profileTxService;
+    private final ProfilePhotoValidator profilePhotoValidator;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 프로필 등록.
      *
      * <p>기존 활성 프로필이 있으면 비활성화하고 새 행을 만든다. 갱신이 아니라 이력이다.
      * 과거 분석이 그 시점 프로필을 계속 가리킬 수 있어야 하기 때문이다. (ERD.md §3.3)
+     *
+     * <p>커밋 후 프로필 AI 분석이 비동기로 돌아 {@code analysisSummary}를 채운다.
+     * 응답 시점에는 아직 null이다 — 프론트는 필요하면 {@code GET /profiles/me}로
+     * 다시 읽는다. (D2-2)
      */
-    @Transactional
     public ProfileResponse create(UUID userId, ProfileCreateRequest request) {
         // 클라이언트가 남의 경로 key를 보낼 수 있으므로 저장 전에 다시 확인한다.
-        keyFactory.assertOwned(request.photoKey(), UploadPurpose.PROFILE_PHOTO, userId);
+        storageService.validateUploadedImage(
+                request.photoKey(), UploadPurpose.PROFILE_PHOTO, userId);
 
-        profileRepository.findByUserIdAndIsActiveTrue(userId).ifPresent(Profile::deactivate);
+        // 스토리지 I/O와 CPU 얼굴 탐지는 DB 트랜잭션을 열기 전에 끝낸다.
+        profilePhotoValidator.validate(storageService.download(request.photoKey()));
 
-        Profile profile = profileRepository.save(Profile.create(
-                userId,
-                request.photoKey(),
-                List.copyOf(request.priorities()),
-                request.heightCm(),
-                request.weightKg(),
-                request.sleepHours(),
-                request.inbody()));
-
+        Profile profile = profileTxService.replaceActive(userId, request);
         return toResponse(profile);
     }
 
@@ -57,9 +59,22 @@ public class ProfileService {
     }
 
     @Transactional
+    /**
+     * 시안 11의 "분석 정보 수정".
+     *
+     * <p><b>값이 실제로 바뀌면 프로필 요약을 다시 만든다.</b> 요약의
+     * {@code bodyRange}·{@code healthNotes}가 이 수치들로 만들어지기 때문이다.
+     * 다시 만들지 않으면, 고점 분석 프롬프트 안에서 최신 수치와 옛 요약이 서로 다른
+     * 값을 말하게 된다.
+     *
+     * <p>응답 시점에는 아직 옛 요약이다 — 신규 등록과 마찬가지로 비동기다.
+     * 프론트는 필요하면 {@code GET /profiles/me}로 다시 읽는다.
+     */
     public ProfileResponse updateBody(UUID userId, ProfileUpdateRequest request) {
         Profile profile = findActive(userId);
-        profile.updateBody(request.weightKg(), request.sleepHours(), request.inbody());
+        if (profile.updateBody(request.weightKg(), request.sleepHours(), request.inbody())) {
+            eventPublisher.publishEvent(new ProfileBodyChangedEvent(profile.getId()));
+        }
         return toResponse(profile);
     }
 
@@ -72,6 +87,33 @@ public class ProfileService {
     }
 
     /**
+     * 사진만 교체. (시안 11의 "사진 변경")
+     *
+     * <p>🔴 <b>{@code POST /profiles}로 보내면 안 되는 이유</b> — 그것은 우선순위·키·
+     * 체중·수면을 모두 요구한다. 사진 한 장을 바꾸려고 신체 정보를 처음부터 다시
+     * 입력해야 했다. 여기서는 사진만 받는다.
+     *
+     * <p>등록과 <b>같은 검증을 거친다</b> — 남의 경로 key인지, 실제로 얼굴이 있는지.
+     * 건너뛰면 촬영 품질 게이트를 우회하는 뒷문이 된다.
+     *
+     * <p>이전 사진은 <b>즉시</b> 지운다. (PRD §10)
+     */
+    public ProfileResponse replacePhoto(UUID userId, PhotoUpdateRequest request) {
+        storageService.validateUploadedImage(
+                request.photoKey(), UploadPurpose.PROFILE_PHOTO, userId);
+        // 스토리지 I/O와 CPU 얼굴 탐지는 DB 트랜잭션을 열기 전에 끝낸다. (create와 같다)
+        profilePhotoValidator.validate(storageService.download(request.photoKey()));
+
+        ProfileTxService.PhotoReplacement replaced =
+                profileTxService.replacePhoto(userId, request.photoKey());
+        // 이전 사진은 즉시 지운다. 남겨 두면 얼굴 사진이 쓰이지 않는 채 쌓인다. (PRD §10)
+        if (replaced.previousPhotoKey() != null) {
+            storageDeletionService.enqueue(replaced.previousPhotoKey());
+        }
+        return toResponse(replaced.profile());
+    }
+
+    /**
      * 사진 삭제. 스토리지 객체를 <b>즉시</b> 지운다. (PRD §10)
      *
      * <p>사진이 없으면 신규 분석을 시작할 수 없다.
@@ -81,7 +123,7 @@ public class ProfileService {
         Profile profile = findActive(userId);
         String key = profile.getPhotoKey();
         profile.removePhoto();
-        storageService.delete(key);
+        storageDeletionService.enqueue(key);
     }
 
     private Profile findActive(UUID userId) {

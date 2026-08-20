@@ -1,0 +1,223 @@
+package com.gojeom.routine.service;
+
+import com.gojeom.ai.dto.AiPayloads.PlannedRoutine;
+import com.gojeom.ai.dto.AiPayloads.PlannedTask;
+import com.gojeom.ai.prompt.ProfileFacts;
+import com.gojeom.analysis.entity.Analysis;
+import com.gojeom.analysis.entity.AnalysisResult;
+import com.gojeom.analysis.entity.CategoryChange;
+import com.gojeom.analysis.entity.DailyCare;
+import com.gojeom.analysis.entity.GapItem;
+import com.gojeom.analysis.repository.AnalysisRepository;
+import com.gojeom.analysis.repository.AnalysisResultRepository;
+import com.gojeom.common.enums.Category;
+import com.gojeom.common.exception.BusinessException;
+import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.profile.entity.Profile;
+import com.gojeom.profile.repository.ProfileRepository;
+import com.gojeom.routine.TaskScheduleExpander;
+import com.gojeom.routine.TaskScheduleExpander.Slot;
+import com.gojeom.routine.TaskTimingSplitter;
+import com.gojeom.routine.dto.RoutineDtos.RoutineItem;
+import com.gojeom.routine.dto.RoutineDtos.RoutineSummary;
+import com.gojeom.routine.entity.Routine;
+import com.gojeom.routine.entity.RoutineTask;
+import com.gojeom.routine.repository.RoutineRepository;
+import com.gojeom.routine.repository.RoutineTaskRepository;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 목표 생성의 <b>짧은 트랜잭션</b>만 담당하는 빈. (ARCHITECTURE.md §5.2 · L-4)
+ *
+ * <p>{@link RoutineService}와 분리되어 있어야 한다. 같은 클래스 안에서 호출하면
+ * 프록시를 타지 않아 트랜잭션이 걸리지 않는다. 분석 파이프라인의
+ * {@code AnalysisTxService}와 같은 구조다.
+ */
+@Service
+@RequiredArgsConstructor
+public class RoutineTxService {
+
+    private final RoutineRepository routineRepository;
+    private final RoutineTaskRepository routineTaskRepository;
+    private final AnalysisRepository analysisRepository;
+    private final AnalysisResultRepository analysisResultRepository;
+    private final ProfileRepository profileRepository;
+
+    // ------------------------------------------------------------ 컨텍스트 로드
+
+    /**
+     * 경로 A — 결과 소유권 확인 + 프롬프트 재료 수집.
+     *
+     * <p><b>우선순위는 분석 시점이 아니라 현재 활성 프로필에서 읽는다.</b> 사용자가
+     * 그사이 우선순위를 바꿨다면 새로 만드는 목표에는 바뀐 값이 반영되어야 한다.
+     * (PRD F-09 "두 경로 모두 profiles.priorities를 가중치로 반영한다")
+     */
+    @Transactional(readOnly = true)
+    public RoutineCreationContext loadFromAnalysis(UUID userId, UUID analysisResultId) {
+        AnalysisResult result = analysisResultRepository.findById(analysisResultId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        Analysis analysis = analysisRepository.findById(result.getAnalysisId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        if (!analysis.isOwnedBy(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN_RESOURCE);
+        }
+        Profile profile = activeProfile(userId);
+
+        return new RoutineCreationContext(analysisResultId, profile.getPriorities(),
+                facts(profile), digest(result), result.getGapItems());
+    }
+
+    /** 경로 B — 분석 결과가 없으므로 프로필만 있으면 된다. */
+    @Transactional(readOnly = true)
+    public RoutineCreationContext loadStandalone(UUID userId) {
+        Profile profile = activeProfile(userId);
+        return new RoutineCreationContext(null, profile.getPriorities(), facts(profile), null, List.of());
+    }
+
+    private Profile activeProfile(UUID userId) {
+        return profileRepository.findByUserIdAndIsActiveTrue(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROFILE_REQUIRED));
+    }
+
+    private String facts(Profile profile) {
+        return ProfileFacts.render(profile.getPriorities(), profile.getHeightCm(),
+                profile.getWeightKg(), profile.getSleepHours(), profile.getInbody(),
+                profile.getAnalysisSummary());
+    }
+
+    /** 결과지를 프롬프트가 읽을 수 있는 텍스트로 펼친다. */
+    private String digest(AnalysisResult result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("제목: ").append(result.getTitle()).append('\n');
+        sb.append("요약: ").append(result.getSummary()).append('\n');
+        sb.append("유지할 점: ").append(String.join(", ", result.getKeepPoints())).append('\n');
+        sb.append("강조할 점: ").append(String.join(", ", result.getEmphasizePoints())).append('\n');
+        sb.append("변화 강도: ").append(String.join(", ", result.getChangeIntensity())).append('\n');
+        sb.append("\n카테고리별 변화\n");
+        for (CategoryChange change : result.getCategoryChanges()) {
+            sb.append("- [").append(change.category().name()).append("] ")
+                    .append(change.description()).append('\n');
+        }
+        sb.append("\n오늘 해볼 관리\n");
+        for (DailyCare care : result.getDailyCares()) {
+            sb.append("- ").append(care.title()).append(" — ").append(care.description()).append('\n');
+        }
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------ 저장
+
+    /**
+     * 경로 A 저장 — 목표 1개 + 태스크.
+     *
+     * <p><b>예전에는 모든 태스크를 {@code startDate} 하루에 몰아 놓았다.</b> 경로 A에
+     * 기간 개념이 없었기 때문이다(스키마가 {@code duration_weeks IS NULL}을 강제했다).
+     * 그래서 캘린더를 열면 시작일 하루에만 점이 찍혔다.
+     *
+     * <p>이제 <b>AI가 기간을 정하고</b>(V15) 기간 안의 날짜로 펼친다.
+     * 기간이 없으면 만들지 않는다 — 끝이 없는 목표는 달력에 그릴 수 없다.
+     */
+    @Transactional
+    public RoutineSummary persistFromAnalysis(UUID userId, UUID analysisResultId, String title,
+                                              String dietGuide, int durationWeeks,
+                                              List<PlannedTask> tasks, LocalDate startDate) {
+        Routine routine = routineRepository.save(Routine.fromAnalysis(
+                userId, analysisResultId, title, durationWeeks, startDate,
+                TaskScheduleExpander.endDateOf(startDate, durationWeeks)));
+        routine.applyDietGuide(dietGuide);
+
+        // 시점이 여러 개인 태스크는 시점마다 하나씩으로 나눈다. 완료 체크가 태스크
+        // 단위라, "아침, 저녁"이 한 줄이면 아침만 한 상태를 표현할 수 없다.
+        // 경로 A는 태스크마다 카테고리가 달라 AI가 준 값을 그대로 쓴다.
+        long count = persistTasks(routine.getId(), tasks, null, startDate, durationWeeks);
+        return summary(routine, count);
+    }
+
+    /**
+     * 경로 B 저장 — 카테고리당 목표 1개.
+     *
+     * <p><b>기간 안의 날짜마다 배치한다.</b> 예전에는 주 단위로 한 행씩만 놓아
+     * "매일"이라고 써 놓고도 4주에 체크박스가 4개였다. 화면이 무너질까 봐 그렇게
+     * 두었지만, 홈은 그날 것만 보여주고 캘린더는 날짜별로 나눠 보여주므로
+     * 행이 늘어도 한 화면에 쏟아지지 않는다. (V15)
+     *
+     * <p>태스크의 {@code category}는 AI 출력을 믿지 않고 <b>목표의 카테고리로 덮어쓴다.</b>
+     * {@code routine_tasks.category}가 목표와 어긋나면 목표 화면의 분류가 깨진다.
+     */
+    @Transactional
+    public List<RoutineSummary> persistStandalone(UUID userId, List<PlannedRoutine> plans,
+                                                  Map<Category, RoutineItem> itemsByCategory,
+                                                  LocalDate startDate) {
+        List<RoutineSummary> summaries = new ArrayList<>();
+
+        for (PlannedRoutine plan : plans) {
+            RoutineItem item = itemsByCategory.get(plan.category());
+            int weeks = item.durationWeeks();
+            // 사용자가 적은 목표를 함께 저장한다. AI 입력으로만 쓰고 버리면 만든 뒤에
+            // "내가 뭘 목표로 했더라"를 다시 볼 수 없다.
+            Routine routine = routineRepository.save(Routine.standalone(
+                    userId, plan.category(), weeks, plan.title(), startDate,
+                    item.goalText(), item.targetWeightKg()));
+            routine.applyDietGuide(plan.dietGuide());
+
+            long count = persistTasks(routine.getId(), plan.tasks(), plan.category(), startDate, weeks);
+            summaries.add(summary(routine, count));
+        }
+        return summaries;
+    }
+
+    /**
+     * 날짜별 배정 + <b>선택 항목 한 행</b>을 저장한다.
+     *
+     * <p>🔴 {@code OPTIONAL}은 {@code TaskScheduleExpander}가 펼치지 않는다. 그렇다고
+     * 버리면 화면에 보여 줄 것이 없으므로 <b>시작일에 한 행씩만</b> 남긴다.
+     * 날마다 체크할 대상이 아니라 "해보면 좋은 것" 목록이다.
+     *
+     * @param category 태스크에 새길 카테고리. 경로 B는 목표의 카테고리로 덮어쓴다
+     * @return 진행률에 세는 행 수. <b>선택 항목은 세지 않는다</b> — 목표 완료의 일부가 아니다
+     */
+    private long persistTasks(UUID routineId, List<PlannedTask> tasks, Category category,
+                              LocalDate startDate, int weeks) {
+        // 펼치기 **전에** 시점을 나눈다. 나중에 나누면 같은 일이 날짜 수만큼 늘어난다.
+        List<PlannedTask> split = TaskTimingSplitter.expand(tasks);
+
+        long count = 0;
+        for (Slot slot : TaskScheduleExpander.expand(split, startDate, weeks)) {
+            PlannedTask task = slot.task();
+            routineTaskRepository.save(RoutineTask.of(routineId,
+                    category == null ? task.category() : category,
+                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                    slot.date(), slot.weekStart(), slot.weeklyTarget(), detailOf(task)));
+            count++;
+        }
+
+        for (PlannedTask task : TaskScheduleExpander.unscheduled(split)) {
+            routineTaskRepository.save(RoutineTask.of(routineId,
+                    category == null ? task.category() : category,
+                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                    startDate, startDate, null, detailOf(task)));
+        }
+        return count;
+    }
+
+    private static RoutineTask.Detail detailOf(PlannedTask task) {
+        return new RoutineTask.Detail(task.importanceOrCore(), task.problemCode(),
+                task.reason(), task.expectedEffect());
+    }
+
+    private RoutineSummary summary(Routine routine, long taskCount) {
+        return new RoutineSummary(routine.getId(), routine.getSourceType(), routine.getCategory(),
+                routine.getTitle(), routine.getDurationWeeks(), routine.getStartDate(),
+                routine.getEndDate(), taskCount, routine.getGoalText(), routine.getTargetWeightKg(), routine.getDietGuide(),
+                routine.getNotifyTime());
+    }
+
+}

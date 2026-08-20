@@ -1,5 +1,6 @@
 package com.gojeom.auth;
 
+import com.gojeom.auth.dto.AuthDtos.GoogleLoginRequest;
 import com.gojeom.auth.dto.AuthDtos.LoginRequest;
 import com.gojeom.auth.dto.AuthDtos.RefreshRequest;
 import com.gojeom.auth.dto.AuthDtos.SignupRequest;
@@ -31,6 +32,15 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(authService.login(request));
+    }
+
+    /**
+     * Google 로그인. 응답 형식은 {@code /auth/login}과 <b>동일하다.</b>
+     * 프론트가 로그인 방식에 따라 분기하지 않는다. (API.md §6.1)
+     */
+    @PostMapping("/oauth/google")
+    public ApiResponse<TokenResponse> googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
+        return ApiResponse.ok(authService.googleLogin(request));
     }
 
     @PostMapping("/refresh")

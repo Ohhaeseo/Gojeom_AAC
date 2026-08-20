@@ -1,0 +1,86 @@
+package com.gojeom.profile;
+
+import com.gojeom.common.exception.BusinessException;
+import com.gojeom.common.exception.ErrorCode;
+import com.gojeom.profile.entity.ProfileAnalysisSummary;
+import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
+import com.gojeom.profile.entity.Profile;
+import com.gojeom.profile.repository.ProfileRepository;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 프로필 저장과 AI 분석 결과 반영의 <b>짧은 트랜잭션</b>만 담당하는 빈.
+ *
+ * <p>{@link ProfileAnalysisPipeline}과 분리한 이유 — 같은 클래스 안에서 호출하면
+ * 프록시를 타지 않아 {@code @Transactional}이 걸리지 않는다. AI 호출 사이사이의
+ * DB 접근만 짧게 트랜잭션에 넣으려면 빈이 나뉘어 있어야 한다.
+ * (ARCHITECTURE.md §5.2)
+ */
+@Service
+@RequiredArgsConstructor
+public class ProfileTxService {
+
+    private final ProfileRepository profileRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 사진 AI 검증이 끝난 뒤 DB 변경만 짧은 트랜잭션으로 처리한다. */
+    @Transactional
+    public Profile replaceActive(UUID userId, ProfileCreateRequest request) {
+        profileRepository.findByUserIdAndIsActiveTrue(userId).ifPresent(Profile::deactivate);
+        // 🔴 **비활성화를 먼저 내보낸다.** Hibernate는 액션 큐에서 INSERT를 UPDATE보다
+        // 앞세우므로, 이 flush가 없으면 새 행이 먼저 들어가 부분 유니크 인덱스
+        // ux_profiles_active(user_id WHERE is_active)에 걸려 500이 난다.
+        // 두 번째 프로필을 만들 때만 터지는 자리라 첫 등록만 확인하면 지나친다.
+        profileRepository.flush();
+
+        Profile profile = profileRepository.save(Profile.create(
+                userId,
+                request.photoKey(),
+                List.copyOf(request.priorities()),
+                request.heightCm(),
+                request.weightKg(),
+                request.sleepHours(),
+                request.inbody()));
+        eventPublisher.publishEvent(new ProfileCreatedEvent(profile.getId()));
+        return profile;
+    }
+
+    /**
+     * 사진만 교체한다. 얼굴 검증이 끝난 뒤 DB 변경만 짧은 트랜잭션으로.
+     *
+     * <p>{@code replaceActive}와 달리 <b>새 행을 만들지 않는다</b> — 사진 한 장을
+     * 바꾸려고 우선순위·키·체중·수면을 다시 받을 이유가 없다.
+     */
+    @Transactional
+    public PhotoReplacement replacePhoto(UUID userId, String photoKey) {
+        Profile profile = profileRepository.findByUserIdAndIsActiveTrue(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROFILE_REQUIRED));
+        String previous = profile.replacePhoto(photoKey);
+        eventPublisher.publishEvent(new ProfilePhotoChangedEvent(profile.getId()));
+        return new PhotoReplacement(profile, previous);
+    }
+
+    /** @param previousPhotoKey 스토리지에서 지워야 할 이전 사진. 없었으면 null */
+    public record PhotoReplacement(Profile profile, String previousPhotoKey) {
+    }
+
+    /** 프로필이 이미 비활성화·삭제됐을 수 있으므로 {@code Optional}이다. */
+    @Transactional(readOnly = true)
+    public Optional<ProfileSnapshot> loadSnapshot(UUID profileId) {
+        return profileRepository.findById(profileId)
+                .map(p -> new ProfileSnapshot(
+                        p.getId(), p.getPhotoKey(), p.getPriorities(),
+                        p.getHeightCm(), p.getWeightKg(), p.getSleepHours(), p.getInbody()));
+    }
+
+    @Transactional
+    public void applySummary(UUID profileId, ProfileAnalysisSummary summary) {
+        profileRepository.findById(profileId).ifPresent(p -> p.applyAnalysisSummary(summary));
+    }
+}

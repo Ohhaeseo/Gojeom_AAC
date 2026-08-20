@@ -24,7 +24,10 @@ public enum ErrorCode {
     AUTH_EMAIL_DUPLICATED(HttpStatus.CONFLICT, "이미 가입된 이메일이에요."),
     FORBIDDEN_RESOURCE(HttpStatus.FORBIDDEN, "접근할 수 없는 항목이에요."),
 
-    // --- 프로필 ---
+    // --- 가입 동의 · 프로필 ---
+    // 두 코드는 **회원가입에서 쓴다.** 프로필 화면에서 받을 계획으로 이름이
+    // 지어졌으나(PRD O-2 초안), 나이 확인은 어떤 개인정보든 수집하기 전에 끝나야
+    // 하는 법적 요구사항이라 가입 시점으로 옮겼다. (V9)
     CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "필수 항목에 동의해주세요."),
     PROFILE_UNDERAGE(HttpStatus.FORBIDDEN, "만 14세 이상만 이용할 수 있어요."),
     PROFILE_REQUIRED(HttpStatus.CONFLICT, "프로필을 먼저 등록해주세요."),
@@ -41,6 +44,12 @@ public enum ErrorCode {
     CONTENT_POLICY_BLOCKED(HttpStatus.UNPROCESSABLE_ENTITY, "분석할 수 없는 내용이 포함되어 있어요.", false),
     AI_PROVIDER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "분석 중 문제가 생겼어요. 다시 시도해주세요."),
     ANALYSIS_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "분석이 지연되고 있어요. 다시 시도해주세요.", false),
+    /**
+     * 사용자가 진행 중인 분석을 버렸다. <b>HTTP 응답으로 나가지 않는다</b> —
+     * {@code analyses.failure_code}에만 실려 화면 문구가 된다.
+     * ({@code ANALYSIS_TIMEOUT}을 좀비 스위퍼가 쓰는 것과 같은 방식)
+     */
+    ANALYSIS_CANCELED(HttpStatus.OK, "이전 분석을 버렸어요. 새로 시작할 수 있어요.", false),
 
     // --- 인바디 ---
     INBODY_SCAN_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "서류를 읽지 못했어요. 직접 입력해주세요.", false),

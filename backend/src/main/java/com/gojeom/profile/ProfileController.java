@@ -2,6 +2,9 @@ package com.gojeom.profile;
 
 import com.gojeom.common.response.ApiResponse;
 import com.gojeom.common.security.UserPrincipal;
+import com.gojeom.profile.dto.InbodyScanDtos.InbodyScanRequest;
+import com.gojeom.profile.dto.InbodyScanDtos.InbodyScanResponse;
+import com.gojeom.profile.dto.ProfileDtos.PhotoUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.PrioritiesUpdateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileCreateRequest;
 import com.gojeom.profile.dto.ProfileDtos.ProfileResponse;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProfileController {
 
     private final ProfileService profileService;
+    private final InbodyScanService inbodyScanService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProfileResponse>> create(
@@ -54,9 +59,35 @@ public class ProfileController {
         return ApiResponse.ok(profileService.updatePriorities(me.id(), request));
     }
 
+    /**
+     * 사진만 바꾼다. (시안 11의 "사진 변경" · API.md §6.3)
+     *
+     * <p>{@code POST /profiles}와 달리 신체 정보를 요구하지 않는다. 사진 한 장을
+     * 바꾸려고 키·체중·수면을 다시 입력하게 만들지 않는다.
+     */
+    @PutMapping("/me/photo")
+    public ApiResponse<ProfileResponse> replacePhoto(
+            @AuthenticationPrincipal UserPrincipal me,
+            @Valid @RequestBody PhotoUpdateRequest request) {
+        return ApiResponse.ok(profileService.replacePhoto(me.id(), request));
+    }
+
     @DeleteMapping("/me/photo")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePhoto(@AuthenticationPrincipal UserPrincipal me) {
         profileService.deletePhoto(me.id());
+    }
+
+    /**
+     * 시안 08의 "카메라로 서류 스켄하기".
+     *
+     * <p><b>결과를 저장하지 않는다.</b> 폼을 채워줄 뿐이며 사용자가 확인한 뒤
+     * {@code POST /profiles}나 {@code PATCH /profiles/me}로 저장한다. (PRD G-8)
+     */
+    @PostMapping("/inbody/scan")
+    public ApiResponse<InbodyScanResponse> scanInbody(
+            @AuthenticationPrincipal UserPrincipal me,
+            @Valid @RequestBody InbodyScanRequest request) {
+        return ApiResponse.ok(inbodyScanService.scan(me.id(), request));
     }
 }

@@ -9,6 +9,9 @@ web-build/
 .env.*
 !.env.example
 *.jks
+# FCM 클라이언트 설정. 저장소가 공개라 넣지 않는다 — app.config.js 주석 참고.
+google-services.json
+GoogleService-Info.plist
 *.p8
 *.p12
 *.key

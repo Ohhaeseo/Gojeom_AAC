@@ -8,6 +8,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -51,32 +52,47 @@ public class User extends BaseTimeEntity {
     @Column(name = "nickname", nullable = false, length = 20)
     private String nickname;
 
+    /**
+     * 만 14세 미만 가입 차단에 쓴다. (PRD O-2 · V9)
+     *
+     * <p>V9 이전에 가입한 계정은 null이다. 신규 가입은 {@code ConsentPolicy}가
+     * 막으므로 여기서 NOT NULL을 걸지 않는다.
+     */
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
     /** soft delete. 조회 시 항상 제외한다. (ERD.md D-5) */
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
     private User(String email, String passwordHash, AuthProvider provider,
-                 String providerUserId, String nickname) {
+                 String providerUserId, String nickname, LocalDate birthDate) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.provider = provider;
         this.providerUserId = providerUserId;
         this.nickname = nickname;
+        this.birthDate = birthDate;
     }
 
     /** 이메일 회원가입. */
-    public static User ofLocal(String email, String passwordHash, String nickname) {
-        return new User(email, passwordHash, AuthProvider.LOCAL, null, nickname);
+    public static User ofLocal(String email, String passwordHash, String nickname, LocalDate birthDate) {
+        return new User(email, passwordHash, AuthProvider.LOCAL, null, nickname, birthDate);
     }
 
     /** Google 회원가입. 비밀번호가 없다. */
-    public static User ofGoogle(String email, String providerUserId, String nickname) {
-        return new User(email, null, AuthProvider.GOOGLE, providerUserId, nickname);
+    public static User ofGoogle(String email, String providerUserId, String nickname, LocalDate birthDate) {
+        return new User(email, null, AuthProvider.GOOGLE, providerUserId, nickname, birthDate);
     }
 
     /** 비밀번호 로그인이 가능한 계정인지. 소셜 전용 계정이면 false. */
     public boolean canLoginWithPassword() {
         return passwordHash != null;
+    }
+
+    /** 홈의 "안녕하세요, {닉네임}님"에 쓰인다. 가입 후 언제든 바꿀 수 있다. */
+    public void changeNickname(String nickname) {
+        this.nickname = nickname;
     }
 
     public void softDelete(OffsetDateTime at) {

@@ -1,0 +1,286 @@
+package com.gojeom.ai.dto;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.gojeom.common.enums.Category;
+import com.gojeom.common.enums.EvidenceSource;
+import com.gojeom.common.enums.ProblemCode;
+import com.gojeom.common.enums.RoutineImportance;
+import com.gojeom.common.enums.KeywordCategory;
+import com.gojeom.profile.entity.CaptureQuality;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * AI가 스키마대로 돌려주는 본문. ({@link com.gojeom.ai.schema.JsonSchemas}와 1:1)
+ *
+ * <p><b>파생 메서드에는 반드시 {@code @JsonIgnore}를 붙인다.</b> Jackson이
+ * {@code isXxx()}/{@code getXxx()}를 JSON 속성으로 보기 때문이다. D1-7에서
+ * {@code Inbody.isEmpty()}가 JSONB에 {@code "empty": false}로 저장된 적이 있다.
+ * 이 레코드들은 JSONB로 저장될 값을 품고 있어 같은 사고가 재발하기 쉽다.
+ */
+public final class AiPayloads {
+
+    private AiPayloads() {
+    }
+
+    // ------------------------------------------------------ KEYWORD_EXTRACTION
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record KeywordExtraction(List<ExtractedKeyword> keywords) {
+    }
+
+    /**
+     * 상품 추천. (피드백 11번)
+     *
+     * <p><b>{@code productIds}가 비어 있는 것이 정상 답</b>이다 — 어울리는 것이 없으면
+     * 없다고 말하게 뒀다. 그때 화면은 성분 이야기로 대신한다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ProductRecommendation(List<String> productIds, String reason) {
+
+        @JsonIgnore
+        public String userFacingText() {
+            return reason == null ? "" : reason;
+        }
+    }
+
+    /** {@code category}는 4종이다. 얼굴 키워드를 담아야 하므로 {@link Category}가 아니다. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ExtractedKeyword(String label, String reason, KeywordCategory category) {
+    }
+
+    // ------------------------------------------------------ RESULT_GENERATION
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PeakResult(
+            String title,
+            String summary,
+            List<String> keepPoints,
+            List<String> emphasizePoints,
+            List<String> changeIntensity,
+            List<CategoryChangePayload> categoryChanges,
+            List<DailyCarePayload> dailyCares,
+            /** 루틴이 풀 문제 목록. 서버가 근거를 대조해 걸러낸 뒤 저장한다. (2단계) */
+            List<GapItemPayload> gapItems) {
+
+        /**
+         * 가드레일 후검증 대상 텍스트. 사용자에게 노출되는 문자열만 모은다.
+         *
+         * <p><b>{@code gapItems.evidence}도 넣는다.</b> 결과 화면에는 나가지 않지만
+         * 루틴 생성 프롬프트로 들어가고, 거기서 나온 {@code reason}은 화면에 뜬다.
+         * 금지어가 한 단계 건너 사용자에게 닿는 길을 열어 둘 이유가 없다.
+         */
+        @JsonIgnore
+        public String userFacingText() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(title).append('\n').append(summary).append('\n');
+            keepPoints.forEach(s -> sb.append(s).append('\n'));
+            emphasizePoints.forEach(s -> sb.append(s).append('\n'));
+            changeIntensity.forEach(s -> sb.append(s).append('\n'));
+            categoryChanges.forEach(c -> sb.append(c.description()).append('\n'));
+            dailyCares.forEach(c -> sb.append(c.title()).append('\n').append(c.description()).append('\n'));
+            if (gapItems != null) {
+                gapItems.forEach(g -> sb.append(g.evidence()).append('\n'));
+            }
+            return sb.toString();
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CategoryChangePayload(Category category, String description) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record DailyCarePayload(String title, String description) {
+    }
+
+    /**
+     * 루틴이 풀 문제 하나. ({@code AnalysisResult.gapItems}로 저장된다)
+     *
+     * <p><b>{@code priority}가 없다.</b> 순서는 서버가
+     * {@code profiles.priorities}로 매긴다 — 모델에게 숫자를 매기게 하면 그것이 곧
+     * 점수가 되고, 점수를 만들지 않는 것이 이 서비스의 원칙이다. (PRD G-1)
+     *
+     * <p>{@code evidenceSource}는 <b>무엇을 보고 판단했는지</b>다. 서버가 이 사용자에게
+     * 실제로 있었던 것인지 대조해, 아니면 그 항목을 통째로 버린다.
+     * ({@code ai/prompt/InputEvidence})
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record GapItemPayload(Category category, ProblemCode problemCode,
+                                 EvidenceSource evidenceSource, String evidence) {
+    }
+
+    // ------------------------------------------------------ ROUTINE_GENERATION
+
+    /**
+     * 경로 A — 여러 카테고리에 걸친 목표 1개.
+     *
+     * <p>{@code durationWeeks}는 <b>AI가 정한다.</b> 예전에는 분석 기반 목표에 기간이
+     * 없어(스키마가 NULL을 강제했다) 태스크가 시작일 하루에만 놓였다. (V15)
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record RoutinePlan(String title, String dietGuide, Integer durationWeeks,
+                              List<PlannedTask> tasks) {
+
+        @JsonIgnore
+        public String userFacingText() {
+            return title + '\n' + (dietGuide == null ? "" : dietGuide + '\n') + PlannedTask.joinText(tasks);
+        }
+    }
+
+    /** 경로 B — 카테고리당 목표 1개, 최대 3개. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record StandalonePlan(List<PlannedRoutine> routines) {
+
+        @JsonIgnore
+        public String userFacingText() {
+            return routines.stream()
+                    .map(r -> r.title() + '\n' + PlannedTask.joinText(r.tasks()))
+                    .reduce((a, b) -> a + '\n' + b)
+                    .orElse("");
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    /**
+     * 목표 1개.
+     *
+     * <p>{@code dietGuide}는 <b>일반적인 식사 방향</b>이다. 없을 수 있다 — 식사와
+     * 관련이 옅은 목표에 억지로 붙이지 않는다.
+     */
+    public record PlannedRoutine(Category category, String title, String dietGuide,
+                                 List<PlannedTask> tasks) {
+    }
+
+    /**
+     * 태스크 1건.
+     *
+     * <p>{@code durationLabel}·{@code amountLabel}은 null일 수 있다. 분량 개념이 없는
+     * 태스크가 있고, 억지로 채우면 "1회" 같은 값이 화면에 붙는다.
+     *
+     * <p>🔴 <b>{@code frequencyPerWeek}가 일정을 정한다.</b> {@code timing}은 사용자가
+     * 읽는 말이고, 실제 배정은 이 숫자로 만든다 — "주 3회"를 한글에서 파싱하지 않는다.
+     * 7이면 매일, 3이면 그 주에 3번이다. (V15)
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PlannedTask(
+            Category category,
+            /**
+             * 이 목표에서 이 행동의 무게. 🔴 {@code OPTIONAL}은 날짜로 펼치지 않는다.
+             * (docs/ROUTINE_UPGRADE_PLAN.md · {@code TaskScheduleExpander})
+             */
+            RoutineImportance importance,
+            /** 이 행동이 푸는 문제. AI 스키마가 enum으로 막아 목록 밖을 고를 수 없다. */
+            ProblemCode problemCode,
+            String title,
+            String timing,
+            String durationLabel,
+            String amountLabel,
+            Integer frequencyPerWeek,
+            /** <b>왜 이 사용자에게</b> 이 행동인가. 일반론이면 후검증이 걸러 낸다. */
+            String reason,
+            /** 무엇이 어떻게 달라지는가. 치료를 보장하는 말은 쓰지 않는다. */
+            String expectedEffect) {
+
+        /** 값이 없으면 필수로 본다. 빠뜨려서 화면에서 사라지는 쪽이 더 나쁘다. */
+        @JsonIgnore
+        public RoutineImportance importanceOrCore() {
+            return importance == null ? RoutineImportance.CORE : importance;
+        }
+
+        /** 값이 없거나 범위를 벗어나면 매일로 본다. 덜 배정하는 쪽이 더 나쁘다. */
+        @JsonIgnore
+        public int weeklyCount() {
+            return frequencyPerWeek == null || frequencyPerWeek < 1 || frequencyPerWeek > 7
+                    ? 7 : frequencyPerWeek;
+        }
+
+        @JsonIgnore
+        static String joinText(List<PlannedTask> tasks) {
+            StringBuilder sb = new StringBuilder();
+            for (PlannedTask t : tasks) {
+                sb.append(t.title).append('\n').append(t.timing).append('\n');
+                if (t.durationLabel != null) {
+                    sb.append(t.durationLabel).append('\n');
+                }
+                if (t.amountLabel != null) {
+                    sb.append(t.amountLabel).append('\n');
+                }
+            }
+            return sb.toString();
+        }
+    }
+
+    // ------------------------------------------------------ INBODY_OCR
+
+    /**
+     * 인바디 서류에서 읽어낸 6종. <b>읽지 못한 항목은 null이다.</b> (PRD G-8)
+     *
+     * <p>{@code BigDecimal}로 받아 프로필 저장 형식({@code Inbody})과 그대로 맞춘다.
+     * {@code double}로 받으면 소수 표현이 어긋난다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record InbodyOcrPayload(
+            BigDecimal bodyWaterL,
+            BigDecimal proteinKg,
+            BigDecimal mineralKg,
+            BigDecimal bodyFatKg,
+            BigDecimal skeletalMuscleKg,
+            BigDecimal bmi) {
+
+        /** 읽지 못한 항목 이름. 프론트가 빈 칸으로 두고 직접 입력을 유도한다. */
+        @JsonIgnore
+        public List<String> unrecognized() {
+            List<String> missing = new ArrayList<>();
+            if (bodyWaterL == null) {
+                missing.add("bodyWaterL");
+            }
+            if (proteinKg == null) {
+                missing.add("proteinKg");
+            }
+            if (mineralKg == null) {
+                missing.add("mineralKg");
+            }
+            if (bodyFatKg == null) {
+                missing.add("bodyFatKg");
+            }
+            if (skeletalMuscleKg == null) {
+                missing.add("skeletalMuscleKg");
+            }
+            if (bmi == null) {
+                missing.add("bmi");
+            }
+            return missing;
+        }
+
+        @JsonIgnore
+        public int recognizedCount() {
+            return TOTAL_FIELDS - unrecognized().size();
+        }
+
+        private static final int TOTAL_FIELDS = 6;
+    }
+
+    // ------------------------------------------------------ PROFILE_ANALYSIS
+
+    /**
+     * {@code capture}는 사진을 얼마나 볼 수 있었는지에 대한 자기 신고다.
+     * <b>{@link #userFacingText()}에 넣지 않는다</b> — 열거형뿐이라 가드레일이
+     * 검사할 문장이 없고, 화면 문구는 프론트가 이 분류로 고른다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ProfileAnalysisPayload(
+            List<String> faceImpression,
+            String bodyRange,
+            List<String> healthNotes,
+            CaptureQuality capture) {
+
+        @JsonIgnore
+        public String userFacingText() {
+            return String.join("\n", faceImpression) + '\n' + bodyRange + '\n'
+                    + String.join("\n", healthNotes);
+        }
+    }
+}

@@ -2,6 +2,7 @@ package com.gojeom.storage;
 
 import com.gojeom.common.exception.BusinessException;
 import com.gojeom.common.exception.ErrorCode;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,7 @@ public class ObjectKeyFactory {
             "image/webp", "webp");
 
     public String create(UploadPurpose purpose, UUID userId, String contentType) {
-        String extension = ALLOWED_IMAGE_TYPES.get(contentType);
+        String extension = extensionOf(contentType);
         if (extension == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     Map.of("contentType", "JPG, PNG, HEIC, WEBP만 올릴 수 있어요."));
@@ -42,5 +43,20 @@ public class ObjectKeyFactory {
         if (key == null || !key.startsWith(expectedPrefix) || key.contains("..")) {
             throw new BusinessException(ErrorCode.FORBIDDEN_RESOURCE);
         }
+    }
+
+    /** S3 메타데이터의 Content-Type과 발급한 key 확장자가 일치하는지 확인한다. */
+    public void assertContentTypeMatches(String key, String contentType) {
+        String extension = extensionOf(contentType);
+        if (extension == null || key == null || !key.endsWith("." + extension)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    Map.of("file", "파일 형식이 올바르지 않아요."));
+        }
+    }
+
+    private String extensionOf(String contentType) {
+        return contentType == null
+                ? null
+                : ALLOWED_IMAGE_TYPES.get(contentType.toLowerCase(Locale.ROOT));
     }
 }

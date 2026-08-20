@@ -20,6 +20,38 @@ export type Inbody = {
   bmi?: number | null;
 };
 
+/** 프로필 사진을 얼마나 읽을 수 있었는지. 사진에 대한 말이지 사용자에 대한 말이 아니다. */
+export type CaptureReadability = 'CLEAR' | 'PARTIAL' | 'LIMITED';
+
+export type CaptureIssue =
+  | 'DARK'
+  | 'BACKLIT'
+  | 'BLURRY'
+  | 'FACE_TOO_SMALL'
+  | 'OCCLUDED'
+  | 'HEAVY_FILTER'
+  | 'MULTIPLE_FACES'
+  | 'NO_FACE';
+
+export type CaptureQuality = { readability: CaptureReadability; issues: CaptureIssue[] };
+
+/**
+ * 사진 기반 현재 상태 요약. 서버가 프로필 생성 직후 비동기로 채운다.
+ *
+ * **분석이 끝나기 전에는 통째로 없다.** 실패해도 null로 남는다 — 프로필 등록 자체는
+ * 성공이므로 이것이 없다고 화면이 깨지면 안 된다.
+ *
+ * `capture`는 나중에 늘린 필드라 그전에 만들어진 프로필에는 없다.
+ */
+export type ProfileAnalysisSummary = {
+  faceImpression?: string[];
+  bodyRange?: string | null;
+  healthNotes?: string[];
+  capture?: CaptureQuality | null;
+  modelVersion?: string;
+  analyzedAt?: string;
+};
+
 export type Profile = {
   profileId: string;
   photoUrl: string | null;
@@ -28,6 +60,7 @@ export type Profile = {
   weightKg: number;
   sleepHours?: number | null;
   inbody?: Inbody | null;
+  analysisSummary?: ProfileAnalysisSummary | null;
 };
 
 export type AnalysisResult = {
@@ -50,13 +83,75 @@ export type AnalysisResult = {
   disclaimer: string;
 };
 
+/** 필수 · 보조 · 선택. 서버 `RoutineImportance`와 같다. */
+export type RoutineImportance = 'CORE' | 'SUPPORT' | 'OPTIONAL';
+
 export type RoutineTask = {
   taskId: string;
+  /**
+   * 어느 목표의 태스크인지. **서버가 주지 않는다** — 목표를 여러 개 합쳐 올릴 때
+   * 화면이 붙인다. 합친 목록에서 회차를 목표별로 고르려면 출처를 알아야 한다.
+   */
+  routineId?: string;
   category: Category;
+  /**
+   * 이 목표에서의 무게. (V16)
+   *
+   * 🔴 `OPTIONAL`은 **날짜로 펼쳐지지 않는다** — 시작일에 한 행만 있다.
+   * 오늘 할 일·캘린더에서 빼고 목표 상세의 "해보면 좋은 것"으로만 보여준다.
+   */
+  importance: RoutineImportance;
+  /** 이 행동이 푸는 문제. **V16 이전 태스크는 없다.** */
+  problemCode?: string | null;
+  /** 왜 이 사용자에게 이 행동인가. **없으면 그 줄을 그리지 않는다** — 지어내지 않는다. */
+  reason?: string | null;
+  expectedEffect?: string | null;
   title: string;
   timing: string;
   durationLabel: string;
   amountLabel: string;
   scheduledDate: string;
+  /**
+   * 이 배정이 속한 주의 첫날. **ISO 월요일이 아니라 목표 시작일 기준**이다.
+   * 주 N회의 "그 주"를 세는 기준이라 서버가 정해서 내려준다. (V15)
+   */
+  weekStart?: string;
+  /**
+   * 그 주에 몇 번 하면 되는지. **null이면 매일 하는 일**이라 그날 한 번으로 끝난다.
+   *
+   * 값이 있으면 그 주의 **모든 날**에 배정이 있고, 그중 이 수만큼 체크하면 채워진다.
+   * 화면은 "이번 주 2/3"처럼 진행을 보여줘야 한다 — 안 그러면 사용자가 매일 해야
+   * 하는 일로 읽는다.
+   */
+  weeklyTarget?: number | null;
   status: TaskStatus;
+};
+
+// ---------------------------------------------------------------- 구독
+
+export type SubscriptionPlan = 'TRIAL' | 'MONTHLY' | 'YEARLY';
+export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'CANCELED';
+
+/** 고를 수 있는 유료 요금제. 가격은 서버가 정본이라 화면에 상수로 박지 않는다. */
+export type SubscriptionProduct = {
+  plan: SubscriptionPlan;
+  /** 원 단위. */
+  amount: number;
+  label: string;
+};
+
+export type SubscriptionState = {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  /**
+   * 남은 분석권. **무료 체험에서만 의미가 있다.**
+   * 유료 구독은 횟수를 세지 않으므로 이 값 대신 `unlimited`를 봐야 한다 —
+   * 안 그러면 결제한 사용자에게 "0회 남음"이 뜬다.
+   */
+  analysisCredits: number;
+  unlimited: boolean;
+  expiresAt: string | null;
+  canAnalyze: boolean;
+  canCreateRoutine: boolean;
+  products: SubscriptionProduct[];
 };

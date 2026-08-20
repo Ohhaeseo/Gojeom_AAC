@@ -11,6 +11,8 @@ export const fonts = {
 export const colors = {
   primary: '#6BBDA6',
   primaryLight: '#A1D9C6',
+  /** 칩·선택된 카드의 연한 민트 배경. (design.md §4 `primary-bg`) */
+  primaryBg: '#E5FAF1',
   point: '#FC9EA0',
   danger: '#DE6569',
   error: '#DE6569',
@@ -36,6 +38,16 @@ export const spacing = {
   lg: 24,
   xl: 32,
   xxl: 48,
+} as const;
+
+export const layout = {
+  /**
+   * 시안 기준 폭. 데스크톱 브라우저에서 화면이 전체 폭으로 늘어나지 않게 막는다.
+   *
+   * `AppScreen`이 헤더·내용·하단 네비를 통째로 이 폭에 묶는다. 내용만 묶으면
+   * 헤더와 네비가 따로 늘어나 어긋난다.
+   */
+  maxWidth: 458,
 } as const;
 
 export const radius = {

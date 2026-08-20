@@ -1,46 +1,239 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
-import type { AnalysisResult, Category, Profile, RoutineTask } from '@/types/api';
+import type { ConsentCode } from '@/lib/consent';
+import { router } from 'expo-router';
+
+import { ApiError, isMockMode, onSessionExpired } from '@/services/api';
+import { detailFields, messageOf } from '@/lib/errors';
+import { emailFromIdToken } from '@/lib/idToken';
+import * as backend from '@/services/backend';
+import { pushMessage, registerForPush } from '@/services/push';
+import { clearSession, currentSession, restoreSession, type Session } from '@/services/session';
+import type { AnalysisResult, Category, Inbody, Profile, RoutineTask, SubscriptionPlan, SubscriptionState } from '@/types/api';
+
+export type { DrawerItem, InbodyScan } from '@/services/backend';
+
+/**
+ * 화면이 결과를 판단하는 최소 형태.
+ *
+ * `code`는 **문구가 아니라 분기가 필요할 때만** 본다. 지금은 Google 최초 로그인이
+ * `CONSENT_REQUIRED`로 돌아올 때 로그인 화면이 가입 화면으로 보내는 데 쓴다.
+ * 메시지 문자열로 분기하면 문구를 다듬는 순간 조용히 깨진다.
+ */
+export type ActionResult = {
+  ok: boolean;
+  message?: string;
+  code?: string;
+  /** 서버가 지목한 필드별 사유. 화면이 해당 입력칸 밑에 붙인다. (`detailFields`) */
+  fields?: Record<string, string>;
+};
+
+/** 서랍 3섹션. (API.md §6.5) */
+export type DrawerSections = { inProgress: backend.DrawerItem[]; recent: backend.DrawerItem[]; all: backend.DrawerItem[] };
+
+export type NotificationSettings = { enabled: boolean; defaultTime: string };
+
+/**
+ * 경로 B의 카테고리별 최소 기간. 백엔드 `RoutinePolicy`와 **같은 값이어야 한다.**
+ *
+ * 화면은 개월로 고르게 하고 서버에는 주로 보낸다(1개월 = 4주). 여기서 막지 않으면
+ * 사용자가 고른 뒤에야 400을 보게 된다.
+ */
+export const WEEKS_PER_MONTH = 4;
+export const MIN_MONTHS: Record<Category, number> = { SKIN: 6, BODY: 1, HEALTH: 1 };
+export const MAX_MONTHS = 12;
+
+/**
+ * 목표 하나의 계획. 카테고리·기간에 더해 **사용자가 적은 목표**를 담는다.
+ *
+ * 같은 "체형 4주"라도 "근력을 키우고 싶다"와 "몸무게만 줄이고 싶다"는 다른
+ * 루틴이 나와야 한다. `targetWeightKg`는 체형에서만 의미가 있다.
+ */
+export type RoutinePlanItem = {
+  category: Category;
+  months: number;
+  goalText?: string;
+  targetWeightKg?: number;
+};
+
+/** 인바디 스캔 결과. 실패해도 화면은 직접 입력으로 계속 갈 수 있어야 한다. */
+export type InbodyScanResult = ActionResult & { scan?: backend.InbodyScan };
+
+/**
+ * 분석 시작 결과.
+ *
+ * 🔴 `pendingAnalysisId`가 요점이다. 진행 중인 분석이 남아 있으면 서버가 409로
+ * 막는데, **화면이 그 분석의 id를 알아야** "이어서 하기 / 버리고 새로 시작"을
+ * 물을 수 있다. 모르면 사용자는 "분석을 시작하지 못했어요"만 보고 영영 막힌다.
+ */
+export type StartAnalysisResult = ActionResult & { pendingAnalysisId?: string };
+
+/** 이어하기 결과. 어느 화면으로 갈지는 남아 있던 분석의 상태가 정한다. */
+export type ResumeAnalysisResult = ActionResult & { phase?: 'keywords' | 'done' };
+
+export type ProfileDraft = {
+  priorities: Category[];
+  heightCm: number;
+  weightKg: number;
+  sleepHours?: number | null;
+  inbody?: Inbody | null;
+};
+
+/** 키워드 선택 카드가 쓰는 최소 형태. */
+export type KeywordChoice = { id: string; label: string };
 
 type AppStateValue = {
+  /** 세션 복원이 끝났는지. false면 라우팅을 판단하면 안 된다. */
+  ready: boolean;
+  /** 백엔드 연결 여부. mock이면 서버 없이 화면만 돈다. */
+  mode: 'server' | 'mock';
   currentAccountId?: string;
-  register: (id: string, password: string) => boolean;
-  login: (id: string, password: string) => 'SUCCESS' | 'NOT_FOUND' | 'WRONG_PASSWORD';
-  logout: () => void;
-  deleteAccount: () => void;
+
+  /** 회원가입. `birthDate`는 `YYYY-MM-DD`. 만 14세 미만은 서버가 막는다. */
+  register: (id: string, password: string, birthDate: string, agreedConsents: ConsentCode[]) => Promise<ActionResult>;
+  login: (id: string, password: string) => Promise<ActionResult>;
+  /** Google ID 토큰으로 로그인. 서버 모드에서만 동작한다. */
+  loginWithGoogle: (idToken: string, birthDate?: string, agreedConsents?: ConsentCode[]) => Promise<ActionResult>;
+  /**
+   * 가입을 마치려고 **잠깐 들고 있는** Google 토큰.
+   *
+   * 🔴 메모리에만 둔다 — 저장소에도 주소창에도 쓰지 않는다. 예전에는 이것을 버려서
+   * 가입 화면에서 Google 버튼을 **한 번 더** 눌러야 했다.
+   */
+  googleSignup?: { idToken: string; email?: string };
+  /** 가입을 포기하거나 다른 계정으로 갈 때. */
+  clearGoogleSignup: () => void;
+  logout: () => Promise<void>;
+  deleteAccount: () => Promise<ActionResult>;
+
   nickname: string;
-  setNickname: (value: string) => void;
+  setNickname: (value: string) => Promise<void>;
+  /** 가입 경로·가입일 등 계정 정보. 서버 모드에서만 채워진다. */
+  me?: backend.Me;
   photoUri?: string;
   setPhotoUri: (value?: string) => void;
   priorities: Category[];
   setPriorities: (value: Category[]) => void;
+  /** 우선순위만 서버에 저장한다. 배열 순서가 곧 1·2·3순위다. (AGENTS.md 규칙 3) */
+  savePriorities: (value: Category[]) => Promise<ActionResult>;
+  /** 사진만 바꾼다. 키·체중·수면은 그대로 둔다. */
+  changePhoto: (uri: string) => Promise<ActionResult>;
   profile?: Profile;
-  setProfile: (value: Profile) => void;
-  result: AnalysisResult;
+  /** 사진 업로드 → 프로필 등록까지 한 번에 처리한다. */
+  saveProfile: (draft: ProfileDraft) => Promise<ActionResult>;
+
+  // ---- 고점 분석
+  analysisStatusText: string;
+  /**
+   * 분석 진행률 0~100. **서버가 주는 실제 값이다.**
+   *
+   * 서버가 아직 아무것도 알려주지 않았으면 `undefined`다. 그때는 숫자를
+   * 지어내지 말고 진행 중이라는 것만 보여야 한다.
+   */
+  analysisPercent?: number;
+  analysisKeywords: KeywordChoice[];
+  startAnalysis: (inputText: string, imageUris: string[]) => Promise<StartAnalysisResult>;
+  /** 진행 중이던 분석을 이어서 진행한다. (`startAnalysis`의 `pendingAnalysisId`) */
+  resumeAnalysis: (analysisId: string) => Promise<ResumeAnalysisResult>;
+  /** 진행 중이던 분석을 버린다. 이것을 해야 새 분석을 시작할 수 있다. */
+  discardAnalysis: (analysisId: string) => Promise<ActionResult>;
+  confirmKeywords: (keywordIds: string[]) => Promise<ActionResult>;
+
+  // ---- 구독 (PRD §11)
+  /** 아직 안 불러왔으면 `undefined`. 잔여 횟수를 지어내지 않는다. */
+  subscription?: SubscriptionState;
+  loadSubscription: () => Promise<SubscriptionState | undefined>;
+  /**
+   * 유료 구독으로 전환한다. **결제가 없어 누르면 바로 된다.**
+   * 성공하면 `subscription`이 갱신되어 이후 분석이 무제한이 된다.
+   */
+  subscribeToPlan: (plan: SubscriptionPlan) => Promise<ActionResult>;
+
+  result?: AnalysisResult;
   hasAnalysis: boolean;
-  completeAnalysis: () => void;
   saved: boolean;
-  setSaved: (value: boolean) => void;
+  saveToDrawer: () => Promise<ActionResult>;
+  /** 분석과 결과를 전부 지운다. **목표는 남는다.** (V4 · 시안 11 문구) */
+  deleteAllAnalyses: () => Promise<ActionResult>;
+
+  // ---- 서랍
+  loadDrawer: () => Promise<DrawerSections>;
+  /** 서랍 항목을 결과 화면에 올린다. `viewState`가 `SAVED`로 온다. (API.md §6.5) */
+  openSavedResult: (savedResultId: string) => Promise<ActionResult>;
+  /**
+   * 저장한 결과를 **읽기만** 한다. `openSavedResult`와 달리 화면에 올리지 않고
+   * 목표 연결도 건드리지 않는다 — 홈이 `변화 방향`을 그리려고 부르는데, 그때
+   * 보고 있던 목표가 풀리면 `오늘 할 일`이 함께 비어버린다.
+   */
+  peekSavedResult: (savedResultId: string) => Promise<AnalysisResult | undefined>;
+  /**
+   * 서랍에서 지운다. `resultId`를 같이 주면 화면에 올라와 있던 결과일 때
+   * 메모리에서도 함께 내린다 — 홈이 지운 결과를 계속 그리지 않게 한다.
+   */
+  deleteSavedResult: (savedResultId: string, resultId?: string) => Promise<ActionResult>;
+
+  // ---- 알림 설정
+  notificationSettings: NotificationSettings;
+  loadNotificationSettings: () => Promise<void>;
+  updateNotificationSettings: (patch: Partial<NotificationSettings>) => Promise<ActionResult>;
+
+  /** 인바디 서류 사진을 올려 판독한다. 저장은 하지 않는다 — 폼을 채울 뿐이다. (PRD G-8) */
+  scanInbody: (uri: string) => Promise<InbodyScanResult>;
+
   tasks: RoutineTask[];
   toggleTask: (taskId: string) => void;
+  /** 결과에서 목표를 만든다. 없으면 만들고, 있으면 그대로 둔다. */
+  ensureRoutine: () => Promise<ActionResult>;
+
+  // ---- 목표 목록 (경로 A·B 공통)
+  routines: backend.RoutineSummary[];
+  /** 목표 목록. **실패를 삼키지 않는다** — 못 불러온 것과 없는 것은 다르다. */
+  loadRoutines: () => Promise<ActionResult>;
+  /** 목록에서 고른 목표의 태스크를 화면에 올린다. */
+  openRoutine: (routineId: string) => Promise<ActionResult>;
+  /**
+   * 여러 목표를 한 번에 올린다. 태스크는 합쳐서 하나의 목록이 되고,
+   * 시점 순으로 섞여 나열된다. (피드백 7번 · `lib/tasks.ts`)
+   */
+  openRoutines: (routineIds: string[]) => Promise<ActionResult>;
+  /**
+   * 지금 보고 있는 목표의 id. 홈과 루틴 화면이 이 값을 함께 본다.
+   * 저장돼 있어 새로고침해도 유지된다.
+   */
+  activeRoutineId?: string;
+  /** 지금 고른 목표 전부. 홈의 다중 선택이 쓴다. `activeRoutineId`는 그 첫 번째다. */
+  activeRoutineIds: string[];
+  /** 분석 없이 카테고리+기간만으로 목표를 만든다. (경로 B) */
+  createRoutines: (items: RoutinePlanItem[]) => Promise<ActionResult>;
+  /**
+   * 작성 중인 목표 계획. **화면 여러 장에 걸쳐 있어 여기 둔다.**
+   *
+   * `/routine-new`에서 카테고리와 기간을 고르고, 카테고리마다 한 장씩
+   * `/routine-goal`에서 목표를 적는다. 라우터 파라미터로 3단계를 넘기면
+   * 뒤로 가기와 새로고침에서 금방 어긋난다.
+   */
+  routineDraft: RoutinePlanItem[];
+  setRoutineDraft: (items: RoutinePlanItem[]) => void;
+  updateRoutineDraft: (category: Category, patch: Partial<RoutinePlanItem>) => void;
+  /** 목표 목록 순서를 통째로 바꾼다. */
+  reorderRoutines: (routineIds: string[]) => Promise<ActionResult>;
+  /** 목표 이름 변경. 목표가 둘 이상이면 이름이 곧 구분 수단이라 바꿀 수 있어야 한다. */
+  renameRoutine: (routineId: string, title: string) => Promise<ActionResult>;
+  /**
+   * 목표별 알림 시각 `HH:mm`. 빼면(`undefined`) 사용자 기본 시각을 따른다. (V12)
+   * 알림 on/off는 목표가 아니라 사용자 단위다.
+   */
+  setRoutineNotifyTime: (routineId: string, notifyTime?: string) => Promise<ActionResult>;
+  deleteRoutine: (routineId: string) => Promise<ActionResult>;
 };
 
-type AccountData = {
-  password: string;
-  nickname: string;
-  photoUri?: string;
-  priorities: Category[];
-  profile?: Profile;
-  hasAnalysis: boolean;
-  saved: boolean;
-  tasks: RoutineTask[];
-};
+// ---------------------------------------------------------------- mock 데이터
 
 const demoResult: AnalysisResult = {
   resultId: 'result-demo-1', analysisId: 'analysis-demo-1', viewState: 'FRESH',
   title: '17호, 큰 눈, 귀족턱, 다...', analyzedAt: '2026-08-12T04:12:00Z',
-  comparisonImage: { status: 'DONE', currentUrl: null, peakUrl: null },
+  comparisonImage: { status: 'SKIPPED', currentUrl: null, peakUrl: null },
   overview: {
     summary: '사용자가 구성한 정보 중심으로 이루어진 고점 요약이에요.',
     keywords: [
@@ -66,33 +259,170 @@ const demoResult: AnalysisResult = {
   disclaimer: 'AI가 생성한 참고용 이미지와 관리 방향입니다. 피부·건강 상태에 대한 의료적 진단이나 시술 결과를 의미하지 않습니다.',
 };
 
-const initialTasks: RoutineTask[] = Array.from({ length: 4 }, (_, index) => ({
-  taskId: `task-${index + 1}`, category: 'SKIN', title: '자외선 차단제 바르기',
+const mockKeywords: KeywordChoice[] = [
+  { id: 'k1', label: '다이아몬드형' }, { id: 'k2', label: '귀족턱' },
+  { id: 'k3', label: '17호 피부' }, { id: 'k4', label: '큰 눈' },
+];
+
+const mockTasks: RoutineTask[] = Array.from({ length: 4 }, (_, index) => ({
+  taskId: `task-${index + 1}`, category: 'SKIN', importance: 'CORE', title: '자외선 차단제 바르기',
   timing: '매일 외출 전', durationLabel: '약 2분', amountLabel: '4ml', scheduledDate: '2026-08-14',
-  status: index === 0 || index === 3 ? 'DONE' : 'PENDING',
+  status: 'PENDING',
 }));
+
+type AccountData = {
+  password: string;
+  nickname: string;
+  photoUri?: string;
+  priorities: Category[];
+  profile?: Profile;
+  hasAnalysis: boolean;
+  saved: boolean;
+  tasks: RoutineTask[];
+};
+
+const emptyDrawer: DrawerSections = { inProgress: [], recent: [], all: [] };
+
+/**
+ * mock 모드 서랍 — 데모 결과 하나를 저장 여부와 목표 진행률에 맞춰 세 섹션에 배치한다.
+ *
+ * 서랍은 **저장한 결과**를 보여주는 곳이라 저장 전에는 비어 있어야 하고,
+ * `inProgress`는 목표가 붙어 있을 때만 나온다. (API.md §6.5)
+ */
+function mockDrawer(account: AccountData): DrawerSections {
+  if (!account.saved) return emptyDrawer;
+  const done = account.tasks.filter((task) => task.status === 'DONE').length;
+  const item = {
+    savedResultId: 'saved-demo-1', resultId: demoResult.resultId, thumbnailUrl: null,
+    title: demoResult.title, analyzedAt: demoResult.analyzedAt,
+    progressRate: account.tasks.length ? Math.round((done / account.tasks.length) * 1000) / 10 : null,
+  };
+  return { inProgress: account.tasks.length ? [item] : [], recent: [item], all: [item] };
+}
 
 const AppStateContext = createContext<AppStateValue | null>(null);
 const ACCOUNTS_STORAGE_KEY = '@go/mock-accounts-v1';
+/**
+ * 지금 보고 있는 목표. **새로고침을 넘겨야 한다.**
+ *
+ * 목표가 둘 이상이면(경로 A로 하나, 경로 B로 하나) 홈·루틴 화면이 **같은 목표를**
+ * 가리켜야 한다. 메모리에만 두면 새로고침 후 둘이 어긋난다. (오답 노트 N-12)
+ */
+const ACTIVE_ROUTINE_STORAGE_KEY = '@go/active-routine-v1';
 
 const createAccountData = (password: string): AccountData => ({
-  password,
-  nickname: '새로운 회원',
-  priorities: [],
-  hasAnalysis: false,
-  saved: false,
-  tasks: [],
+  password, nickname: '새로운 회원', priorities: [], hasAnalysis: false, saved: false, tasks: [],
 });
 
 const signedOutData = createAccountData('');
 
+/**
+ * 409가 지목한 "진행 중인 분석"의 id.
+ *
+ * `detailFields`는 사람이 읽을 한글 문구만 남기므로 UUID는 걸러진다. 화면 문구가
+ * 아니라 **동작에 쓸 값**이라 여기서 따로 읽는다.
+ */
+function pendingAnalysisIdOf(error: unknown): string | undefined {
+  if (!(error instanceof ApiError) || error.code !== 'ANALYSIS_INVALID_STATE') return undefined;
+  const details = error.details as { analysisId?: unknown } | undefined;
+  return typeof details?.analysisId === 'string' ? details.analysisId : undefined;
+}
+
+/** 실패 결과 한 벌. 화면이 입력칸 옆에 붙일 수 있게 `fields`도 함께 준다. */
+const failure = (error: unknown, fallback: string): ActionResult => {
+  const fields = detailFields(error instanceof ApiError ? error.details : undefined);
+  return {
+    ok: false,
+    message: messageOf(error, fallback),
+    code: error instanceof ApiError ? error.code : undefined,
+    fields: Object.keys(fields).length ? fields : undefined,
+  };
+};
+
 export function AppStateProvider({ children }: PropsWithChildren) {
+  const mode = isMockMode ? 'mock' : 'server';
+
+  // mock 모드 저장소 (서버가 없을 때만 쓴다)
   const [accounts, setAccounts] = useState<Record<string, AccountData>>({});
   const [currentAccountId, setCurrentAccountId] = useState<string>();
   const [hydrated, setHydrated] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  // 서버 모드 상태
+  const [nickname, setNicknameState] = useState('새로운 회원');
+  const [photoUri, setPhotoUri] = useState<string>();
+  const [priorities, setPriorities] = useState<Category[]>([]);
+  const [profile, setProfileState] = useState<Profile>();
+  const [me, setMe] = useState<backend.Me>();
+  const [result, setResult] = useState<AnalysisResult>();
+  const [saved, setSaved] = useState(false);
+  const [tasks, setTasks] = useState<RoutineTask[]>([]);
+  const [analysisKeywords, setAnalysisKeywords] = useState<KeywordChoice[]>([]);
+  // 가입을 마치려고 잠깐 들고 있는 Google 토큰. 저장소에 쓰지 않는다.
+  const [googleSignup, setGoogleSignup] = useState<{ idToken: string; email?: string }>();
+  const [analysisStatusText, setAnalysisStatusText] = useState('');
+  const [analysisPercent, setAnalysisPercent] = useState<number>();
+  // 서버 기본값은 꺼짐이다. 최초 목표 생성 때 동의를 받고 켠다. (API.md §6.7)
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ enabled: false, defaultTime: '21:00' });
+  const [subscription, setSubscription] = useState<SubscriptionState>();
+  const [routines, setRoutines] = useState<backend.RoutineSummary[]>([]);
+  // ref가 아니라 state다. 화면이 "지금 어느 목표를 보고 있는지" 알아야 한다.
+  // **배열이다** — 홈에서 목표를 여러 개 골라 한 번에 볼 수 있다. (피드백 7번)
+  const [activeRoutineIds, setActiveRoutineIdsState] = useState<string[]>([]);
+  const analysisId = useRef<string | undefined>(undefined);
+  const routineId = useRef<string | undefined>(undefined);
+  const activeRoutineId = activeRoutineIds[0];
+
+  const setActiveRoutineIds = useCallback((ids: string[]) => {
+    setActiveRoutineIdsState(ids);
+    routineId.current = ids[0];
+    void (ids.length
+      ? AsyncStorage.setItem(ACTIVE_ROUTINE_STORAGE_KEY, JSON.stringify(ids))
+      : AsyncStorage.removeItem(ACTIVE_ROUTINE_STORAGE_KEY)).catch(() => undefined);
+  }, []);
+
+  const setActiveRoutineId = useCallback((id: string | undefined) => {
+    setActiveRoutineIds(id ? [id] : []);
+  }, [setActiveRoutineIds]);
+
+  // 새로고침 후 마지막에 보던 목표를 되살린다.
+  useEffect(() => {
+    AsyncStorage.getItem(ACTIVE_ROUTINE_STORAGE_KEY)
+      .then((stored) => {
+        if (!stored) return;
+        // 예전 값은 id 하나가 그대로 들어 있다. 배열로 바뀌기 전에 저장된 것을
+        // 버리면 쓰던 사람이 보던 목표를 잃는다.
+        const ids: string[] = stored.startsWith('[') ? JSON.parse(stored) : [stored];
+        if (!ids.length) return;
+        setActiveRoutineIdsState(ids);
+        routineId.current = ids[0];
+      })
+      .catch(() => undefined);
+  }, []);
+
   const account = currentAccountId ? accounts[currentAccountId] ?? signedOutData : signedOutData;
 
+  // ---------------------------------------------------------------- 초기화
+
   useEffect(() => {
+    if (mode === 'server') {
+      restoreSession()
+        .then(async (session) => {
+          if (!session) return;
+          setCurrentAccountId(session.userId);
+          setNicknameState(session.nickname);
+          // 가입 경로·가입일은 세션에 없다. 프로필 화면이 쓰므로 함께 읽어둔다.
+          await backend.getMe().then(setMe).catch(() => undefined);
+          // 프로필이 없을 수 있다. 없으면 등록 화면으로 가야 하므로 조용히 넘긴다.
+          await backend.getProfile()
+            .then((loaded) => { setProfileState(loaded); setPriorities(loaded.priorities); setPhotoUri(loaded.photoUrl ?? undefined); })
+            .catch(() => undefined);
+        })
+        .catch(() => undefined)
+        .finally(() => setReady(true));
+      return;
+    }
+
     AsyncStorage.getItem(ACCOUNTS_STORAGE_KEY)
       .then((stored) => {
         if (!stored) return;
@@ -103,12 +433,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         })));
       })
       .catch(() => AsyncStorage.removeItem(ACCOUNTS_STORAGE_KEY))
-      .finally(() => setHydrated(true));
-  }, []);
+      .finally(() => { setHydrated(true); setReady(true); });
+  }, [mode]);
 
   useEffect(() => {
-    if (hydrated) void AsyncStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
-  }, [accounts, hydrated]);
+    if (mode === 'mock' && hydrated) void AsyncStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+  }, [accounts, hydrated, mode]);
 
   const updateAccount = useCallback((update: (current: AccountData) => AccountData) => {
     if (!currentAccountId) return;
@@ -118,58 +448,804 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     });
   }, [currentAccountId]);
 
-  const register = useCallback((rawId: string, password: string) => {
-    const id = rawId.trim().toLowerCase();
-    if (!id || accounts[id]) return false;
-    setAccounts((current) => ({ ...current, [id]: createAccountData(password) }));
-    setCurrentAccountId(id);
-    return true;
-  }, [accounts]);
+  const resetServerState = useCallback(() => {
+    setNicknameState('새로운 회원'); setPhotoUri(undefined); setPriorities([]);
+    setProfileState(undefined); setMe(undefined); setResult(undefined); setSaved(false); setTasks([]);
+    setAnalysisKeywords([]); setAnalysisStatusText(''); setAnalysisPercent(undefined);
+    setNotificationSettings({ enabled: false, defaultTime: '21:00' });
+    setRoutines([]);
+    analysisId.current = undefined;
+    setActiveRoutineId(undefined);
+  }, [setActiveRoutineId]);
 
-  const login = useCallback((rawId: string, password: string) => {
-    const id = rawId.trim().toLowerCase(); const found = accounts[id];
-    if (!found) return 'NOT_FOUND' as const;
-    if (found.password !== password) return 'WRONG_PASSWORD' as const;
-    setCurrentAccountId(id);
-    return 'SUCCESS' as const;
-  }, [accounts]);
-
-  const logout = useCallback(() => setCurrentAccountId(undefined), []);
-  const deleteAccount = useCallback(() => {
-    if (!currentAccountId) return;
-    setAccounts((current) => {
-      const next = { ...current }; delete next[currentAccountId]; return next;
-    });
+  /**
+   * 세션이 끊기면 **로그인 화면으로 보낸다.**
+   *
+   * 통신 층은 세션을 지우고 알려주기만 한다(`onSessionExpired`). 무엇을 할지는
+   * 여기서 정한다 — 메모리에 남은 남의 데이터를 비우고 인증 화면으로 옮긴다.
+   *
+   * <b>지우기만 하고 두면 잠금 화면이 뜬 홈이 남는다.</b> 사용자는 그것을 "로그인이
+   * 풀렸다"가 아니라 "내 데이터가 사라졌다"로 읽는다. (API.md §2)
+   */
+  useEffect(() => onSessionExpired(() => {
+    resetServerState();
     setCurrentAccountId(undefined);
-  }, [currentAccountId]);
+    router.replace('/auth');
+  }), [resetServerState]);
 
-  const completeAnalysis = useCallback(() => updateAccount((current) => ({
-    ...current,
-    hasAnalysis: true,
-    saved: false,
-    tasks: initialTasks.map((task) => ({ ...task, status: 'PENDING' })),
-  })), [updateAccount]);
+
+  // ---------------------------------------------------------------- 계정
+
+  const register = useCallback(async (
+    rawId: string, password: string, birthDate: string, agreedConsents: ConsentCode[],
+  ): Promise<ActionResult> => {
+    const id = rawId.trim().toLowerCase();
+    if (!id) return { ok: false, message: '이메일을 입력해주세요.' };
+
+    if (mode === 'mock') {
+      if (accounts[id]) return { ok: false, message: '이미 가입된 이메일이에요.' };
+      setAccounts((current) => ({ ...current, [id]: createAccountData(password) }));
+      setCurrentAccountId(id);
+      return { ok: true };
+    }
+    try {
+      // 닉네임은 다음 화면(이름 설정)에서 받는다. 여기서는 기본값으로 만들어둔다.
+      const session = await backend.signup(id, password, '새로운 회원', birthDate, agreedConsents);
+      resetServerState();
+      setCurrentAccountId(session.userId);
+      setNicknameState(session.nickname);
+      return { ok: true };
+    } catch (error) {
+      return failure(error, '회원가입에 실패했어요.');
+    }
+  }, [accounts, mode, resetServerState]);
+
+  // 로그인 방식(이메일·Google)이 달라도 세션을 받은 뒤 할 일은 같다.
+  const adoptSession = useCallback(async (session: Session) => {
+    resetServerState();
+    setCurrentAccountId(session.userId);
+    setNicknameState(session.nickname);
+    await backend.getMe().then(setMe).catch(() => undefined);
+    const loaded = await backend.getProfile().catch(() => undefined);
+    if (loaded) { setProfileState(loaded); setPriorities(loaded.priorities); setPhotoUri(loaded.photoUrl ?? undefined); }
+  }, [resetServerState]);
+
+  const login = useCallback(async (rawId: string, password: string): Promise<ActionResult> => {
+    const id = rawId.trim().toLowerCase();
+
+    if (mode === 'mock') {
+      const found = accounts[id];
+      if (!found) return { ok: false, message: '존재하지 않거나 삭제된 계정이에요. 회원가입을 진행해주세요.' };
+      if (found.password !== password) return { ok: false, message: '비밀번호가 일치하지 않아요.' };
+      setCurrentAccountId(id);
+      return { ok: true };
+    }
+    try {
+      await adoptSession(await backend.login(id, password));
+      return { ok: true };
+    } catch (error) {
+      // 서버는 "없는 계정"과 "비밀번호 틀림"을 구분해 알려주지 않는다.
+      // 계정 존재 여부가 새어나가지 않게 하려는 의도다. (API.md §4)
+      return failure(error, '로그인에 실패했어요.');
+    }
+  }, [accounts, adoptSession, mode]);
+
+  const loginWithGoogle = useCallback(async (
+    idToken: string, birthDate?: string, agreedConsents?: ConsentCode[],
+  ): Promise<ActionResult> => {
+    // mock 모드에는 검증할 서버가 없다. 성공한 척하면 가짜 세션이 생긴다.
+    if (mode === 'mock') return { ok: false, message: '백엔드에 연결되어 있지 않아 Google 로그인을 쓸 수 없어요.' };
+    try {
+      await adoptSession(await backend.googleLogin(idToken, birthDate, agreedConsents));
+      setGoogleSignup(undefined);
+      return { ok: true };
+    } catch (error) {
+      const result = failure(error, 'Google 로그인에 실패했어요.');
+      /*
+        처음 쓰는 Google 계정이면 서버가 `CONSENT_REQUIRED`로 돌려보낸다. 나이와
+        동의를 받아야 계정을 만들 수 있기 때문이다.
+
+        🔴 **그때 토큰을 들고 있는다.** 예전에는 버려서, 가입 화면에서 Google
+        버튼을 한 번 더 눌러야 계정이 만들어졌다. 주소창에 토큰을 남기지 않으려던
+        것인데(`login.tsx` 옛 주석), 메모리에 두면 그럴 이유가 없다.
+      */
+      if (result.code === 'CONSENT_REQUIRED') {
+        setGoogleSignup({ idToken, email: emailFromIdToken(idToken) });
+      }
+      return result;
+    }
+  }, [adoptSession, mode]);
+
+  const clearGoogleSignup = useCallback(() => setGoogleSignup(undefined), []);
+
+  const logout = useCallback(async () => {
+    if (mode === 'server') { await backend.logout().catch(() => clearSession()); resetServerState(); }
+    setCurrentAccountId(undefined);
+  }, [mode, resetServerState]);
+
+  const deleteAccount = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') {
+      if (!currentAccountId) return { ok: true };
+      setAccounts((current) => { const next = { ...current }; delete next[currentAccountId]; return next; });
+      setCurrentAccountId(undefined);
+      return { ok: true };
+    }
+    try {
+      await backend.deleteAccount();
+      resetServerState();
+      setCurrentAccountId(undefined);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '계정을 삭제하지 못했어요.') };
+    }
+  }, [currentAccountId, mode, resetServerState]);
+
+  const setNickname = useCallback(async (value: string) => {
+    const trimmed = value.trim();
+    if (mode === 'mock') { updateAccount((current) => ({ ...current, nickname: trimmed })); return; }
+    setNicknameState(trimmed);
+    await backend.updateNickname(trimmed).catch(() => undefined);
+  }, [mode, updateAccount]);
+
+  // ---------------------------------------------------------------- 프로필
+
+  const saveProfile = useCallback(async (draft: ProfileDraft): Promise<ActionResult> => {
+    if (mode === 'mock') {
+      updateAccount((current) => ({
+        ...current,
+        priorities: draft.priorities,
+        profile: {
+          profileId: current.profile?.profileId ?? 'profile-demo',
+          photoUrl: current.photoUri ?? null,
+          priorities: draft.priorities,
+          heightCm: draft.heightCm,
+          weightKg: draft.weightKg,
+          sleepHours: draft.sleepHours ?? null,
+          inbody: draft.inbody ?? null,
+        },
+      }));
+      return { ok: true };
+    }
+    if (!photoUri) return { ok: false, message: '사진을 먼저 등록해주세요.' };
+
+    try {
+      // 이미 등록된 프로필의 사진을 그대로 쓰는 경우(수정)에는 다시 올리지 않는다.
+      const photoKey = photoUri.startsWith('http')
+        ? undefined
+        : await backend.uploadImage('PROFILE_PHOTO', photoUri);
+
+      const created = photoKey
+        ? await backend.createProfile({ photoKey, ...draft })
+        : await backend.updateProfileBody({ weightKg: draft.weightKg, sleepHours: draft.sleepHours, inbody: draft.inbody });
+
+      setProfileState(created);
+      setPriorities(created.priorities);
+      setPhotoUri(created.photoUrl ?? undefined);
+      return { ok: true };
+    } catch (error) {
+      return failure(error, '프로필을 저장하지 못했어요.');
+    }
+  }, [mode, photoUri, updateAccount]);
+
+  /**
+   * 사진만 바꾼다.
+   *
+   * 🔴 예전에는 사진을 바꾸려면 `/photo` → `/priority` → `/body-info` → `/optional-info`를
+   * 다시 걸어 **프로필 전체를 새로 만들어야** 했다(`POST /profiles`가 전부를 요구한다).
+   * 사진 한 장 바꾸자고 키·체중·수면을 처음부터 다시 입력하던 이유다.
+   *
+   * 얼굴 인식 같은 검증은 등록과 똑같이 서버가 한다 — 여기가 뒷문이 되면 안 된다.
+   */
+  const changePhoto = useCallback(async (uri: string): Promise<ActionResult> => {
+    if (mode === 'mock') { setPhotoUri(uri); return { ok: true }; }
+    try {
+      const photoKey = await backend.uploadImage('PROFILE_PHOTO', uri);
+      const updated = await backend.replaceProfilePhoto(photoKey);
+      setProfileState(updated);
+      setPriorities(updated.priorities);
+      setPhotoUri(updated.photoUrl ?? undefined);
+      return { ok: true };
+    } catch (error) {
+      return failure(error, '사진을 바꾸지 못했어요.');
+    }
+  }, [mode]);
+
+  /**
+   * 우선순위만 바꾼다. 사진·신체 정보는 건드리지 않는다.
+   *
+   * **배열 순서가 곧 1·2·3순위다.** 정렬을 바꾸지 않는다. (AGENTS.md 규칙 3)
+   */
+  const savePriorities = useCallback(async (next: Category[]): Promise<ActionResult> => {
+    if (next.length !== 3) return { ok: false, message: '우선순위 3개를 모두 골라주세요.' };
+
+    if (mode === 'mock') { updateAccount((current) => ({ ...current, priorities: next })); return { ok: true }; }
+    try {
+      const updated = await backend.updatePriorities(next);
+      setProfileState(updated);
+      setPriorities(updated.priorities);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '우선순위를 저장하지 못했어요.') };
+    }
+  }, [mode, updateAccount]);
+
+  /**
+   * 인바디 서류 사진 → OCR 판독값.
+   *
+   * 서류 사진도 presigned URL로 스토리지에 직접 올린다(AGENTS.md 규칙 10). 서버는 읽기만
+   * 하고 저장하지 않으므로, 사용자가 폼에서 확인한 뒤 프로필 저장으로 넘겨야 값이 남는다.
+   */
+  const scanInbody = useCallback(async (uri: string): Promise<InbodyScanResult> => {
+    // mock 모드에는 AI가 없다. 가짜 판독값을 만들지 않고 직접 입력으로 보낸다. (AGENTS.md 규칙 15)
+    if (mode === 'mock') return { ok: false, message: '인바디 자동 입력은 서버에 연결했을 때만 쓸 수 있어요. 아래에 직접 입력해주세요.' };
+    try {
+      const documentKey = await backend.uploadImage('INBODY_DOCUMENT', uri);
+      return { ok: true, scan: await backend.scanInbody(documentKey) };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '인바디 정보를 읽지 못했어요. 아래에 직접 입력해주세요.') };
+    }
+  }, [mode]);
+
+  // ---------------------------------------------------------------- 고점 분석
+
+  /** 진행 상황을 화면에 옮긴다. 시작·이어하기·키워드 확정이 함께 쓴다. */
+  const onProgress = useCallback((progress: backend.AnalysisProgress) => {
+    setAnalysisStatusText(progress.message);
+    setAnalysisPercent(progress.progress);
+  }, []);
+
+  /** 키워드가 준비될 때까지 기다렸다가 목록을 받아 둔다. */
+  const awaitKeywords = useCallback(async (id: string) => {
+    await backend.pollAnalysis(id, (progress) => progress.status === 'KEYWORDS_READY', onProgress);
+    const keywords = await backend.getKeywords(id);
+    setAnalysisKeywords(keywords.keywords.map((keyword) => ({ id: keyword.id, label: keyword.label })));
+  }, [onProgress]);
+
+  const startAnalysis = useCallback(async (inputText: string, imageUris: string[]): Promise<StartAnalysisResult> => {
+    if (mode === 'mock') {
+      setAnalysisKeywords(mockKeywords);
+      setAnalysisStatusText('키워드를 찾고 있어요.');
+      return { ok: true };
+    }
+    try {
+      setAnalysisStatusText('참고 사진을 올리고 있어요.');
+      const keys: string[] = [];
+      for (const uri of imageUris) keys.push(await backend.uploadImage('REFERENCE_IMAGE', uri));
+
+      const accepted = await backend.createAnalysis(inputText, keys);
+      analysisId.current = accepted.analysisId;
+      setAnalysisKeywords([]);
+
+      await awaitKeywords(accepted.analysisId);
+      return { ok: true };
+    } catch (error) {
+      setAnalysisStatusText('');
+      /*
+        화면이 코드를 보고 분기한다.
+
+        - `NO_ANALYSIS_CREDIT`(402) — "실패했어요" 대신 구독 안내를 띄운다.
+        - `ANALYSIS_INVALID_STATE`(409) — 진행 중인 분석이 남아 있다. 그 id를
+          함께 실어 보내야 "이어서 하기 / 버리고 새로 시작"을 물을 수 있다.
+      */
+      return { ...failure(error, '분석을 시작하지 못했어요.'), pendingAnalysisId: pendingAnalysisIdOf(error) };
+    }
+  }, [awaitKeywords, mode]);
+
+  // ---------------------------------------------------------------- 구독
+
+  const loadSubscription = useCallback(async () => {
+    if (mode === 'mock') return undefined;
+    try {
+      const next = await backend.getSubscription();
+      setSubscription(next);
+      return next;
+    } catch {
+      // 구독을 못 읽는다고 화면을 막지 않는다. 분석 자체는 서버가 다시 검사한다.
+      return undefined;
+    }
+  }, [mode]);
+
+  const subscribeToPlan = useCallback(async (plan: SubscriptionPlan): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      setSubscription(await backend.subscribe(plan));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '구독하지 못했어요.') };
+    }
+  }, [mode]);
+
+  /**
+   * 비교 이미지가 끝날 때까지 뒤에서 지켜본다.
+   *
+   * 실측 35초쯤 걸린다. 사용자를 그동안 붙잡아두지 않고 결과 화면을 먼저 보여준 뒤
+   * 이미지 자리만 교체한다. 실패하면 그대로 두면 되므로 오류를 삼킨다.
+   */
+  const watchImage = useCallback(async (id: string) => {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        const progress = await backend.getAnalysisProgress(id);
+        if (progress.imageStatus === 'PENDING') continue;
+        setResult(await backend.getResult(id));
+        return;
+      } catch {
+        return;
+      }
+    }
+  }, []);
+
+  /** 결과가 나올 때까지 기다렸다가 화면에 올린다. 키워드 확정과 이어하기가 함께 쓴다. */
+  const awaitResult = useCallback(async (id: string) => {
+    await backend.pollAnalysis(id, (progress) => progress.status === 'DONE', onProgress);
+    const loaded = await backend.getResult(id);
+    setResult(loaded);
+    setSaved(loaded.saved);
+
+    // 텍스트 결과는 나왔지만 비교 이미지는 아직 만들어지는 중일 수 있다.
+    // 결과 화면을 먼저 띄우고, 이미지가 도착하면 조용히 교체한다. (API.md §6.4)
+    if (loaded.comparisonImage.status === 'PENDING') void watchImage(id);
+  }, [onProgress, watchImage]);
+
+  const confirmKeywords = useCallback(async (keywordIds: string[]): Promise<ActionResult> => {
+    if (mode === 'mock') {
+      setResult(demoResult); setSaved(false); setTasks(mockTasks.map((task) => ({ ...task })));
+      updateAccount((current) => ({ ...current, hasAnalysis: true, saved: false, tasks: mockTasks.map((task) => ({ ...task })) }));
+      return { ok: true };
+    }
+    const id = analysisId.current;
+    if (!id) return { ok: false, message: '분석 정보를 찾지 못했어요.' };
+
+    try {
+      await backend.selectKeywords(id, keywordIds);
+      await awaitResult(id);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '결과를 만들지 못했어요.') };
+    }
+  }, [awaitResult, mode, updateAccount]);
+
+  /**
+   * 진행 중이던 분석을 이어서 진행한다.
+   *
+   * <b>어디로 갈지는 남아 있던 분석의 상태가 정한다.</b> 키워드를 고르다 만 것이면
+   * 다시 고르게 하고, 이미 결과를 만들고 있었다면 기다렸다가 결과로 보낸다 —
+   * 그 경우 키워드를 다시 묻는 것은 틀린 화면이다(서버가 409로 막는다).
+   */
+  const resumeAnalysis = useCallback(async (id: string): Promise<ResumeAnalysisResult> => {
+    if (mode === 'mock') return { ok: true, phase: 'keywords' };
+    try {
+      analysisId.current = id;
+      setAnalysisKeywords([]);
+
+      const current = await backend.getAnalysisProgress(id);
+      onProgress(current);
+      if (current.status === 'GENERATING' || current.status === 'DONE') {
+        await awaitResult(id);
+        return { ok: true, phase: 'done' };
+      }
+      await awaitKeywords(id);
+      return { ok: true, phase: 'keywords' };
+    } catch (error) {
+      setAnalysisStatusText('');
+      return failure(error, '이전 분석을 이어가지 못했어요.');
+    }
+  }, [awaitKeywords, awaitResult, mode, onProgress]);
+
+  /**
+   * 진행 중이던 분석을 버린다.
+   *
+   * 이것을 해야 새 분석을 시작할 수 있다 — 서버가 사용자당 진행 중 분석을 하나로
+   * 묶어 두기 때문이다. <b>분석권은 차감되지 않는다</b>(결과를 받지 못했다).
+   */
+  const discardAnalysis = useCallback(async (id: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      await backend.cancelAnalysis(id);
+      if (analysisId.current === id) analysisId.current = undefined;
+      return { ok: true };
+    } catch (error) {
+      return failure(error, '이전 분석을 버리지 못했어요.');
+    }
+  }, [mode]);
+
+  const saveToDrawer = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') { setSaved(true); updateAccount((current) => ({ ...current, saved: true })); return { ok: true }; }
+    const id = analysisId.current;
+    if (!id) return { ok: false, message: '저장할 결과가 없어요.' };
+    try {
+      await backend.saveResultToDrawer(id);
+      setSaved(true);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '서랍에 저장하지 못했어요.') };
+    }
+  }, [mode, updateAccount]);
+
+  /**
+   * 분석·결과·서랍 항목을 전부 지운다.
+   *
+   * **목표는 남는다.** 사용자가 몇 주에 걸쳐 쌓은 완료 기록을 분석 삭제의 부수 효과로
+   * 잃게 두지 않는다는 결정이다. 시안 11의 "*계정, 목표 정보는 삭제되지 않아요"가
+   * 이 약속이고, 스키마도 V4에서 그렇게 바뀌었다.
+   */
+  const deleteAllAnalyses = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') {
+      updateAccount((current) => ({ ...current, hasAnalysis: false, saved: false }));
+      return { ok: true };
+    }
+    try {
+      await backend.deleteAllAnalyses();
+      setResult(undefined);
+      setSaved(false);
+      analysisId.current = undefined;
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '분석 정보를 삭제하지 못했어요.') };
+    }
+  }, [mode, updateAccount]);
+
+  // ---------------------------------------------------------------- 서랍
+
+  const loadDrawer = useCallback(async (): Promise<DrawerSections> => {
+    if (mode === 'mock') return mockDrawer(account);
+    // 서랍이 비는 것은 정상이다. 못 불러온 것과 구분해야 하므로 오류는 화면으로 올린다.
+    return backend.getDrawer();
+  }, [account, mode]);
+
+  const openSavedResult = useCallback(async (savedResultId: string): Promise<ActionResult> => {
+    // mock 모드의 서랍 항목은 데모 결과 하나뿐이라 이미 올라와 있다.
+    if (mode === 'mock') return { ok: true };
+    try {
+      const loaded = await backend.getSavedResult(savedResultId);
+      setResult(loaded);
+      setSaved(true);
+      analysisId.current = loaded.analysisId;
+      // 다른 결과로 갈아탔으므로 앞 결과의 목표를 재사용하면 안 된다.
+      setActiveRoutineId(undefined);
+      setTasks([]);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '저장한 결과를 불러오지 못했어요.') };
+    }
+  }, [mode, setActiveRoutineId]);
+
+  const peekSavedResult = useCallback(async (savedResultId: string): Promise<AnalysisResult | undefined> => {
+    if (mode === 'mock') return demoResult;
+    try {
+      return await backend.getSavedResult(savedResultId);
+    } catch {
+      // 홈의 곁다리 카드라 조용히 접는다. 이것 때문에 홈 전체가 오류를 띄우면 안 된다.
+      return undefined;
+    }
+  }, [mode]);
+
+  const deleteSavedResult = useCallback(async (savedResultId: string, resultId?: string): Promise<ActionResult> => {
+    if (mode === 'mock') { updateAccount((current) => ({ ...current, saved: false })); return { ok: true }; }
+    try {
+      await backend.deleteSavedResult(savedResultId);
+      // 서버에서만 지우면 **메모리의 result가 남아** 홈의 `최근 분석 결과`가
+      // 지운 것을 계속 그린다. 화면에 올라와 있던 결과였다면 함께 내린다.
+      if (resultId && result?.resultId === resultId) { setResult(undefined); setSaved(false); }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '서랍에서 지우지 못했어요.') };
+    }
+  }, [mode, result, updateAccount]);
+
+  // ---------------------------------------------------------------- 알림 설정
+
+  const loadNotificationSettings = useCallback(async () => {
+    if (mode === 'mock') return;
+    const loaded = await backend.getNotificationSettings().catch(() => undefined);
+    if (loaded) setNotificationSettings(loaded);
+  }, [mode]);
+
+  const updateNotificationSettings = useCallback(async (patch: Partial<NotificationSettings>): Promise<ActionResult> => {
+    // 낙관적 갱신 — 토글은 즉시 움직이고 서버 확인이 뒤따른다.
+    let previous: NotificationSettings = { enabled: false, defaultTime: '21:00' };
+    setNotificationSettings((current) => { previous = current; return { ...current, ...patch }; });
+    if (mode === 'mock') return { ok: true };
+    try {
+      setNotificationSettings(await backend.updateNotificationSettings(patch));
+    } catch (error) {
+      setNotificationSettings(previous);
+      return { ok: false, message: messageOf(error, '알림 설정을 저장하지 못했어요.') };
+    }
+
+    /*
+      **켤 때 기기를 등록한다.** 토큰이 없으면 서버가 보낼 곳이 없어 설정만
+      켜진 채 알림이 오지 않는다. 권한을 묻는 것도 이 순간이 맞다 — 앱을 열자마자
+      물으면 무엇에 쓰는지 모르는 상태에서 거절당하고, 거절한 권한은 기기 설정에
+      들어가야 되돌릴 수 있다.
+
+      **등록에 실패해도 설정은 켜 둔다.** 웹에서 켜고 휴대폰에서 받는 것이
+      정상적인 흐름이라, 지금 이 기기가 못 받는다고 설정 자체를 되돌리면
+      사용자가 켤 방법이 없어진다. 대신 왜 이 기기로는 안 오는지 알려준다.
+    */
+    if (patch.enabled) {
+      const push = await registerForPush();
+      if (!push.ok) return { ok: true, message: pushMessage(push), code: push.reason };
+    }
+    return { ok: true };
+  }, [mode]);
+
+  // ---------------------------------------------------------------- 목표
+
+  const ensureRoutine = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') { return { ok: true }; }
+    if (routineId.current) return { ok: true };
+    if (!result) return { ok: false, message: '먼저 분석 결과를 만들어주세요.' };
+
+    try {
+      const created = await backend.createRoutineFromAnalysis(result.resultId);
+      const routine = created.routines[0];
+      if (!routine) return { ok: false, message: '목표를 만들지 못했어요.' };
+      setActiveRoutineId(routine.routineId);
+      setRoutines((current) => [routine, ...current.filter((item) => item.routineId !== routine.routineId)]);
+
+      const detail = await backend.getRoutine(routine.routineId);
+      setTasks(detail.tasks);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 만들지 못했어요.') };
+    }
+  }, [mode, result, setActiveRoutineId]);
+
+  /**
+   * 목표 목록을 읽는다.
+   *
+   * <b>못 불러온 것과 없는 것을 구분해 돌려준다.</b> 예전에는 실패를 삼키고
+   * 빈 목록을 그대로 뒀는데, 그러면 서버가 죽었을 때 화면이 "아직 만든 목표가
+   * 없어요"라고 **단정한다.** 목표는 멀쩡히 있는데 사라졌다고 말하는 셈이다.
+   */
+  const loadRoutines = useCallback(async (): Promise<ActionResult> => {
+    if (mode === 'mock') { setRoutines([]); return { ok: true }; }
+    try {
+      setRoutines((await backend.listRoutines()).items);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 불러오지 못했어요.') };
+    }
+  }, [mode]);
+
+  /**
+   * 고른 목표들의 태스크를 한 번에 올린다.
+   *
+   * <b>태스크에 `routineId`를 붙여 둔다.</b> 서버 응답에는 없지만, 합친 목록에서
+   * 오늘 회차를 목표별로 고르려면 출처를 알아야 한다. 이것이 없으면 시작일이
+   * 다른 목표가 통째로 사라진다. (`lib/tasks.ts`)
+   *
+   * 하나라도 실패하면 **성공한 것만 올린다.** 목표 셋 중 하나를 못 읽었다고
+   * 나머지 둘까지 못 보여줄 이유가 없다.
+   */
+  const openRoutines = useCallback(async (ids: string[]): Promise<ActionResult> => {
+    if (mode === 'mock') { setActiveRoutineIds(ids); return { ok: true }; }
+    if (!ids.length) { setActiveRoutineIds([]); setTasks([]); return { ok: true }; }
+    const loaded = await Promise.all(ids.map((id) => backend.getRoutine(id)
+      .then((detail) => detail.tasks.map((task) => ({ ...task, routineId: id })))
+      .catch(() => undefined)));
+    const ok = ids.filter((_, index) => loaded[index]);
+    if (!ok.length) return { ok: false, message: '목표를 불러오지 못했어요.' };
+    setActiveRoutineIds(ok);
+    setTasks(loaded.flatMap((tasks) => tasks ?? []));
+    return ok.length === ids.length
+      ? { ok: true }
+      : { ok: false, message: '일부 목표를 불러오지 못했어요.' };
+  }, [mode, setActiveRoutineIds]);
+
+  const openRoutine = useCallback((id: string) => openRoutines([id]), [openRoutines]);
+
+  /**
+   * 경로 B — 분석 없이 카테고리와 기간만으로 목표를 만든다.
+   *
+   * 카테고리마다 목표가 1개씩 생기므로 응답은 배열이다. (API.md §6.6)
+   * 최소 기간은 화면에서 이미 막지만 서버도 같은 규칙을 갖고 있다.
+   */
+  const createRoutines = useCallback(async (items: RoutinePlanItem[]): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: false, message: '목표 생성은 서버에 연결했을 때만 쓸 수 있어요.' };
+    if (!items.length) return { ok: false, message: '카테고리를 1개 이상 골라주세요.' };
+
+    const invalid = items.find((item) => item.months < MIN_MONTHS[item.category]);
+    if (invalid) return { ok: false, message: `${invalid.category} 카테고리는 최소 ${MIN_MONTHS[invalid.category]}개월부터 시작해요.` };
+
+    try {
+      const created = await backend.createStandaloneRoutine(
+        items.map((item) => ({
+          category: item.category,
+          durationWeeks: item.months * WEEKS_PER_MONTH,
+          goalText: item.goalText?.trim() || undefined,
+          // 체형이 아니면 보내지 않는다. 서버도 버리지만 여기서 거르는 편이 명확하다.
+          targetWeightKg: item.category === 'BODY' ? item.targetWeightKg : undefined,
+        })),
+      );
+      setRoutines((current) => [...created.routines, ...current]);
+      // 방금 만든 것 중 첫 번째를 바로 펼쳐 보여준다. 빈 화면으로 돌려보내지 않는다.
+      const first = created.routines[0];
+      if (first) await openRoutine(first.routineId);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 만들지 못했어요.') };
+    }
+  }, [mode, openRoutine]);
+
+  const [routineDraft, setRoutineDraft] = useState<RoutinePlanItem[]>([]);
+
+  const updateRoutineDraft = useCallback((category: Category, patch: Partial<RoutinePlanItem>) => {
+    setRoutineDraft((current) => current.map((item) => (item.category === category ? { ...item, ...patch } : item)));
+  }, []);
+
+  const reorderRoutinesFn = useCallback(async (routineIds: string[]): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    // 화면은 이미 새 순서로 그려져 있다. 서버가 거절하면 목록을 되돌린다.
+    const before = routines;
+    setRoutines((current) => routineIds.map((id) => current.find((item) => item.routineId === id)!).filter(Boolean));
+    try {
+      const updated = await backend.reorderRoutines(routineIds);
+      setRoutines(updated.items);
+      return { ok: true };
+    } catch (error) {
+      setRoutines(before);
+      return { ok: false, message: messageOf(error, '순서를 저장하지 못했어요.') };
+    }
+  }, [mode, routines]);
+
+  const renameRoutine = useCallback(async (id: string, title: string): Promise<ActionResult> => {
+    const trimmed = title.trim();
+    if (!trimmed) return { ok: false, message: '목표 이름을 입력해주세요.' };
+    if (mode === 'mock') return { ok: true };
+    try {
+      const updated = await backend.renameRoutine(id, trimmed);
+      // 서버가 준 요약으로 갈아끼운다. 목록을 다시 부르지 않아도 화면이 맞는다.
+      setRoutines((current) => current.map((item) => (item.routineId === id ? updated : item)));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표 이름을 바꾸지 못했어요.') };
+    }
+  }, [mode]);
+
+  /**
+   * 목표별 알림 시각. `undefined`를 주면 기본 시각을 따르도록 되돌린다.
+   *
+   * 켜고 끄는 것은 `updateNotificationSettings`가 갖는다 — 사용자 단위다.
+   */
+  const setRoutineNotifyTime = useCallback(async (id: string, notifyTime?: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      const updated = await backend.setRoutineNotifyTime(id, notifyTime ?? null);
+      // 서버가 준 요약으로 갈아끼운다. 목록을 다시 부르지 않아도 화면이 맞는다.
+      setRoutines((current) => current.map((item) => (item.routineId === id ? updated : item)));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '알림 시각을 바꾸지 못했어요.') };
+    }
+  }, [mode]);
+
+  /**
+   * 목표 삭제.
+   *
+   * 🔴 <b>보고 있던 목록에서도 빼야 한다.</b> 예전에는 지운 것이 <b>첫 번째로 고른
+   * 목표일 때만</b> 정리했다({@code routineId.current === id}). 홈에서 목표를 둘
+   * 골라 놓고 두 번째를 지우면, 목록에서는 사라지는데 <b>태스크는 그대로 남아</b>
+   * 진행도의 총 갯수가 줄지 않았다. 지운 목표의 할 일을 계속 세고 있었던 셈이다.
+   *
+   * 남은 것이 없으면 통째로 비운다. 태스크의 {@code routineId}는 여러 목표를 합쳐
+   * 올릴 때만 붙어서({@code openRoutines}), 하나만 보고 있었으면 걸러낼 수가 없다.
+   * 비워 두면 홈이 남은 목표를 다시 읽어 채운다.
+   */
+  const deleteRoutine = useCallback(async (id: string): Promise<ActionResult> => {
+    if (mode === 'mock') return { ok: true };
+    try {
+      await backend.deleteRoutine(id);
+      setRoutines((current) => current.filter((item) => item.routineId !== id));
+
+      const remaining = activeRoutineIds.filter((item) => item !== id);
+      // 보고 있던 목표가 아니면 태스크를 건드릴 이유가 없다.
+      if (remaining.length === activeRoutineIds.length) return { ok: true };
+
+      setActiveRoutineIds(remaining);
+      if (remaining.length) setTasks((current) => current.filter((task) => task.routineId !== id));
+      else setTasks([]);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error, '목표를 삭제하지 못했어요.') };
+    }
+  }, [activeRoutineIds, mode, setActiveRoutineIds]);
+
+  const toggleTask = useCallback((taskId: string) => {
+    if (mode === 'mock') {
+      updateAccount((current) => ({
+        ...current,
+        tasks: current.tasks.map((task) => task.taskId === taskId
+          ? { ...task, status: task.status === 'DONE' ? 'PENDING' : 'DONE' }
+          : task),
+      }));
+      return;
+    }
+    // 낙관적 갱신 — 체크는 즉시 보여주고 서버 확인은 뒤따른다.
+    let next: 'DONE' | 'PENDING' = 'DONE';
+    setTasks((current) => current.map((task) => {
+      if (task.taskId !== taskId) return task;
+      next = task.status === 'DONE' ? 'PENDING' : 'DONE';
+      return { ...task, status: next };
+    }));
+    void backend.updateTaskStatus(taskId, next).catch(() => {
+      // 실패하면 되돌린다. 화면과 서버가 갈라진 채로 두지 않는다.
+      setTasks((current) => current.map((task) => task.taskId === taskId
+        ? { ...task, status: next === 'DONE' ? 'PENDING' : 'DONE' }
+        : task));
+    });
+  }, [mode, updateAccount]);
+
+  // ---------------------------------------------------------------- 조립
+
+  const serverMode = mode === 'server';
 
   const value = useMemo<AppStateValue>(() => ({
-    currentAccountId, register, login, logout, deleteAccount,
-    nickname: account.nickname,
-    setNickname: (nickname) => updateAccount((current) => ({ ...current, nickname })),
-    photoUri: account.photoUri,
-    setPhotoUri: (photoUri) => updateAccount((current) => ({ ...current, photoUri })),
-    priorities: account.priorities,
-    setPriorities: (priorities) => updateAccount((current) => ({ ...current, priorities })),
-    profile: account.profile,
-    setProfile: (profile) => updateAccount((current) => ({ ...current, profile })),
-    result: demoResult,
-    hasAnalysis: account.hasAnalysis,
-    completeAnalysis,
-    saved: account.saved,
-    setSaved: (saved) => updateAccount((current) => ({ ...current, saved })),
-    tasks: account.tasks,
-    toggleTask: (taskId) => updateAccount((current) => ({ ...current, tasks: current.tasks.map((task) => task.taskId === taskId
-      ? { ...task, status: task.status === 'DONE' ? 'PENDING' : 'DONE' }
-      : task) })),
-  }), [account, completeAnalysis, currentAccountId, deleteAccount, login, logout, register, updateAccount]);
+    ready,
+    mode,
+    currentAccountId,
+    register, login, loginWithGoogle, googleSignup, clearGoogleSignup, logout, deleteAccount,
+    nickname: serverMode ? nickname : account.nickname,
+    setNickname,
+    me,
+    photoUri: serverMode ? photoUri : account.photoUri,
+    setPhotoUri,
+    priorities: serverMode ? priorities : account.priorities,
+    setPriorities,
+    savePriorities,
+    changePhoto,
+    profile: serverMode ? profile : account.profile,
+    saveProfile,
+    scanInbody,
+    analysisStatusText,
+    analysisPercent,
+    analysisKeywords,
+    startAnalysis,
+    resumeAnalysis,
+    discardAnalysis,
+    confirmKeywords,
+    subscription,
+    loadSubscription,
+    subscribeToPlan,
+    result: serverMode ? result : (account.hasAnalysis ? demoResult : undefined),
+    hasAnalysis: serverMode ? Boolean(result) : account.hasAnalysis,
+    saved: serverMode ? saved : account.saved,
+    saveToDrawer,
+    deleteAllAnalyses,
+    loadDrawer,
+    openSavedResult,
+    peekSavedResult,
+    deleteSavedResult,
+    notificationSettings,
+    loadNotificationSettings,
+    updateNotificationSettings,
+    tasks: serverMode ? tasks : account.tasks,
+    toggleTask,
+    ensureRoutine,
+    routines,
+    loadRoutines,
+    openRoutine,
+    activeRoutineId,
+    activeRoutineIds,
+    openRoutines,
+    createRoutines,
+    renameRoutine,
+    setRoutineNotifyTime,
+    routineDraft,
+    setRoutineDraft,
+    updateRoutineDraft,
+    reorderRoutines: reorderRoutinesFn,
+    deleteRoutine,
+  }), [
+    account, activeRoutineId, activeRoutineIds, analysisKeywords, analysisPercent, analysisStatusText, confirmKeywords, createRoutines, currentAccountId,
+    deleteAccount, deleteAllAnalyses, deleteRoutine, deleteSavedResult, ensureRoutine, loadDrawer,
+    loadNotificationSettings, loadRoutines, login, loginWithGoogle, googleSignup, clearGoogleSignup, logout, me, mode, nickname, notificationSettings,
+    openRoutine, openRoutines, openSavedResult, peekSavedResult, photoUri, setRoutineNotifyTime, priorities, profile, ready, register, renameRoutine, reorderRoutinesFn,
+    result, routineDraft, routines, updateRoutineDraft,
+    saveProfile, savePriorities, changePhoto, saveToDrawer, saved, scanInbody, serverMode, setNickname,
+    startAnalysis, resumeAnalysis, discardAnalysis, subscribeToPlan, subscription, loadSubscription, tasks, toggleTask, updateNotificationSettings,
+  ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
@@ -179,3 +1255,6 @@ export function useAppState() {
   if (!value) throw new Error('useAppState must be used inside AppStateProvider');
   return value;
 }
+
+/** 현재 로그인 세션의 사용자 id. 화면 밖(서비스)에서 필요할 때 쓴다. */
+export const signedInUserId = () => currentSession()?.userId;

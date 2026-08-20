@@ -76,12 +76,41 @@ OpenAI 키, 스토리지 Secret, JWT Secret, PG 키 등 비밀값은 프론트 �
 
 ### 현재 연결 지점
 
-- 공통 HTTP 래퍼: `src/services/api.ts`
+- 공통 HTTP 래퍼: `src/services/api.ts` — 봉투 해제 · 토큰 주입 · 401 시 refresh 후 1회 재시도 · 타임아웃
+- 세션 보관: `src/services/session.ts` — AsyncStorage
+- **백엔드 어댑터: `src/services/backend.ts`** — 엔드포인트별 타입 함수
 - mock 서비스: `src/services/mockApi.ts`
 - API 공통 타입: `src/types/api.ts`
 - 화면/세션 상태: `src/state/AppState.tsx`
 
-`EXPO_PUBLIC_API_BASE_URL`이 없으면 `isMockMode`가 `true`입니다. 현재 화면 흐름은 대부분 `AppState`와 mock 서비스에 연결되어 있으므로, 실제 연동 시 화면에서 `fetch`를 직접 추가하지 말고 서비스 인터페이스 아래에 HTTP adapter를 붙여 교체해야 합니다.
+`EXPO_PUBLIC_API_BASE_URL`이 **없으면 mock, 있으면 실제 백엔드**에 붙습니다
+(`AppState`의 `mode`가 `'mock' | 'server'`). 화면은 `fetch`를 직접 부르지 않고
+`useAppState()`의 동작만 호출합니다.
+
+붙어 있는 흐름 — 회원가입·로그인·로그아웃·계정삭제 / 닉네임 / 사진 업로드 →
+프로필 등록 / 고점 분석(생성 → 폴링 → 키워드 선택 → 결과) / 서랍 저장 /
+목표 생성·완료 체크.
+
+`src/services/backend.ts`에는 화면이 아직 쓰지 않는 함수도 있습니다 —
+`getDrawer` · `getSavedResult` · `deleteSavedResult` · `scanInbody` ·
+`createStandaloneRoutine` · `listRoutines` · `deleteRoutine` ·
+`updateNotificationSettings` · `deleteAllAnalyses`. 해당 화면을 붙일 때
+그대로 호출하면 됩니다.
+
+#### 로컬에서 백엔드와 함께 실행
+
+```bash
+# 1) 백엔드 (다른 터미널)
+cd backend && SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+
+# 2) 프론트
+echo "EXPO_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1" > frontend/.env
+cd frontend && npm install && npx expo start --web
+```
+
+- **Expo 웹은 8081 포트**를 쓰므로 백엔드의 `CORS_ALLOWED_ORIGINS`에 `http://localhost:8081`을 추가해야 합니다.
+- **실기기에서는 `localhost`가 아니라 PC의 LAN IP**를 넣어야 합니다.
+- 웹 브라우저에서 사진 업로드를 시험하려면 **S3 버킷 CORS의 `AllowedOrigins`에도** 그 주소가 있어야 합니다. 실기기는 CORS 대상이 아니라 그대로 동작합니다.
 
 ### 반드시 맞춰야 하는 규칙
 

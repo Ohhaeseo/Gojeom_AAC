@@ -54,14 +54,27 @@ cors:
 
 jwt:
   secret: ${JWT_SECRET}
+  # 액세스 토큰은 짧게 둔다. 만료되면 프론트가 refresh 로 자동 갱신하므로
+  # 사용자는 이 값을 체감하지 않는다. (services/api.ts)
+  #
+  # 🔴 **로그인 유지 시간을 정하는 것은 아래 refresh 다.** 한 번 로그인하면
+  # 그 기간 안에는 앱을 껐다 켜도 다시 로그인하지 않는다. 그리고 갱신할 때마다
+  # 기간이 다시 채워지므로, 그 주기 안에 한 번씩만 열면 계속 유지된다.
   access-minutes: 30
   refresh-days: 14
+
+google:
+  # 프론트와 공유하는 웹 클라이언트 ID. 시크릿은 필요 없다 (ID 토큰 검증 방식).
+  # 비어 있으면 Google 로그인만 비활성화되고 나머지는 정상 동작한다.
+  client-id: ${GOOGLE_CLIENT_ID:}
 
 openai:
   api-key: ${OPENAI_API_KEY}
   base-url: https://api.openai.com/v1
   model:
     text: ${OPENAI_MODEL_TEXT}
+    # 미설정이면 text로 떨어진다 — 지금과 같은 동작이다.
+    vision: ${OPENAI_MODEL_VISION:${OPENAI_MODEL_TEXT}}
     image: ${OPENAI_MODEL_IMAGE}
   timeout:
     connect-seconds: 5
