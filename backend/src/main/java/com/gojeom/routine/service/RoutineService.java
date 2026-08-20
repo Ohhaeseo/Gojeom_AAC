@@ -116,14 +116,11 @@ public class RoutineService {
         RoutinePlan plan = generate(() -> aiTextService.generate(
                 prompt.forAnalysis(context.profileFacts(), context.resultDigest(), context.priorities()),
                 RoutinePlan::userFacingText,
-                p -> {
-                    requireTasks(p.tasks().size());
-                    requireGroundedTasks(p.tasks());
-                }));
+                p -> requireTasks(p.tasks().size())));
 
         RoutineSummary summary = routineTx.persistFromAnalysis(userId, context.analysisResultId(),
                 plan.title(), plan.dietGuide(), durationOf(plan),
-                ensureCore(plan.tasks()), request.startDate());
+                normalize(plan.tasks(), null), request.startDate());
 
         return new RoutineCreateResponse(List.of(summary));
     }
@@ -194,7 +191,8 @@ public class RoutineService {
                 p -> requireExactCategories(p, items.keySet())));
 
         List<PlannedRoutine> grounded = plan.routines().stream()
-                .map(r -> new PlannedRoutine(r.category(), r.title(), r.dietGuide(), ensureCore(r.tasks())))
+                .map(r -> new PlannedRoutine(r.category(), r.title(), r.dietGuide(),
+                        normalize(r.tasks(), r.category())))
                 .toList();
 
         List<RoutineSummary> summaries =
@@ -280,16 +278,6 @@ public class RoutineService {
         }
         for (PlannedRoutine routine : plan.routines()) {
             requireTasks(routine.tasks().size());
-            /*
-              🔴 <b>목표의 카테고리로 검사한다.</b> 경로 B는 태스크의 category를
-              AI 출력이 아니라 <b>목표의 카테고리로 덮어쓴다</b>({@code persistStandalone}).
-              그래서 AI가 준 category로 검사하면 통과해 놓고, 저장된 뒤에는 체형 목표에
-              건강 문제 코드가 붙어 있게 된다.
-
-              실측에서 그렇게 나왔다 — "물 마시기"에 HYDRATION_GAP(건강)이 붙은 채
-              체형 목표로 저장됐다.
-            */
-            requireGroundedTasks(routine.tasks(), routine.category());
         }
     }
 
@@ -308,46 +296,48 @@ public class RoutineService {
     }
 
     /**
-     * 근거가 <b>제자리에 있는지</b> 본다. (루틴 고도화 1단계)
+     * AI가 준 태스크를 <b>저장할 수 있는 모양으로 다듬는다.</b>
      *
-     * <p>스키마가 {@code problemCode}를 enum으로 묶어 <b>없는 문제를 지어내는 것</b>은
-     * 막았지만, <b>엉뚱한 카테고리의 문제를 고르는 것</b>은 막지 못한다 — 체형 태스크에
-     * {@code REDNESS_TENDENCY}(피부)를 붙이는 식이다. 그러면 "왜 이 행동인가"가
-     * 무너지므로 다시 만들게 한다.
+     * <p>🔴 <b>여기서 재생성하지 않는다.</b> 예전에는 문제 코드가 카테고리와 어긋나면
+     * {@link GuardrailViolation}을 던졌는데, 모델이 두 번 다 같은 답을 내면
+     * <b>루틴 생성이 통째로 500이 됐다.</b> 운영에서 실제로 그렇게 막혔다 —
+     * 체형 목표의 "가벼운 풀기"에 {@code RECOVERY_GAP}(건강)이 붙었을 뿐인데
+     * 사용자는 목표를 하나도 받지 못했다.
      *
-     * <p>{@code reason}도 함께 본다. 스키마의 {@code type: string}은 빈 문자열을
-     * 통과시킨다 — 근거를 요구해 놓고 빈칸을 받으면 요구하지 않은 것과 같다.
-     */
-    private static void requireGroundedTasks(List<PlannedTask> tasks) {
-        requireGroundedTasks(tasks, null);
-    }
-
-    /**
+     * <p><b>라벨이 어긋난 것과 내용이 잘못된 것은 다르다.</b> 지어내기를 막는 힘은
+     * 스키마의 {@code enum}에서 나온다 — 목록 밖은 애초에 고를 수 없다. 카테고리가
+     * 어긋난 것은 <b>분류가 애매한 것</b>이지 없는 것을 만들어 낸 것이 아니다.
+     * 그래서 <b>코드만 지우고 태스크는 살린다.</b> {@code problem_code}는 nullable이고,
+     * 화면은 없으면 그 줄을 그리지 않는다.
+     *
      * @param forced 저장될 때 덮어쓰는 카테고리. null이면 태스크가 스스로 말한 것을 쓴다
      */
-    private static void requireGroundedTasks(List<PlannedTask> tasks, Category forced) {
+    static List<PlannedTask> normalize(List<PlannedTask> tasks, Category forced) {
+        List<PlannedTask> out = new ArrayList<>(tasks.size());
         for (PlannedTask task : tasks) {
-            ProblemCode code = task.problemCode();
             Category effective = forced == null ? task.category() : forced;
+            ProblemCode code = task.problemCode();
+
             if (code != null && !code.belongsTo(effective)) {
-                throw new GuardrailViolation(
-                        "'%s'는 %s 목표의 태스크인데 문제 코드가 %s(%s)다. %s 문제 코드만 골라라."
-                                .formatted(task.title(), effective, code, code.category(), effective));
+                log.warn("문제 코드가 카테고리와 어긋나 지운다: '{}' {} <- {}({})",
+                        task.title(), effective, code, code.category());
+                code = null;
             }
-            if (task.reason() == null || task.reason().isBlank()) {
-                throw new GuardrailViolation(
-                        "'%s'에 reason이 없다. 이 사용자에게 왜 필요한지 적어라.".formatted(task.title()));
-            }
+            // 스키마의 `type: string`은 빈 문자열을 통과시킨다. 빈 근거는 없는 것으로 둔다.
+            String reason = task.reason() == null || task.reason().isBlank() ? null : task.reason();
+
+            out.add(new PlannedTask(task.category(), task.importanceOrCore(), code,
+                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
+                    task.frequencyPerWeek(), reason, task.expectedEffect()));
         }
+        return ensureCore(out);
     }
 
     /**
      * {@code CORE}가 하나도 없으면 <b>첫 태스크를 올린다.</b>
      *
-     * <p>🔴 <b>여기서는 재생성하지 않는다.</b> 화면이 기본으로 {@code CORE}만 보여주므로,
-     * 하나도 없으면 사용자는 <b>빈 목표</b>를 받는다. AI를 한 번 더 부르는 값보다
-     * 빈손으로 돌려보내지 않는 것이 낫다 — 순서는 AI가 중요한 것부터 낸다고 보고
-     * 맨 앞을 고른다.
+     * <p>화면이 기본으로 {@code CORE}만 보여주므로, 하나도 없으면 사용자는 <b>빈 목표</b>를
+     * 받는다. 순서는 AI가 중요한 것부터 낸다고 보고 맨 앞을 고른다.
      */
     private static List<PlannedTask> ensureCore(List<PlannedTask> tasks) {
         boolean hasCore = tasks.stream()
