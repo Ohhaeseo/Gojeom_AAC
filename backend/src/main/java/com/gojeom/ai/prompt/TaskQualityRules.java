@@ -57,13 +57,32 @@ public final class TaskQualityRules {
             // 🔴 "운동"·"스트레칭하기"는 넣지 않는다 — "종아리 스트레칭 하기"까지 지워진다.
             "정리운동", "준비운동", "근력운동", "유산소운동", "맨몸운동", "홈트", "운동하기");
 
-    /** 버릴 태스크인가. {@code title}이 위 목록의 말로 끝나면 참이다. */
+    /**
+     * <b>혼자 쓰면 안 되는 말.</b> 앞에 무엇이 붙으면 멀쩡한 태스크가 된다.
+     *
+     * <p>🔴 그래서 {@link #BANNED}와 달리 <b>제목 전체가 같을 때만</b> 버린다.
+     * "물 마시기"는 무엇을 얼마나인지가 없어 루틴이 아니지만
+     * <b>"기상 직후 물 마시기 / 500ml"는 멀쩡하다.</b> {@code endsWith}로 보면
+     * 둘이 함께 지워진다 — 이 목록을 따로 둔 이유가 그것이다.
+     */
+    static final List<String> BANNED_ALONE = List.of(
+            "물마시기", "스트레칭하기", "스트레칭", "산책하기", "산책",
+            "휴식하기", "쉬기", "명상하기", "심호흡하기", "보습하기", "관리하기");
+
+    /**
+     * 버릴 태스크인가.
+     *
+     * <ul>
+     *   <li>{@link #BANNED} — 그 말로 <b>끝나면</b> 버린다</li>
+     *   <li>{@link #BANNED_ALONE} — 제목이 <b>그 말뿐이면</b> 버린다</li>
+     * </ul>
+     */
     public static boolean isTrivial(String title) {
         if (title == null || title.isBlank()) {
             return false;
         }
         String flat = title.replaceAll("\s+", "").toLowerCase(Locale.ROOT);
-        return BANNED.stream().anyMatch(flat::endsWith);
+        return BANNED.stream().anyMatch(flat::endsWith) || BANNED_ALONE.contains(flat);
     }
 
     /**
@@ -83,6 +102,9 @@ public final class TaskQualityRules {
             아래로 끝나는 태스크는 **서버가 버린다.** 만들어도 화면에 나가지 않는다.
             %s
 
+            아래는 **혼자 쓰면** 버려진다. 언제·무엇을·얼마나가 붙으면 살아난다.
+            %s
+
             판단 기준 하나만 기억하라 — **"어떻게" 또는 "얼마나"가 빠져 있으면 루틴이 아니다.**
 
                 ❌ 자기 전 불 끄기          ⭕ 플랭크 버티기        / 30초 3세트
@@ -91,18 +113,20 @@ public final class TaskQualityRules {
                 ❌ 양치하기                ⭕ 자외선 차단제 바르기  / 4ml
                 ❌ 가벼운 정리운동          ⭕ 종아리 스트레칭       / 좌우 20초
                 ❌ 물 마시기               ⭕ 기상 직후 물 마시기   / 500ml
+                ❌ 스트레칭 하기           ⭕ 종아리 스트레칭       / 좌우 20초
 
             오른쪽처럼 **방법(어떻게)이나 수치(얼마나)를 담아라.** 세안이라면 물 온도와
             시간을, 근력이라면 동작 이름과 세트·횟수를 적는다. 그것이 사용자가 몰라서
             못 하던 것이고, 루틴이 알려줄 값이 있는 자리다.
-            """.formatted(bannedLines());
+            """.formatted(wrap(BANNED), wrap(BANNED_ALONE));
     }
 
-    private static String bannedLines() {
+    /** 목록을 프롬프트에 넣을 여러 줄로 접는다. 한 줄에 여섯 개씩. */
+    private static String wrap(List<String> words) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < BANNED.size(); i += 6) {
+        for (int i = 0; i < words.size(); i += 6) {
             sb.append("              ")
-              .append(String.join(" · ", BANNED.subList(i, Math.min(i + 6, BANNED.size()))))
+              .append(String.join(" · ", words.subList(i, Math.min(i + 6, words.size()))))
               .append('\n');
         }
         return sb.toString().stripTrailing();

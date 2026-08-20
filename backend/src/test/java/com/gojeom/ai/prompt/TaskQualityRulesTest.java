@@ -48,6 +48,22 @@ class TaskQualityRulesTest {
         assertThat(TaskQualityRules.isTrivial(title)).isFalse();
     }
 
+    /** 🔴 혼자 쓰면 안 되는 말 — 앞에 무엇이 붙으면 살아난다. */
+    @Test
+    @DisplayName("혼자 쓰면 버리고, 언제·얼마나가 붙으면 살린다")
+    void 혼자_쓰면_버린다() {
+        // 무엇을 얼마나인지가 없다
+        assertThat(TaskQualityRules.isTrivial("물 마시기")).isTrue();
+        assertThat(TaskQualityRules.isTrivial("스트레칭 하기")).isTrue();
+        assertThat(TaskQualityRules.isTrivial("산책")).isTrue();
+        assertThat(TaskQualityRules.isTrivial("보습하기")).isTrue();
+
+        // 같은 말이라도 앞에 붙으면 실행할 수 있는 행동이 된다
+        assertThat(TaskQualityRules.isTrivial("기상 직후 물 마시기")).isFalse();
+        assertThat(TaskQualityRules.isTrivial("종아리 스트레칭 하기")).isFalse();
+        assertThat(TaskQualityRules.isTrivial("점심 후 10분 산책하기")).isFalse();
+    }
+
     @Test
     @DisplayName("값이 없으면 판단하지 않는다")
     void 빈_값() {
