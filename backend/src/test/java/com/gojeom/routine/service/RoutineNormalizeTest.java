@@ -76,6 +76,41 @@ class RoutineNormalizeTest {
         assertThat(out.get(1).importance()).isEqualTo(RoutineImportance.OPTIONAL);
     }
 
+    /**
+     * 🔴 <b>운영 화면에 "기상 직후 · null"이 찍혔던 자리다.</b>
+     *
+     * <p>스키마가 {@code ["string","null"]}이라 <b>글자 {@code "null"}도 통과한다.</b>
+     * JSON의 {@code null}과 다른 값인데 스키마는 후자를 막지 않는다.
+     */
+    @Test
+    @DisplayName("값이 아닌 글자는 없는 것으로 만든다 — 화면에 프로그래밍 말이 나가면 안 된다")
+    void 값이_아닌_글자는_지운다() {
+        List<PlannedTask> out = RoutineService.normalize(List.of(
+                new PlannedTask(Category.BODY, RoutineImportance.CORE, ProblemCode.LOW_ACTIVITY,
+                        "계단 오르기", "저녁", "null", "N/A", 3, "  ", "없음")),
+                Category.BODY);
+
+        assertThat(out.get(0).durationLabel()).isNull();
+        assertThat(out.get(0).amountLabel()).isNull();
+        assertThat(out.get(0).reason()).isNull();
+        assertThat(out.get(0).expectedEffect()).isNull();
+        // 태스크 자체는 멀쩡하다. 라벨이 없다고 할 일을 버리지 않는다.
+        assertThat(out.get(0).title()).isEqualTo("계단 오르기");
+    }
+
+    @Test
+    @DisplayName("진짜 분량은 그대로 둔다")
+    void 진짜_값은_남긴다() {
+        List<PlannedTask> out = RoutineService.normalize(List.of(
+                new PlannedTask(Category.BODY, RoutineImportance.CORE, ProblemCode.LOW_ACTIVITY,
+                        "스쿼트 하기", "저녁", "약 2분", " 15회 3세트 ", 3, "근거", "기대")),
+                Category.BODY);
+
+        assertThat(out.get(0).durationLabel()).isEqualTo("약 2분");
+        // 앞뒤 공백은 다듬는다. 화면에서 " · " 앞뒤가 벌어져 보인다.
+        assertThat(out.get(0).amountLabel()).isEqualTo("15회 3세트");
+    }
+
     /** 🔴 무엇이 와도 던지지 않아야 한다. 던지면 사용자가 목표를 못 받는다. */
     @Test
     @DisplayName("코드도 근거도 없는 응답에도 던지지 않는다")

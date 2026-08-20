@@ -12,7 +12,7 @@ import { ProductRecommendation } from '@/components/product/ProductRecommendatio
 import { ProductShelf } from '@/components/product/ProductShelf';
 import { AppButton } from '@/components/ui/AppButton';
 import { formatAnalyzedDate } from '@/lib/date';
-import { groupByTiming, routineProgress, todayTasks, weeklyProgress } from '@/lib/tasks';
+import { groupByTiming, routineProgress, taskMeta, todayTasks, weeklyProgress } from '@/lib/tasks';
 import { useAppState, type DrawerItem } from '@/state/AppState';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
 import type { AnalysisResult, Category } from '@/types/api';
@@ -222,7 +222,7 @@ export default function HomeScreen() {
                       목표를 여럿 골랐으면 **어느 목표의 일인지 밝힌다.** 시점 순으로
                       섞여 나열되므로 이름이 없으면 무엇 때문에 하는 일인지 알 수 없다.
                     */}
-                    <Text style={styles.todayMeta}>{[titleOf(task.routineId), task.timing, task.amountLabel].filter(Boolean).join(' · ')}</Text>
+                    <Text style={styles.todayMeta}>{taskMeta(task, titleOf(task.routineId))}</Text>
                     {/*
                       주 N회는 그 주의 모든 날에 뜬다. 이 줄이 없으면 사용자가
                       **매일 해야 하는 일로 읽는다.** 캘린더와 같은 함수를 쓴다. (V15)

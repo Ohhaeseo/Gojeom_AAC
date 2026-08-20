@@ -47,6 +47,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -384,15 +385,42 @@ public class RoutineService {
                         task.title(), effective, code, code.category());
                 code = null;
             }
-            // 스키마의 `type: string`은 빈 문자열을 통과시킨다. 빈 근거는 없는 것으로 둔다.
-            String reason = task.reason() == null || task.reason().isBlank() ? null : task.reason();
-
             out.add(new PlannedTask(task.category(), task.importanceOrCore(), code,
-                    task.title(), task.timing(), task.durationLabel(), task.amountLabel(),
-                    task.frequencyPerWeek(), reason, task.expectedEffect()));
+                    task.title(), task.timing(),
+                    textOrNull(task.durationLabel()), textOrNull(task.amountLabel()),
+                    task.frequencyPerWeek(),
+                    textOrNull(task.reason()), textOrNull(task.expectedEffect())));
         }
         return ensureCore(out);
     }
+
+    /**
+     * 값이 아닌 글자를 <b>없는 것으로 만든다.</b>
+     *
+     * <p>🔴 <b>모델이 값을 비우는 대신 {@code "null"}이라고 적는다.</b> 스키마가
+     * {@code type: ["string","null"]}이라 <b>문자열 {@code "null"}도 통과한다</b> —
+     * JSON의 {@code null}과 글자 {@code "null"}은 다른 값이고, 스키마는 후자를
+     * 막지 않는다. 그렇게 통과한 값이 그대로 저장돼 화면에
+     * <b>"기상 직후 · null"</b>로 나갔다. 운영에서 31행이 그랬다.
+     *
+     * <p>빈 문자열도 같이 잡는다 — {@code type: string}은 {@code ""}도 통과시킨다.
+     *
+     * <p><b>{@code title}과 {@code timing}에는 쓰지 않는다.</b> 둘은 DB가
+     * {@code NOT NULL}이라 비울 수 없다. 그쪽에 찌꺼기가 오면 화면이 가린다
+     * ({@code lib/tasks.ts}의 {@code shownText}).
+     */
+    static String textOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return NOT_A_VALUE.contains(trimmed.toLowerCase(Locale.ROOT)) ? null : trimmed;
+    }
+
+    /** 사람이 읽을 값이 아닌 것들. 실제 분량("1회"·"적당량")과 헷갈리지 않게 좁게 둔다. */
+    private static final Set<String> NOT_A_VALUE = Set.of(
+            "null", "undefined", "none", "nil", "n/a", "na", "-", "--",
+            "없음", "해당없음", "해당 없음", "미정");
 
     /**
      * {@code CORE}가 하나도 없으면 <b>첫 태스크를 올린다.</b>

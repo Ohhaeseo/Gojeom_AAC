@@ -12,7 +12,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { DragList } from '@/components/ui/DragList';
 import { GoModal } from '@/components/ui/GoModal';
 import { checkTime, formatAnalyzedDate, formatTimeInput, toApiTime, toTimeDigits } from '@/lib/date';
-import { groupByTiming, optionalTasks, routineProgress, todayTasks } from '@/lib/tasks';
+import { groupByTiming, optionalTasks, routineProgress, taskMeta, todayTasks } from '@/lib/tasks';
 import type { RoutineSummary } from '@/services/backend';
 import { WEEKS_PER_MONTH, useAppState } from '@/state/AppState';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -349,7 +349,7 @@ export default function RoutinesScreen() {
                   {task.importance === 'SUPPORT' ? <Text style={styles.supportBadge}>보조</Text> : null}
                 </View>
                 {/* 소요 시간(durationLabel)은 빼고 시점과 분량만 남긴다. */}
-                <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+                <Text style={styles.meta}>{taskMeta(task)}</Text>
                 {/*
                   🔴 **없으면 그리지 않는다.** V16 이전 태스크에는 근거가 없고,
                   "정보 없음" 같은 문구를 넣으면 지어내지 않기로 한 것을 스스로 어긴다.
@@ -373,7 +373,7 @@ export default function RoutinesScreen() {
           {optionalTasks(tasks).map((task) => (
             <View key={task.taskId} style={styles.optionalCard}>
               <Text style={styles.taskTitle}>{task.title}</Text>
-              <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+              <Text style={styles.meta}>{taskMeta(task)}</Text>
               {task.reason ? <Text style={styles.reason}>{task.reason}</Text> : null}
             </View>
           ))}

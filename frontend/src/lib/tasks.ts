@@ -217,6 +217,40 @@ export function groupByTiming(items: RoutineTask[]): TaskGroup[] {
 }
 
 /**
+ * 화면에 내보낼 값이 아닌 것들.
+ *
+ * 🔴 **모델이 값을 비우는 대신 `"null"`이라고 글자로 적는다.** 그것이 그대로 저장돼
+ * 화면에 **"기상 직후 · null"**로 나갔다. 서버가 저장할 때 걸러내지만
+ * (`RoutineService.textOrNull`), **이미 저장된 것은 그대로 남아 있다.**
+ * 화면이 마지막으로 한 번 더 막는다 — 사용자에게 프로그래밍 용어를 보이지 않는다.
+ */
+const NOT_A_VALUE = new Set([
+  'null', 'undefined', 'none', 'nil', 'n/a', 'na', '-', '--',
+  '없음', '해당없음', '해당 없음', '미정',
+]);
+
+/** 보여줄 값이면 다듬어 돌려주고, 아니면 `undefined`. */
+export function shownText(value?: string | null): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || NOT_A_VALUE.has(trimmed.toLowerCase())) return undefined;
+  return trimmed;
+}
+
+/**
+ * 태스크 아래 한 줄. `시점 · 분량` 꼴이다.
+ *
+ * **네 화면이 같은 함수를 쓴다.** 각자 이어 붙이면 한 곳만 고쳐 놓고 다른 곳에서
+ * 다시 `null`이 새어 나온다. 값이 없는 자리는 구분점까지 함께 빠진다.
+ *
+ * @param prefix 목표를 여러 개 볼 때 앞에 붙이는 목표 이름. 없으면 생략된다
+ */
+export function taskMeta(task: RoutineTask, prefix?: string): string {
+  return [shownText(prefix), shownText(task.timing), shownText(task.amountLabel)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
  * 목표 진행. 🔴 <b>행을 그냥 세지 않는다.</b>
  *
  * 화면이 `완료 수 / 태스크 행 수`로 세는 바람에 **캘린더에서 다 해도 바가 꽉 차지

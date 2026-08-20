@@ -1,4 +1,4 @@
-import { frequencyRank, groupByTiming, optionalTasks, routineProgress, scheduledTasks, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
+import { frequencyRank, groupByTiming, optionalTasks, routineProgress, scheduledTasks, shownText, taskMeta, timingRank, todayTasks, visibleTasks, weeklyProgress, weeklyQuotaMet } from '@/lib/tasks';
 import type { RoutineTask } from '@/types/api';
 
 /**
@@ -414,5 +414,38 @@ describe('routineProgress', () => {
       other('PENDING'), other('PENDING'), other('PENDING'),
     ];
     expect(routineProgress(tasks)).toEqual({ done: 3, total: 6, rate: 50 });
+  });
+});
+
+/**
+ * 🔴 **화면에 "기상 직후 · null"이 찍혔던 자리다.**
+ *
+ * 모델이 값을 비우는 대신 `"null"`이라고 글자로 적었고, 그게 그대로 저장돼 나갔다.
+ * 서버가 저장할 때 거르지만 **이미 저장된 것은 남아 있으므로** 화면도 막는다.
+ */
+describe('shownText · taskMeta', () => {
+  const withLabels = (timing: string, amountLabel?: string | null): RoutineTask => ({
+    ...task('계단 오르기', timing, '2026-08-20', 'r1'), amountLabel: amountLabel as string,
+  });
+
+  it.each(['null', 'NULL', 'undefined', 'N/A', '없음', '-', '   ', ''])(
+    '값이 아닌 글자(%s)는 없는 것으로 본다', (junk) => {
+      expect(shownText(junk)).toBeUndefined();
+    });
+
+  it('진짜 값은 다듬어서 그대로 쓴다', () => {
+    expect(shownText(' 15회 3세트 ')).toBe('15회 3세트');
+    expect(shownText('적당량')).toBe('적당량');
+  });
+
+  it('분량이 없으면 구분점도 같이 빠진다', () => {
+    expect(taskMeta(withLabels('기상 직후', 'null'))).toBe('기상 직후');
+    expect(taskMeta(withLabels('기상 직후', null))).toBe('기상 직후');
+    expect(taskMeta(withLabels('기상 직후', '200ml'))).toBe('기상 직후 · 200ml');
+  });
+
+  it('목표 이름을 앞에 붙일 수 있다 — 여러 목표를 함께 볼 때다', () => {
+    expect(taskMeta(withLabels('저녁', '10회'), '자세 교정')).toBe('자세 교정 · 저녁 · 10회');
+    expect(taskMeta(withLabels('저녁', '10회'), undefined)).toBe('저녁 · 10회');
   });
 });

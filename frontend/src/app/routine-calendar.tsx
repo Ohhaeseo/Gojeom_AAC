@@ -8,7 +8,7 @@ import {
   dayLabel, groupByDate, monthGrid, monthLabel, monthsOf, nearestDate,
 } from '@/lib/calendar';
 import { toIsoDate } from '@/lib/date';
-import { groupByTiming, routineProgress, scheduledTasks, visibleTasks, weeklyProgress } from '@/lib/tasks';
+import { groupByTiming, routineProgress, scheduledTasks, taskMeta, visibleTasks, weeklyProgress } from '@/lib/tasks';
 import * as backend from '@/services/backend';
 import type { RoutineDetail } from '@/services/backend';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
@@ -201,7 +201,7 @@ export default function RoutineCalendarScreen() {
                   >
                     <View style={styles.taskCopy}>
                       <Text style={[styles.taskTitle, task.status === 'DONE' && styles.doneText]}>{task.title}</Text>
-                      <Text style={styles.meta}>{task.timing}{task.amountLabel ? ` · ${task.amountLabel}` : ''}</Text>
+                      <Text style={styles.meta}>{taskMeta(task)}</Text>
                       {/*
                         주 N회는 그 주의 모든 날에 뜬다. 이 줄이 없으면 사용자가
                         **매일 해야 하는 일로 읽는다.** (V15)
