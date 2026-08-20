@@ -8,6 +8,7 @@ import com.gojeom.ai.dto.AiPayloads.RoutinePlan;
 import com.gojeom.ai.dto.AiPayloads.StandalonePlan;
 import com.gojeom.ai.guardrail.GuardrailViolation;
 import com.gojeom.ai.prompt.RoutineGenerationPrompt;
+import com.gojeom.ai.prompt.TaskQualityRules;
 import com.gojeom.analysis.entity.AnalysisResult;
 import com.gojeom.analysis.entity.GapItem;
 import com.gojeom.analysis.repository.AnalysisKeywordRepository;
@@ -372,11 +373,20 @@ public class RoutineService {
      * 그래서 <b>코드만 지우고 태스크는 살린다.</b> {@code problem_code}는 nullable이고,
      * 화면은 없으면 그 줄을 그리지 않는다.
      *
+     * <p><b>당연한 행동은 버린다.</b> "자기 전 불 끄기"처럼 안 시켜도 이미 하고 있는
+     * 일은 체크박스만 늘리고 달라지는 것이 없다. 여기서도 <b>던지지 않는다</b> —
+     * 걸린 것만 빼고 나머지는 살린다. ({@link TaskQualityRules})
+     *
      * @param forced 저장될 때 덮어쓰는 카테고리. null이면 태스크가 스스로 말한 것을 쓴다
      */
     static List<PlannedTask> normalize(List<PlannedTask> tasks, Category forced) {
         List<PlannedTask> out = new ArrayList<>(tasks.size());
         for (PlannedTask task : tasks) {
+            // 🔴 누구나 이미 하고 있는 일은 화면에 내보내지 않는다. (TaskQualityRules)
+            if (TaskQualityRules.isTrivial(task.title())) {
+                log.warn("당연한 행동이라 태스크를 버린다: '{}'", task.title());
+                continue;
+            }
             Category effective = forced == null ? task.category() : forced;
             ProblemCode code = task.problemCode();
 

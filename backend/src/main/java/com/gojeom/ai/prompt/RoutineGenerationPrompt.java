@@ -74,7 +74,7 @@ public class RoutineGenerationPrompt {
               **도구 없이 맨몸으로 되는 것을 우선한다.** 기구 이름을 쓰려면 집에 있을
               법한 것(수건·의자·물병)까지만 쓴다.
             - 같은 원칙이 다른 카테고리에도 적용된다. "피부 관리"가 아니라
-              "미온수로 세안하기", "건강 챙기기"가 아니라 "자기 전 스마트폰 내려놓기"다.
+              "미온수로 세안하기", "건강 챙기기"가 아니라 "취침 30분 전 화면 보지 않기"다.
             - 매일 하는 것과 주 몇 회 하는 것이 섞이면 timing에 "주 3회 저녁"처럼
               빈도를 함께 적는다.
             - 🔴 **frequencyPerWeek에 같은 빈도를 숫자로도 적는다.** 매일이면 7,
@@ -185,7 +185,7 @@ public class RoutineGenerationPrompt {
         var builder = OpenAiRequest.builder(AiStage.ROUTINE_GENERATION, RoutinePlan.class)
                 .schema(schemas.routineFromAnalysis(allowed))
                 .system(SystemPrompts.base() + SystemPrompts.PRIORITY_WEIGHTING
-                        + FROM_ANALYSIS + TASK_FORMAT)
+                        + FROM_ANALYSIS + TASK_FORMAT + TaskQualityRules.promptSection())
                 .text(profileFacts)
                 .text("\n[근거가 되는 고점 분석 결과]\n" + resultDigest);
 
@@ -211,7 +211,7 @@ public class RoutineGenerationPrompt {
         return OpenAiRequest.builder(AiStage.ROUTINE_GENERATION, StandalonePlan.class)
                 .schema(schemas.routineStandalone())
                 .system(SystemPrompts.base() + SystemPrompts.PRIORITY_WEIGHTING
-                        + STANDALONE + TASK_FORMAT)
+                        + STANDALONE + TASK_FORMAT + TaskQualityRules.promptSection())
                 .text(profileFacts)
                 .text("\n[사용자가 고른 카테고리와 기간] — 이 %d개 각각에 목표를 하나씩 만든다\n%s"
                         .formatted(itemLines.size(), String.join("\n", itemLines)))
