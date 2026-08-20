@@ -6,10 +6,10 @@ public enum SubscriptionPlan {
     /** 한 달 무료 체험 · 분석권 1회 */
     TRIAL,
 
-    /** 월 8,900원 */
+    /** 월 4,900원 */
     MONTHLY,
 
-    /** 연 89,000원 */
+    /** 연 49,000원 */
     YEARLY;
 
     /**
@@ -26,8 +26,8 @@ public enum SubscriptionPlan {
     public int amount() {
         return switch (this) {
             case TRIAL -> 0;
-            case MONTHLY -> 8_900;
-            case YEARLY -> 89_000;
+            case MONTHLY -> 4_900;
+            case YEARLY -> 49_000;
         };
     }
 

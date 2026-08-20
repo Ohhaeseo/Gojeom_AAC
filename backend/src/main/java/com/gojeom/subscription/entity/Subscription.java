@@ -102,7 +102,7 @@ public class Subscription {
      * 분석을 시작할 수 있는지. 만료됐으면 false.
      *
      * <p>유료 구독은 <b>횟수를 보지 않는다.</b> 분석권은 무료 체험 1회를 세는 값이라
-     * (PRD F-12 · §11) 유료 구간까지 끌고 가면 8,900원을 내고도 한 번만 되는 꼴이 된다.
+     * (PRD F-12 · §11) 유료 구간까지 끌고 가면 4,900원을 내고도 한 번만 되는 꼴이 된다.
      */
     public boolean canAnalyze(OffsetDateTime now) {
         return status == SubscriptionStatus.ACTIVE

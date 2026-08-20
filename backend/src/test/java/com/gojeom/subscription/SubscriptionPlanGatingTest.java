@@ -85,9 +85,9 @@ class SubscriptionPlanGatingTest {
         assertThat(SubscriptionPlan.MONTHLY.isUnlimited()).isTrue();
         assertThat(SubscriptionPlan.YEARLY.isUnlimited()).isTrue();
 
-        // PRD §11의 값. 화면이 아니라 여기가 정본이다.
-        assertThat(SubscriptionPlan.MONTHLY.amount()).isEqualTo(8_900);
-        assertThat(SubscriptionPlan.YEARLY.amount()).isEqualTo(89_000);
+        // 화면이 아니라 여기가 정본이다. 〔2026-08-20 인하: 8,900 → 4,900 · 89,000 → 49,000〕
+        assertThat(SubscriptionPlan.MONTHLY.amount()).isEqualTo(4_900);
+        assertThat(SubscriptionPlan.YEARLY.amount()).isEqualTo(49_000);
     }
 
     @Test

@@ -1003,8 +1003,8 @@
     "canAnalyze": true,
     "canCreateRoutine": true,
     "products": [
-      { "plan": "MONTHLY", "amount": 8900,  "label": "월 구독" },
-      { "plan": "YEARLY",  "amount": 89000, "label": "연 구독" }
+      { "plan": "MONTHLY", "amount": 4900,  "label": "월 구독" },
+      { "plan": "YEARLY",  "amount": 49000, "label": "연 구독" }
     ]
   }
 }
